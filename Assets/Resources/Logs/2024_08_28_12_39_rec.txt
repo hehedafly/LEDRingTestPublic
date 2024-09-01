@@ -1,0 +1,7 @@
+type	delta time	mode	trial	lickPos	result
+start	16.98214	0x11	0	-1	
+lick	25.66214	0x11	0	-1	
+end	25.66214	0x11	0	0	0
+entrance	26.90214	0x11	0	1	
+entrance	26.90214	0x11	0	0	
+start	29.98214	0x11	1	-1	

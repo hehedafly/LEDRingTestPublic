@@ -1,0 +1,73 @@
+type	delta time	mode	trial	lickPos	result
+start	9.404495	0x11	0	-1	
+entrance	11.42449	0x11	0	1	
+entrance	11.42449	0x11	0	0	
+lick	15.6045	0x11	0	-2	
+end	15.6045	0x11	0	0	1
+entrance	30.18449	0x11	0	1	
+entrance	30.18449	0x11	0	0	
+start	32.62449	0x11	1	-1	
+lick	35.38449	0x11	1	1	
+end	35.38449	0x11	1	1	1
+entrance	39.5645	0x11	1	1	
+entrance	39.5645	0x11	1	0	
+start	41.86449	0x11	2	-1	
+lick	44.0845	0x11	2	1	
+end	44.0845	0x11	2	1	1
+entrance	45.72449	0x11	2	1	
+entrance	45.72449	0x11	2	0	
+start	48.50449	0x11	3	-1	
+lick	49.78449	0x11	3	0	
+end	49.78449	0x11	3	0	1
+entrance	51.82449	0x11	3	1	
+entrance	51.82449	0x11	3	0	
+start	54.4045	0x11	4	-1	
+lick	56.04449	0x11	4	0	
+end	56.04449	0x11	4	0	1
+entrance	57.16449	0x11	4	1	
+entrance	57.16449	0x11	4	0	
+start	60.20449	0x11	5	-1	
+lick	62.20449	0x11	5	1	
+end	62.20449	0x11	5	1	1
+entrance	63.52449	0x11	5	1	
+entrance	63.52449	0x11	5	0	
+lick	64.54449	0x11	5	0	
+lick	64.74449	0x11	5	0	
+lick	64.92449	0x11	5	0	
+lick	65.1245	0x11	5	0	
+lick	65.3045	0x11	5	0	
+lick	65.50449	0x11	5	0	
+lick	65.68449	0x11	5	0	
+lick	65.88449	0x11	5	0	
+lick	66.10449	0x11	5	0	
+lick	66.28449	0x11	5	0	
+lick	66.4845	0x11	5	0	
+lick	66.6645	0x11	5	0	
+lick	66.82449	0x11	5	0	
+lick	67.02449	0x11	5	0	
+lick	67.22449	0x11	5	0	
+lick	67.4445	0x11	5	0	
+lick	67.6245	0x11	5	0	
+lick	67.84449	0x11	5	0	
+lick	68.02449	0x11	5	0	
+lick	68.22449	0x11	5	0	
+lick	68.42449	0x11	5	0	
+lick	68.6245	0x11	5	0	
+lick	68.82449	0x11	5	0	
+lick	69.00449	0x11	5	0	
+lick	69.1645	0x11	5	0	
+start	70.18449	0x11	6	-1	
+lick	70.64449	0x11	6	0	
+lick	71.72449	0x11	6	0	
+end	71.72449	0x11	6	1	0
+entrance	74.20449	0x11	6	1	
+entrance	74.20449	0x11	6	0	
+lick	76.6245	0x11	6	0	
+lick	76.78449	0x11	6	0	
+lick	76.96449	0x11	6	0	
+lick	77.14449	0x11	6	0	
+start	78.16449	0x11	7	-1	
+lick	78.8045	0x11	7	0	
+lick	79.4845	0x11	7	0	
+end	79.4845	0x11	7	0	1
+lick	79.86449	0x11	7	0	
