@@ -1,3 +1,8 @@
+正常开始后的界面：
+![image](https://github.com/user-attachments/assets/d8201130-3140-47db-8250-b2074e17fc6d)
+按下start后开始整个session
+Building版本config文件在路径"Buildings\LEDRingTest_Data\Resources"中，自定义图像在同一路径中
+
 示例config.ini:
 
 [settings]
@@ -49,7 +54,7 @@ isRing = true
 
 [barSettings]
 isDriftgrating = true
-#展示视觉刺激是否为drift，若是则按照以下几个参数设定，否则按照bar_material设定bar外观
+#展示视觉刺激是否为drift，若是则按照以下几个参数设定，否则按照bar_material设定bar外观，自定义外观图像为100*100，png格式图片
 isCircleBar = false
 #展示bar是否为圆形
 speed = 0.5
