@@ -1,3 +1,7 @@
 *.csproj
 Library/
-vscode/
+.vscode/
+ProjectSettings/
+Logs/
+UserSettings/
+Temp/
