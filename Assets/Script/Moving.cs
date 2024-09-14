@@ -32,15 +32,17 @@ class ContextInfo{
         trialTriggerMode = _trialStartType;
         barPosLs = new List<int>();
 
+        string errorMessage = "";
         try{
-
+            errorMessage = "avaliablePosArray";
             avaliablePosArray = new List<int>();
             foreach(string availablePos in _available_pos_array.Split(',')){
                 int temp_pos = Convert.ToInt16(availablePos) % 360;
                 if(!avaliablePosArray.Contains(temp_pos))avaliablePosArray.Add(temp_pos);
             }
             avaliablePosArray.Sort();
-
+            
+            errorMessage = "pumpPosLs";
             pumpPosLs = new List<int>();
             var _strPumpPos = _pump_pos_array.Split(",");
             if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosArray.Count()){
@@ -55,6 +57,7 @@ class ContextInfo{
                 }
             }
 
+            errorMessage = "lickPosLs";
             lickPosLs = new List<int>();
             var _strLickPos = _lick_pos_array.Split(",");
             if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosArray.Count()){
@@ -69,6 +72,7 @@ class ContextInfo{
                 }
             }
             
+            errorMessage = "assign";
             if(_start_method.StartsWith("random")){
                 if(_maxTrial != -1){
                     List<int> ints = new List<int>();
@@ -82,36 +86,29 @@ class ContextInfo{
                 }
             }else{
                 foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50
-                    try{
-                        List<int> _pos = new List<int>();
-                        int multiple = 1;
-                        if(pos.Contains("*")){
-                            if(pos.Contains("-")){
-                                foreach(string posUnit in pos.Replace("(", "").Replace(")", "").Split('-')){
-                                    _pos.Add(Convert.ToInt16(posUnit));
-                                }
-                                multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
+                    List<int> _pos = new List<int>();
+                    int multiple = 1;
+                    if(pos.Contains("*")){
+                        if(pos.Contains("-")){
+                            foreach(string posUnit in pos[..pos.IndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
+                                _pos.Add(Convert.ToInt16(posUnit));
                             }
-                            else{
-                                _pos.Add(Convert.ToInt16(pos.Substring(0, pos.IndexOf("*"))));
-                                multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
-                            }
-                        }else{
-                            _pos.Add(Convert.ToInt16(pos));
+                            multiple = Convert.ToInt16(pos[(pos.IndexOf("*") + 1)..]);
                         }
+                        else{
+                            _pos.Add(Convert.ToInt16(pos.Substring(0, pos.IndexOf("*"))));
+                            multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
+                        }
+                    }else{
+                        _pos.Add(Convert.ToInt16(pos));
+                    }
 
-                        if(avaliablePosArray.Contains(Convert.ToInt16(_pos))){
-                            for(int i = 0; i < multiple; i++){
-                                foreach(int posUnit in _pos){
-                                    barPosLs.Add(posUnit % 360);
-                                }
+                    
+                    for(int i = 0; i < multiple; i++){
+                        foreach(int posUnit in _pos){
+                            if(avaliablePosArray.Contains(Convert.ToInt16(posUnit))){
+                                barPosLs.Add(posUnit % 360);
                             }
-                        }
-                    }catch(Exception e){ 
-                        if(pos.Contains("..")){
-                            barPosLs.Add(Convert.ToInt16(pos.Replace("..", "")));
-                        }else{
-                            Debug.Log(e.Message);
                         }
                     }
                 }
@@ -126,6 +123,7 @@ class ContextInfo{
                 }
             }
 
+            errorMessage = "trialInterval";
             if(_trialInterval.StartsWith("random")){
                 string[] temp_ls=_trialInterval[6..].Split("~");
                 if(temp_ls.Length==2){
@@ -152,6 +150,7 @@ class ContextInfo{
                 }
             }
 
+            errorMessage = "trialTriggerDelay";
             if(_trialTriggerDelay.StartsWith("random")){
                 string[] temp_ls=_trialTriggerDelay[6..].Split("~");
                 if(temp_ls.Length==2){
@@ -179,6 +178,7 @@ class ContextInfo{
             }
         }
         catch{
+            MessageBoxForUnity.Ensure($"Value Error in Config: {errorMessage}", "Config Parse Failed");
             Quit();
         }
         finally{}
