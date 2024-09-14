@@ -172,6 +172,7 @@ public class UIUpdate : MonoBehaviour
                 }else{
                     logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }
+
                 alarm.TrySetAlarm("setBarToZeroAfterSizeChange", 0.5f, out _);
 
             }else{

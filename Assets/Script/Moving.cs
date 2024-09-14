@@ -32,139 +32,156 @@ class ContextInfo{
         trialTriggerMode = _trialStartType;
         barPosLs = new List<int>();
 
-        avaliablePosArray = new List<int>();
-        foreach(string availablePos in _available_pos_array.Split(',')){
-            int temp_pos = Convert.ToInt16(availablePos) % 360;
-            if(!avaliablePosArray.Contains(temp_pos))avaliablePosArray.Add(temp_pos);
-        }
-        avaliablePosArray.Sort();
+        try{
 
-        pumpPosLs = new List<int>();
-        var _strPumpPos = _pump_pos_array.Split(",");
-        if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosArray.Count()){
-            foreach(string pos in _strPumpPos){
-                //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                    pumpPosLs.Add(Convert.ToInt16(pos));
-                //}
+            avaliablePosArray = new List<int>();
+            foreach(string availablePos in _available_pos_array.Split(',')){
+                int temp_pos = Convert.ToInt16(availablePos) % 360;
+                if(!avaliablePosArray.Contains(temp_pos))avaliablePosArray.Add(temp_pos);
             }
-        }else{
-            foreach(int _ in avaliablePosArray){
-                pumpPosLs.Add(pumpPosLs.Count());
-            }
-        }
+            avaliablePosArray.Sort();
 
-        lickPosLs = new List<int>();
-        var _strLickPos = _lick_pos_array.Split(",");
-        if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosArray.Count()){
-            foreach(string pos in _strLickPos){
-                //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                    lickPosLs.Add(Convert.ToInt16(pos));
-                //}
-            }
-        }else{
-            foreach(int _ in avaliablePosArray){
-                lickPosLs.Add(lickPosLs.Count());
-            }
-        }
-        
-        if(_start_method.StartsWith("random")){
-            if(_maxTrial != -1){
-                List<int> ints = new List<int>();
-                for (int i = 0; i < avaliablePosArray.Count; i++){ints.Add(i % avaliablePosArray.Count);}
-                for (int i=0; i<_maxTrial; i++){
-                    if(i % ints.Count == 0){
-                        Shuffle(ints);
-                    }
-                    barPosLs.Add(avaliablePosArray[ints[i % ints.Count]]);
+            pumpPosLs = new List<int>();
+            var _strPumpPos = _pump_pos_array.Split(",");
+            if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosArray.Count()){
+                foreach(string pos in _strPumpPos){
+                    //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
+                        pumpPosLs.Add(Convert.ToInt16(pos));
+                    //}
+                }
+            }else{
+                foreach(int _ in avaliablePosArray){
+                    pumpPosLs.Add(pumpPosLs.Count());
                 }
             }
-        }else{
-            foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50..
-                try{
-                    int _pos = -1;
-                    int multiple = 1;
-                    if(pos.Contains("*")){
-                        _pos = Convert.ToInt16(pos.Substring(0, pos.IndexOf("*")));
-                        multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
-                    }else{
-                        _pos = Convert.ToInt16(pos);
-                    }
 
-                    if(avaliablePosArray.Contains(Convert.ToInt16(_pos))){
-                        for(int i = 0; i < multiple; i++){
-                            barPosLs.Add(_pos % 360);
+            lickPosLs = new List<int>();
+            var _strLickPos = _lick_pos_array.Split(",");
+            if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosArray.Count()){
+                foreach(string pos in _strLickPos){
+                    //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
+                        lickPosLs.Add(Convert.ToInt16(pos));
+                    //}
+                }
+            }else{
+                foreach(int _ in avaliablePosArray){
+                    lickPosLs.Add(lickPosLs.Count());
+                }
+            }
+            
+            if(_start_method.StartsWith("random")){
+                if(_maxTrial != -1){
+                    List<int> ints = new List<int>();
+                    for (int i = 0; i < avaliablePosArray.Count; i++){ints.Add(i % avaliablePosArray.Count);}
+                    for (int i=0; i<_maxTrial; i++){
+                        if(i % ints.Count == 0){
+                            Shuffle(ints);
+                        }
+                        barPosLs.Add(avaliablePosArray[ints[i % ints.Count]]);
+                    }
+                }
+            }else{
+                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50
+                    try{
+                        List<int> _pos = new List<int>();
+                        int multiple = 1;
+                        if(pos.Contains("*")){
+                            if(pos.Contains("-")){
+                                foreach(string posUnit in pos.Replace("(", "").Replace(")", "").Split('-')){
+                                    _pos.Add(Convert.ToInt16(posUnit));
+                                }
+                                multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
+                            }
+                            else{
+                                _pos.Add(Convert.ToInt16(pos.Substring(0, pos.IndexOf("*"))));
+                                multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
+                            }
+                        }else{
+                            _pos.Add(Convert.ToInt16(pos));
+                        }
+
+                        if(avaliablePosArray.Contains(Convert.ToInt16(_pos))){
+                            for(int i = 0; i < multiple; i++){
+                                foreach(int posUnit in _pos){
+                                    barPosLs.Add(posUnit % 360);
+                                }
+                            }
+                        }
+                    }catch(Exception e){ 
+                        if(pos.Contains("..")){
+                            barPosLs.Add(Convert.ToInt16(pos.Replace("..", "")));
+                        }else{
+                            Debug.Log(e.Message);
                         }
                     }
-                }catch(Exception e){ 
-                    if(pos.Contains("..")){
-                        barPosLs.Add(Convert.ToInt16(pos.Replace("..", "")));
+                }
+
+                for(int i=barPosLs.Count(); i<_maxTrial; i++){
+                    if(_assigned_pos.EndsWith("..")){
+                        barPosLs.Add(barPosLs[barPosLs.Count - 1]);
                     }else{
-                        Debug.Log(e.Message);
+                        barPosLs.Add(0);
                     }
+                    //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
             }
 
-            for(int i=barPosLs.Count(); i<_maxTrial; i++){
-                if(_assigned_pos.EndsWith("..")){
-                    barPosLs.Add(barPosLs[barPosLs.Count - 1]);
+            if(_trialInterval.StartsWith("random")){
+                string[] temp_ls=_trialInterval[6..].Split("~");
+                if(temp_ls.Length==2){
+                    try{
+                        trialInterval = new List<float>{-1, -1};
+                        trialInterval[0] = Convert.ToSingle(temp_ls[0]);
+                        trialInterval[1] = Convert.ToSingle(temp_ls[1]);
+                        if(trialInterval[0] >= trialInterval[1]){
+                            trialInterval[1] = trialInterval[0];
+                        }
+                    }catch{
+                        Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
+                        trialInterval = new List<float>{15, 45};
+                    }
                 }else{
-                    barPosLs.Add(0);
-                }
-                //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
-            }
-        }
-
-        if(_trialInterval.StartsWith("random")){
-            string[] temp_ls=_trialInterval[6..].Split("~");
-            if(temp_ls.Length==2){
-                try{
-                    trialInterval = new List<float>{-1, -1};
-                    trialInterval[0] = Convert.ToSingle(temp_ls[0]);
-                    trialInterval[1] = Convert.ToSingle(temp_ls[1]);
-                    if(trialInterval[0] >= trialInterval[1]){
-                        trialInterval[1] = trialInterval[0];
-                    }
-                }catch{
-                    Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
+                    Debug.Log("error in _trialWaitSec parse");
                     trialInterval = new List<float>{15, 45};
                 }
             }else{
-                Debug.Log("error in _trialWaitSec parse");
-                trialInterval = new List<float>{15, 45};
+                trialInterval = new List<float>{-1, -1};
+                if(float.TryParse(_trialInterval, out float _interval)){
+                    trialInterval[0] = _interval;
+                    trialInterval[1] = _interval;
+                }
             }
-        }else{
-            trialInterval = new List<float>{-1, -1};
-            if(float.TryParse(_trialInterval, out float _interval)){
-                trialInterval[0] = _interval;
-                trialInterval[1] = _interval;
-            }
-        }
 
-        if(_trialTriggerDelay.StartsWith("random")){
-            string[] temp_ls=_trialTriggerDelay[6..].Split("~");
-            if(temp_ls.Length==2){
-                try{
-                    trialTriggerDelay = new List<float>{-1, -1};
-                    trialTriggerDelay[0] = Convert.ToSingle(temp_ls[0]);
-                    trialTriggerDelay[1] = Convert.ToSingle(temp_ls[1]);
-                    if(trialTriggerDelay[0] >= trialTriggerDelay[1]){
-                        trialTriggerDelay[1] = trialTriggerDelay[0];
+            if(_trialTriggerDelay.StartsWith("random")){
+                string[] temp_ls=_trialTriggerDelay[6..].Split("~");
+                if(temp_ls.Length==2){
+                    try{
+                        trialTriggerDelay = new List<float>{-1, -1};
+                        trialTriggerDelay[0] = Convert.ToSingle(temp_ls[0]);
+                        trialTriggerDelay[1] = Convert.ToSingle(temp_ls[1]);
+                        if(trialTriggerDelay[0] >= trialTriggerDelay[1]){
+                            trialTriggerDelay[1] = trialTriggerDelay[0];
+                        }
+                    }catch{
+                        Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
+                        trialTriggerDelay = new List<float>{1.5f, 2};
                     }
-                }catch{
-                    Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
-                    trialTriggerDelay = new List<float>{1.5f, 2};
+                }else{
+                    Debug.Log("error in _trialWaitSec parse");
+                    trialTriggerDelay = new List<float>{2, 3};
                 }
             }else{
-                Debug.Log("error in _trialWaitSec parse");
-                trialTriggerDelay = new List<float>{2, 3};
-            }
-        }else{
-            trialTriggerDelay = new List<float>{-1, -1};
-            if(float.TryParse(_trialTriggerDelay, out float _interval)){
-                trialTriggerDelay[0] = _interval;
-                trialTriggerDelay[1] = _interval;
+                trialTriggerDelay = new List<float>{-1, -1};
+                if(float.TryParse(_trialTriggerDelay, out float _interval)){
+                    trialTriggerDelay[0] = _interval;
+                    trialTriggerDelay[1] = _interval;
+                }
             }
         }
+        catch{
+            Quit();
+        }
+        finally{}
 
     }
     //public string start_method;
@@ -193,6 +210,14 @@ class ContextInfo{
     [JsonIgnore]
 
     public float soundCueLeadTime   {get;set;}
+
+    void Quit(){
+        #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            Application.Quit();
+        #endif
+    }
 
     void Shuffle(List<int> _ints){
         for (int i = 0; i < _ints.Count; i++){
@@ -596,7 +621,7 @@ public class Moving : MonoBehaviour
                 alarm.TrySetAlarm("SetTrialReadyToTrue", trialReadyWaitSec, out _);
             }
         }
-        
+        trialStartTime = -1;
         ui_update.MessageUpdate();
         return 1;
     }
@@ -857,6 +882,14 @@ public class Moving : MonoBehaviour
     #endregion file writing end
     
     #region methods of communicating
+
+    void Quit(){
+        #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            Application.Quit();
+        #endif
+    }
     string[] ScanPorts_API(){
         string[] portList = SerialPort.GetPortNames();
         return portList;
@@ -1283,7 +1316,7 @@ public class Moving : MonoBehaviour
 
         contextInfo = new ContextInfo(
             iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
-            iniReader.ReadIniContent(                   "settings", "availabe_pos"      ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
+            iniReader.ReadIniContent(                   "settings", "available_pos"      ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                  )),               // int _maxTrial
@@ -1293,7 +1326,7 @@ public class Moving : MonoBehaviour
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "soundLength"       ,   "0.2"                   )),                // float 
             iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
-            iniReader.ReadIniContent(                   "settings", "trialWaitSec"      ,   "random5~10"            ),                 // string
+            iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "success_wait_sec"  ,   "3"                     )),                // float _s_wait_sec
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "fail_wait_sec"     ,   "6"                     )),                // float _f_wait_sec
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
@@ -1355,11 +1388,7 @@ public class Moving : MonoBehaviour
                     ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
                     if(e.Message.Contains("拒绝访问")){
-                        #if UNITY_EDITOR
-                            UnityEditor.EditorApplication.isPlaying = false;
-                        #else
-                            Application.Quit();
-                        #endif
+                        Quit();
                     }
                 }
                 finally{
@@ -1388,7 +1417,7 @@ public class Moving : MonoBehaviour
 
     void Update(){
 
-        if(waiting){
+        if(waiting){//延时模式下下一个trial开始相关计算
             if(!forceWaiting){
                 //if(Time.fixedUnscaledTime - waitSecRec >= (trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec)){
 
@@ -1410,18 +1439,18 @@ public class Moving : MonoBehaviour
                     if(IntervalCheck() == -2){
                         //完全空闲
                     }
-                    if(waitSec != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime){
-                        LickResultCheck(-1, nowTrial);
-                    }
                 }
             }else{
                 if(trialInitTime != 0){
                     waitSec += Time.unscaledDeltaTime;
                 }
             }
-        }else{
+        }else{//其他主动触发模式下相关计算
             if(nowTrial >= contextInfo.maxTrial){
                 return;
+            }
+            if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime){
+                LickResultCheck(-1, nowTrial);
             }
         }
     }
