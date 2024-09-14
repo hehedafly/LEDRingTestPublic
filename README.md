@@ -12,10 +12,10 @@ triggerMode = 1
 #0为延时开始下一个trial，1为红外主动触发，2为开关触发
 start_method = random         
 #random为在available_pos中随机选取位置，assign为按照assign_pos开始trial
-assign_pos = 75..
-#int 指定角度0-360，".."表示后续均指定为此角度
 available_pos = 120,240
 #从0-359映射到所有display_pixels
+assign_pos = 75..
+#int 指定角度0-360，".."表示后续均指定为此角度，X*Y表示X角度重复Y次，(A-B-C)*Y表示以A,B,C等角度为单元重复Y次，需要与"*"联用
 pump_pos = 0,1
 #每个available_pos对应的泵的编号
 lick_pos = 0,1
