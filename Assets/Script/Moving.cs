@@ -302,7 +302,7 @@ public class Moving : MonoBehaviour
     Alarm alarm;
 
     #region communicating
-    List<string> port_black_list = new List<string>();
+    List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
     List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command"};
@@ -1359,15 +1359,17 @@ public class Moving : MonoBehaviour
         }
 
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
-            if(!port_black_list.Contains(com)){port_black_list.Add(com);}
+            if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
         foreach(string port in ScanPorts_API()){
-            if(port.Contains("COM") && !port_black_list.Contains(port)){
+            if(port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
                     //Debug.Log(sp.IsOpen);
                     //if (!sp.IsOpen){
                         Debug.Log("try normal");
                         sp = new SerialPort(port, 115200, Parity.None, 8, StopBits.One);
+                        sp.RtsEnable = true;
+                        sp.DtrEnable = true;
                         sp.Open();
                         Debug.Log("COM avaible: "+port);
 
@@ -1378,7 +1380,9 @@ public class Moving : MonoBehaviour
                             if(temp_readline=="initialed"){
                                 break;
                             }
-                            else{continue;}
+                            else{
+                                continue;
+                            }
                         }
                     //}
                 }
@@ -1388,6 +1392,10 @@ public class Moving : MonoBehaviour
                     ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
                     if(e.Message.Contains("拒绝访问")){
+                        MessageBoxForUnity.Ensure("Accssion Denied", "Serial Error");
+                        Quit();
+                    }else{
+                        MessageBoxForUnity.Ensure("Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator", "Serial Error");
                         Quit();
                     }
                 }
@@ -1404,6 +1412,9 @@ public class Moving : MonoBehaviour
             InitializeStreamWriter();
             string data_write = WriteInfo(returnTypeHead: true);
             writeQueue.Enqueue(data_write);
+        }else{
+            MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
+            Quit();
         }
 
     }

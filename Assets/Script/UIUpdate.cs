@@ -147,7 +147,7 @@ public class UIUpdate : MonoBehaviour
         }
     }
 
-    public void MessageUpdate(string add_log_message="", int UpdateFreq = 0){
+    public void MessageUpdate(string add_log_message="", int UpdateFreq = 0){//随时可能被调用，需要对内容做null检查
         if(UpdateFreq == 1){//高频
             if(moving.TrialInitTime != 0){
                 int time = (int)(Time.fixedUnscaledTime - moving.TrialInitTime);
@@ -173,7 +173,9 @@ public class UIUpdate : MonoBehaviour
                     logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }
 
-                alarm.TrySetAlarm("setBarToZeroAfterSizeChange", 0.5f, out _);
+                if(alarm != null){
+                    alarm.TrySetAlarm("setBarToZeroAfterSizeChange", 0.5f, out _);
+                }
 
             }else{
                 /*
