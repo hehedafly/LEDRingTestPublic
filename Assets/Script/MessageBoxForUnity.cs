@@ -45,6 +45,28 @@ public static class MessageBoxForUnity
         //取消：2，重试：10，继续：11
     }
 
+    public enum MessageBoxReturnValueType{
+        Button_VOID   ,
+        Button_OK     ,
+        Button_CANCEL ,
+        Button_ABORT  ,
+        Button_RETRY  ,
+        Button_IGNORE ,
+        Button_YES    ,
+        Button_NO     ,
+        Button_RETRY_P = 10,
+        Button_CONTINUE,
+    }
+
+    public enum MessageBoxType{
+        OK              ,
+        OKCANCEL        ,
+        ABORTRETRYIGNORE,
+        YESNOCANCEL     ,
+        YESNO           ,
+        RETRYCANCEL     ,
+    }
+
 }
 
 

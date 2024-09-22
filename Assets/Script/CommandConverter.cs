@@ -127,7 +127,7 @@ public class CommandConverter
         return header.Concat(len).Concat(command).Concat(footer).ToArray();
     }
 
-    public string ConvertToString(byte[] byteArray){//要求无起止符，converter直接产生的ByteArray均含有起止符，需要process后使用
+    public string ConvertToString(byte[] byteArray){//要求无起止符，converter直接产生的ByteArray均含有起止符，需要process后使用。返回带有string类型command类型头
         //dic_types_reverse.TryGetValue(BitConverter.ToString(new byte[]{byteArray[temp_id+0], byteArray[temp_id+1]}), out string typeId);
         dic_types_reverse.TryGetValue(byteArray[0].ToString(), out string typeId);
         if(typeId==""){return "";}

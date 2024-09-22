@@ -305,7 +305,7 @@ public class Moving : MonoBehaviour
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
-    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command"};
+    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog"};
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
@@ -313,10 +313,11 @@ public class Moving : MonoBehaviour
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush".Replace(" ", "").Split(',').ToList();
-    List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMills, p_lick_count".Replace(" ", "").Split(',').ToList();
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE".Replace(" ", "").Split(',').ToList();
+    List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
+    bool debugMode = false; public bool DebugMode { get { return debugMode;} set { debugMode = value; } }
     #endregion communicating end
 
     #region  context generate
@@ -472,25 +473,26 @@ public class Moving : MonoBehaviour
         List<string> names = new List<string>(){"p_lick_mode", "p_trial"};
         List<int> values = new List<int>(){trialMode % 0x10, 0};
         DataSend("init");
-        int res = Context_verify(names, values);
+        int res = CommandVerify(names, values);
         //DataSend("p_trial_set=1", true);
         return res;
     }
 
     int ContextStartSync(){
-        List<string> names = new List<string>(){"p_trial", "p_now_pos"};
-        List<int> values = new List<int>(){nowTrial, contextInfo.GetPumpPosInTrial(nowTrial)};
-        int res = Context_verify(names, values);
-        DataSend("_");
-        DataSend("p_trial_set=1", true, true);
-        Debug.Log("sent :p_trial_set=1");
+        List<string> names = new List<string>(){"p_trial", "p_now_pos", "p_trial_set"};
+        List<int> values = new List<int>(){nowTrial, contextInfo.GetPumpPosInTrial(nowTrial), 1};
+        int res = CommandVerify(names, values);
+        // DataSend("_");
+        // DataSend("p_trial_set=1", true, true);
+        // Debug.Log("sent :p_trial_set=1");
         return res;
     }
 
-    int ContextEndSync(){
-        DataSend("p_trial_set=0", true);
-        DataSend("_");
-        return Context_verify("p_trial_set", 0);
+    int ContextEndSync(){//给水判定在lick中，暂时没用
+        // DataSend("p_trial_set=0", true);
+        // DataSend("_");
+        // return CommandVerify("p_trial_set", 0);
+        return 0;
     }
 
     public int SetTrial(bool manual, bool waitSoundCue, float _waitSec = -1){//延时触发仅在最初调用，其他主动触发调用此方法进行startTrial
@@ -603,8 +605,8 @@ public class Moving : MonoBehaviour
                 }
 
                 if(_temp_waitSec > 0){
-                    ui_update.MessageUpdate($"wait sec: {_temp_waitSec}");
-                    Debug.Log($"wait sec: {_temp_waitSec}");
+                    ui_update.MessageUpdate($"Interval: {_temp_waitSec}");
+                    Debug.Log($"Interval: {_temp_waitSec}");
                 }
                 waitSec = _temp_waitSec;
             }else{
@@ -612,8 +614,8 @@ public class Moving : MonoBehaviour
                     waitSec = trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec;
                 }else{//其他主动触发模式
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
-                    // ui_update.MessageUpdate($"wait sec: {waitSec}");
-                    // Debug.Log($"wait sec: {waitSec}");
+                    // ui_update.MessageUpdate($"Interval: {waitSec}");
+                    // Debug.Log($"Interval: {waitSec}");
                 }
             }
             if(trialReadyWaitSec <= 0) {trialStartReady = true;}
@@ -765,7 +767,7 @@ public class Moving : MonoBehaviour
                         if(lickInd >= 0){
                             LickResultAdd(1, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(1);
-                            if(trialMode == 0x01){Context_verify("p_trial_set", 2);}
+                            if(trialMode == 0x01){CommandVerify("p_trial_set", 2);}
                             ui_update.MessageUpdate($"Trial completed at pos {realLickInd}");
                         }else{//手动跳过或结束trial
                             LickResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
@@ -786,8 +788,9 @@ public class Moving : MonoBehaviour
                 }else{//只能舔对的
                     result = result || lickInd == -2;
                     LickResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
-                    if(result && trialMode == 0x11){Context_verify("p_trial_set", 2);}
-                    if(lickInd < 0){
+                    if(result && trialMode == 0x11){CommandVerify("p_trial_set", 2);}
+                    else{CommandVerify("p_trial_set", 0);}
+                    if(lickInd < 0 || !result){
                         ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {realLickInd}, right place: {rightLickInd}");
                     }else{
                         ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {realLickInd}, right place: {rightLickInd}");
@@ -917,7 +920,7 @@ public class Moving : MonoBehaviour
         //看注释！
         //看注释！
         //看注释！
-        //"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command"
+        //"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog"
         //int startInd = -1;
         int temp_type = commandConverter.GetCommandType(_command, out _);
         string command = commandConverter.ConvertToString(_command);
@@ -1003,6 +1006,12 @@ public class Moving : MonoBehaviour
                 //Debug.Log($"received :\"{command}\" at {Time.unscaledTime}");
                 break;
             }
+            case 6:{break;}
+            case 7:{break;}
+            case 8:{
+                ui_update.MessageUpdate(command);
+                break;
+            }
             default: break;
         }
     }
@@ -1064,6 +1073,11 @@ public class Moving : MonoBehaviour
         }
     }
 
+    public int DataSendRaw(string message){
+        byte[] temp_msg = Encoding.UTF8.GetBytes(message);
+        sp.Write(temp_msg, 0, temp_msg.Length);
+        return 1;
+    }
     public int DataSend(string message, bool variable_change = false, bool inVerifyOrVerifyNeedless=false){
         if(sp!= null && sp.IsOpen){
             if(variable_change){//form: p_.... = 1
@@ -1077,7 +1091,7 @@ public class Moving : MonoBehaviour
                     string temp_var_name = message.Split('=')[0];
                     temp_var_name = temp_var_name.Replace("/","");
                     
-                    if(Arduino_var_map.ContainsKey(temp_var_name) || Arduino_ArrayTypeVar_map.ContainsKey(temp_var_name[..temp_var_name.IndexOf('[')])){//从p_xxx转为int=int
+                    if(Arduino_var_map.ContainsKey(temp_var_name) || Arduino_ArrayTypeVar_map.ContainsKey(temp_var_name[..(temp_var_name.IndexOf('[') >= 0? temp_var_name.IndexOf('['): 0)])){//从p_xxx转为int=int
                         string temp_command;
                         if(temp_var_name.Contains('[')){
                             temp_command = Arduino_ArrayTypeVar_map[temp_var_name[..temp_var_name.IndexOf('[')]] + temp_var_name[temp_var_name.IndexOf('[')..] +"="+message.Split('=')[1];
@@ -1100,7 +1114,7 @@ public class Moving : MonoBehaviour
                             //Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
                             return 2;
                         }
-                        return 0;
+                        return -1;
                     }
                 //}
             }else{
@@ -1116,9 +1130,10 @@ public class Moving : MonoBehaviour
         }
     }
     
-    public int Context_verify(List<string> messages, List<int> values){
+    public int CommandVerify(List<string> messages, List<int> values){
         manualResetEventVerify.Reset();
         sp.ReadTimeout = 200;
+        Debug.Log("verify start");
         try{
             int temp_i = 0;//记录已经同步完成的内容
             for(int i=temp_i; i<messages.Count; i++){
@@ -1127,11 +1142,14 @@ public class Moving : MonoBehaviour
                 DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
                 while(true){
                     temp_echo = sp.ReadLine();
-                    //Debug.Log("echo received: "+temp_echo);
+                    
+                    Debug.Log("echo received: "+temp_echo);
                     if(temp_echo.StartsWith("echo:")){
                         temp_echo=temp_echo[5..temp_echo.IndexOf(":echo")];
                         temp_i = i+1;
                         break;
+                    }else{
+                        serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)[0..-1]).Concat(new byte[]{0xDD}).ToArray());
                     }
                 }
                 string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
@@ -1153,21 +1171,35 @@ public class Moving : MonoBehaviour
             return -1;
         }
         finally{
+            if(serial_read_content_ls.Count() > 0){
+                byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
+                int temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                while(temp_end != -1){
+                    byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
+                    Debug.Log("process: "+string.Join(",", tempCompleteMsgInVerify));
+                    if(tempCompleteMsgInVerify.Length>0){
+                        commandQueue.Enqueue(tempCompleteMsgInVerify);
+                    }
+                    totalMsgInVerify = totalMsgInVerify[(temp_end+1)..].ToArray();
+                    temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+
+                }
+            }
             manualResetEventVerify.Set();
         }
         return 1;
     }
 
-    public int Context_verify(string message, int value){
+    public int CommandVerify(string message, int value){
         List<string> variables = new List<string>(){message};
         List<int> values = new List<int>(){value};
-        return Context_verify(variables, values);
+        return CommandVerify(variables, values);
     }
 
-    public int Context_verify(string message, int value, string message2, int value2){
+    public int CommandVerify(string message, int value, string message2, int value2){
         List<string> variables = new List<string>(){message, message2};
         List<int> values = new List<int>(){value, value2};
-        return Context_verify(variables, values);
+        return CommandVerify(variables, values);
     }
 
     #endregion methods of communicating end

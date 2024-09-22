@@ -169,28 +169,7 @@ public class StartMenuDraw : MonoBehaviour
     Dictionary<string, string> dicMatPath = new Dictionary<string, string>(){{"bar", "Tex_bar.mat"}, {"point", "Tex_point.mat"}, {"point_sparse", "Tex_point_sparse.mat"}, {"custom", "Tex_custom.mat"}};
     Dictionary<string, string> dicPrefabPath = new Dictionary<string, string>(){{"tower", "tower.prefab"}, {"twin_tower", "twin_tower.prefab"}, {"tunnel", "tunnel.prefab"}, {"tunnel_no_ceil", "tunnel_no_ceil.prefab"}, {"tunnel_no_ceil_and_end", "tunnel_no_ceil_and_end.prefab"}};
 
-    [DllImport("User32.dll", SetLastError = true, ThrowOnUnmappableChar = true, CharSet = CharSet.Auto)]
-    public static extern int MessageBox(IntPtr handle, String message, String title, int type);
 
-    enum MessageBoxReturnValueType{
-        Button_VOID   ,
-        Button_OK     ,
-        Button_CANCEL ,
-        Button_ABORT  ,
-        Button_RETRY  ,
-        Button_IGNORE ,
-        Button_YES    ,
-        Button_NO     ,
-    }
-
-    enum MessageBoxType{
-        OK              ,
-        OKCANCEL        ,
-        ABORTRETRYIGNORE,
-        YESNOCANCEL     ,
-        YESNO           ,
-        RETRYCANCEL     ,
-    }
 
     Material GetMaterial(string material_name){
         Material temp_material;
@@ -329,14 +308,14 @@ public class StartMenuDraw : MonoBehaviour
             //configPathRoot = Application.dataPath+"/Resources/config.ini";
             metaIniReader = new IniReader(configPathRoot + "/" + metaConfigName);
             if(!metaIniReader.Exists() || !System.IO.File.Exists(configPathRoot)){
-                MessageBox(IntPtr.Zero, "No config file!", "Error", (int)MessageBoxType.OK);
+                MessageBoxForUnity.Ensure("No config file!", "Error");
                 Application.Quit();//临时
             }
 
         #else
             metaIniReader = new IniReader(configPathRoot + "/" + metaConfigName);
             if(!metaIniReader.Exists() || !System.IO.File.Exists(configPathRoot)){
-                MessageBox(IntPtr.Zero, "No config file!", "Error", (int)MessageBoxType.OK);
+                MessageBoxForUnity.Ensure("No config file!", "Error");
                 UnityEditor.EditorApplication.isPlaying = false;
             }
 
@@ -415,7 +394,7 @@ public class StartMenuDraw : MonoBehaviour
             string nowConfigJson = JsonUtility.ToJson(config);
             Debug.Log(nowConfigJson);
             if(nowConfigJson != readConfigJson){
-                if(MessageBox(IntPtr.Zero, "Save Changes?", "Config", (int)MessageBoxType.OKCANCEL) == (int)MessageBoxReturnValueType.Button_OK){
+                if(MessageBoxForUnity.EnsureAndCancel("Save Changes?", "Config") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_OK){
                     config.INIWriteAll(iniReader);
                 }
             }

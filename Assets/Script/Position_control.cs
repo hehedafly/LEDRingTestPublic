@@ -70,13 +70,13 @@ public class Position_control : MonoBehaviour
         variables.Add("p_trial");
         values.Add(now_trial);
 
-        int sync_result = moving.Context_verify(variables, values);
+        int sync_result = moving.CommandVerify(variables, values);
         if(sync_result==-2){
             ui_update.MessageUpdate("serial port not open!\n");
         }else{
             int sync_max_time=100;
             while(sync_result!=1 && sync_max_time>0){
-                sync_result = moving.Context_verify(variables, values);
+                sync_result = moving.CommandVerify(variables, values);
                 if(sync_result!=1){
                     Debug.LogError("context info sync failed");
                 }

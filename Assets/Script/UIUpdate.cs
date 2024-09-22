@@ -56,7 +56,11 @@ public class UIUpdate : MonoBehaviour
             }
             case "IFSerialMessage":{
                 string temp_str=serialMessageInputs.text;
-                if(moving.DataSend(temp_str, serialMessageInputs.text.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                if(serialMessageInputs.text.StartsWith("//")){
+                    moving.DataSendRaw(temp_str);
+                }else{
+                    if(moving.DataSend(temp_str, serialMessageInputs.text.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                }
                 break;
             }
             case "ModeSelect":{
@@ -142,6 +146,16 @@ public class UIUpdate : MonoBehaviour
                     }
                 }
                 break ;
+            }
+            case "DebugButton":{
+                moving.DataSend("p_INDEBUGMODE=" + (moving.DebugMode? "0": "1"), true, true);
+                moving.DebugMode = !moving.DebugMode;
+                foreach(UnityEngine.UI.Button button in buttons){
+                    if(button.name == "DebugButton"){
+                        button.GetComponent<Image>().color = moving.DebugMode? Color.green: Color.grey;
+                    }
+                }
+                break;
             }
             default:break;
         }
