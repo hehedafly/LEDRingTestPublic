@@ -15,7 +15,8 @@ start_method = random         <br>
 available_pos = 120,240<br>
 #从0-359映射到所有display_pixels<br>
 assign_pos = 75..<br>
-#int 指定角度0-360，".."表示后续均指定为此角度，X*Y表示X角度重复Y次，(A-B-C)*Y表示以A,B,C等角度为单元重复Y次，需要与"*"联用<br>
+#int 指定角度0-360，".."表示后续均指定为此模式，X*Y表示X角度重复Y次，(A-B-C)*Y表示以A,B,C等角度为单元重复Y次，需要与"*"联用<br>
+#如 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..<br>
 pump_pos = 0,1<br>
 #每个available_pos对应的泵的编号<br>
 lick_pos = 0,1<br>
@@ -42,6 +43,8 @@ trialExpireTime = 999<br>
 #暂时弃用<br>
 seed = -1<br>
 #-1为随机种子<br>
+backgroundLight = 0
+#int 背景亮度0-255<br>
 <br>
 <br>
 [displaySettings]<br>

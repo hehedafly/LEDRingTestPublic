@@ -85,7 +85,8 @@ class ContextInfo{
                     }
                 }
             }else{
-                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50
+                string lastUnit = "";
+                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
                     int multiple = 1;
                     if(pos.Contains("*")){
@@ -111,11 +112,21 @@ class ContextInfo{
                             }
                         }
                     }
+
+                    lastUnit = pos;
                 }
 
                 for(int i=barPosLs.Count(); i<_maxTrial; i++){
                     if(_assigned_pos.EndsWith("..")){
-                        barPosLs.Add(barPosLs[barPosLs.Count - 1]);
+                        if(_assigned_pos.EndsWith(")..")){
+                            while(barPosLs.Count() < maxTrial){
+                                foreach(string posUnit in lastUnit.Replace("(", "").Replace(")", "").Split('-')){
+                                    barPosLs.Add(Convert.ToInt16(posUnit));
+                                }
+                            }
+                        }else{
+                            barPosLs.Add(Convert.ToInt16(lastUnit));
+                        }
                     }else{
                         barPosLs.Add(0);
                     }
