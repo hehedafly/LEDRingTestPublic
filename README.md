@@ -40,11 +40,13 @@ fail_wait_sec = 8<br>
 waitFromLastLick = 1<br>
 #设大于0值时，trial将开始时若小鼠有舔水嘴动作，则延迟trial，x秒后再开始trial，float<br>
 trialExpireTime = 999<br>
-#暂时弃用<br>
+#float 超时未完成则进入下一个trial<br>
+backgroundLight = 50<br>
+#int 0-255背景亮度<br>
+backgroundLightRed = true<br>
+#true or false，true则屏幕红色分量为1，false时方便肉眼查看<br>
 seed = -1<br>
 #-1为随机种子<br>
-backgroundLight = 0
-#int 背景亮度0-255<br>
 <br>
 <br>
 [displaySettings]<br>

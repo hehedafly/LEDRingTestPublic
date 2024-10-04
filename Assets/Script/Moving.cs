@@ -17,11 +17,12 @@ using UnityEngine.Experimental.GlobalIllumination;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, string _assigned_pos = "", int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, bool _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, string _assigned_pos = "", int _seed = -1){
         startMethod = _start_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
         maxTrial = _maxTrial;
         backgroundLight = _backgroundLight;
+        backgroundRedMode = _backgroundRedMode;
         barDelayTime = _barDelayTime;
         barLastingTime = _barLastingTime;
         waitFromLastLick = _waitFromLastLick;
@@ -209,6 +210,7 @@ class ContextInfo{
     public float        waitFromLastLick{get;}
     public float        soundLength     {get;}
     public int          backgroundLight {get;}
+    public bool         backgroundRedMode{get;}
     public List<float>  trialInterval   {get;}
     public float        sWaitSec        {get;}
     public float        fWaitSec        {get;}
@@ -249,7 +251,7 @@ class ContextInfo{
 
     public int GetPumpPosInTrial(int trial){
         if(trial < 0 || trial > barPosLs.Count){return -1;}
-        return pumpPosLs[GetRightLickPosIndInTrial(trial)];
+        return pumpPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
     }
 
     public float GetDegInTrial(int trial){
@@ -257,16 +259,14 @@ class ContextInfo{
         return barPosLs[trial];
     }
 
-    public bool verify(int lickInd, int trial, out int realLickInd){//传入的lickInd为RawInd,需要经过LickPos转换
+    public bool verify(int lickInd, int trial){//传入的lickInd为RawInd,需要经过LickPos转换
         if(lickInd < 0 || lickInd > lickPosLs.Count()){
-            realLickInd = -1;
             return false;
         }
         int rightBarPosInd = GetRightLickPosIndInTrial(trial);
-        realLickInd = lickPosLs[lickInd];
 
         if(lickInd >= avaliablePosArray.Count){return false;}
-        return lickInd == lickPosLs[rightBarPosInd];
+        return lickInd == rightBarPosInd;
     }
 }
 
@@ -352,7 +352,7 @@ public class Moving : MonoBehaviour
         bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
     }
 
-    void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = -1, GameObject otherBar = null){
+    void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
         GameObject tempBar = otherBar == null? bar: otherBar;
         Debug.Log(tempBar.name);
         Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
@@ -383,7 +383,7 @@ public class Moving : MonoBehaviour
                 if(!ColorUtility.TryParseHtmlString(_mat, out color)){
                     return;
                 }
-                tempMaterial = null;
+                // tempMaterial = null;
                 tempMaterial = new Material(Shader.Find("Unlit/Color")){color = color};
             }else{
                 string tempPath = InApp? Application.dataPath+$"/Resources/{_mat}.png" : $"Assets/Resources/{_mat}.png";
@@ -440,6 +440,20 @@ public class Moving : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 以bar参数及附属物体预创建bar
+    /// </summary>
+    /// <param name="isDriftGrating"></param>
+    /// <param name="_speed"></param>
+    /// <param name="_frequency"></param>
+    /// <param name="_direction"></param>
+    /// <param name="_horizontal"></param>
+    /// <param name="_matName"></param>
+    /// <param name="_isCircleBar"></param>
+    /// <param name="_centerShaft"></param>
+    /// <param name="_centerShaftPos"></param>
+    /// <param name="_centerShaftMat"></param>
+    /// <returns></returns>
     int InitContext(bool isDriftGrating, float _speed, float _frequency, int _direction, int _horizontal, string _matName, bool _isCircleBar = false, bool _centerShaft = false, float _centerShaftPos = 180, string _centerShaftMat = "#000000"){
         float displayLength = displayPixels / 18;
         GameObject tempPrefab = _isCircleBar? circleBarPrefab: barPrefab;
@@ -473,7 +487,7 @@ public class Moving : MonoBehaviour
         }
 
         float lightStrength = (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8);
-        background.GetComponent<Renderer>().material.color = new Color(lightStrength, lightStrength, lightStrength);
+        background.GetComponent<Renderer>().material.color = new Color(contextInfo.backgroundRedMode? 1.0f: lightStrength, lightStrength, lightStrength);
         
         DeactivateBar();
 
@@ -747,7 +761,6 @@ public class Moving : MonoBehaviour
     }
     int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial
         int rightLickInd = contextInfo.GetRightLickPosIndInTrial(lickTrial);
-        int realLickInd;
         if(nowTrial == -1){
             return 0;
         }
@@ -767,7 +780,7 @@ public class Moving : MonoBehaviour
         }
 
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
-            bool result = contextInfo.verify(lickInd, nowTrial, out realLickInd);
+            bool result = contextInfo.verify(lickInd, nowTrial);
             // if(trialResult.Count == nowTrial+1){
             //     return -2;//错误trial
             // }
@@ -779,14 +792,14 @@ public class Moving : MonoBehaviour
                             LickResultAdd(1, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(1);
                             if(trialMode == 0x01){CommandVerify("p_trial_set", 2);}
-                            ui_update.MessageUpdate($"Trial completed at pos {realLickInd}");
+                            ui_update.MessageUpdate($"Trial completed at pos {lickInd}");
                         }else{//手动跳过或结束trial
                             LickResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(lickInd == -2? 1 : 0);
                             if(lickInd == -1){
-                                ui_update.MessageUpdate($"Trial expired at pos {realLickInd}");
+                                ui_update.MessageUpdate($"Trial expired at pos {lickInd}");
                             }else if(lickInd == -2){
-                                ui_update.MessageUpdate($"Trial completed manually at pos {realLickInd}");
+                                ui_update.MessageUpdate($"Trial completed manually at pos {lickInd}");
                             }
                         }
                         EndTrial(trialSuccess: true, rightLickPort: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
@@ -802,9 +815,9 @@ public class Moving : MonoBehaviour
                     if(result && trialMode == 0x11){CommandVerify("p_trial_set", 2);}
                     else{CommandVerify("p_trial_set", 0);}
                     if(lickInd < 0 || !result){
-                        ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {realLickInd}, right place: {rightLickInd}");
+                        ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {lickInd}, right place: {rightLickInd}");
                     }else{
-                        ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {realLickInd}, right place: {rightLickInd}");
+                        ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {lickInd}, right place: {rightLickInd}");
                     }
                     EndTrial(trialSuccess: result, rightLickPort: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
                 }
@@ -1364,6 +1377,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                  )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
+            iniReader.ReadIniContent(                   "settings", "backgroundLightRed",   "false"                 ) == "true",       // int _backgroundLightRed
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
@@ -1380,7 +1394,7 @@ public class Moving : MonoBehaviour
 
         audioPlayTime[0] = contextInfo.soundLength;
         trialStartTriggerMode = contextInfo.trialTriggerMode;
-
+        
         InitContext(
             iniReader.ReadIniContent("barSettings", "isDriftgrating", "true") == "true",
             Convert.ToSingle(iniReader.ReadIniContent("barSettings", "speed", "1")),
