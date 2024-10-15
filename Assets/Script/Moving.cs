@@ -272,7 +272,7 @@ class ContextInfo{
         }
         int rightBarPosInd = GetRightLickPosIndInTrial(trial);
 
-        if(lickInd >= avaliablePosArray.Count){return false;}
+        // if(lickInd >= avaliablePosArray.Count){return false;}
         return lickInd == rightBarPosInd;
     }
 }
@@ -314,6 +314,7 @@ public class Moving : MonoBehaviour
     bool trialStartReady = false;
     List<int> trialResult = new List<int>();//1:success 0:fail -1:manully skip -2:manually successful skip -3:unimportant fail(in mode 0x00 and 0x01)
     List<List<int>> trialResultPerLickPort = new List<List<int>>();//0, 2, 4, 6,...success/fail, 1, 3, 5, 7,...:miss
+    List<int> lickPosLsCopy;
     
     List<List<int>> lickCount = new List<List<int>>();
     AudioSource audioSource;
@@ -600,7 +601,9 @@ public class Moving : MonoBehaviour
         trialResult.Clear();
         trialResultPerLickPort.Clear();
         trialResultPerLickPort = new List<List<int>>(){};
-        foreach(int _ in contextInfo.avaliablePosArray){
+        // foreach(int _ in contextInfo.avaliablePosArray){
+        // foreach(int _ in contextInfo.avaliablePosArray){
+        for(int i = 0; i < 8; i++){//暂时固定为8
             trialResultPerLickPort.Add(new List<int>());
             trialResultPerLickPort.Add(new List<int>());
         }
@@ -635,7 +638,8 @@ public class Moving : MonoBehaviour
         ui_update.MessageUpdate(_tempMsg);
         WriteInfo(recType: 1);
         List<int> ints = new List<int>();
-        for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
+        // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
+        for(int i = 0; i < 8; i++){//暂时固定为8
             ints.Add(0);
         }
         lickCount.Add(ints);
@@ -753,7 +757,8 @@ public class Moving : MonoBehaviour
         if(getOrSet == "set"){
             if(lickCount.Count <= lickTrial){
                 List<int> ints = new List<int>();
-                for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
+                // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
+                for(int i = 0; i < 8; i++){//临时固定为最多8个
                     ints.Add(0);
                 }
                 ints[lickInd] ++;
@@ -803,10 +808,10 @@ public class Moving : MonoBehaviour
             Debug.LogWarning("trial not sync");
             lickTrial = nowTrial;
         }
-        if(lickInd >= contextInfo.avaliablePosArray.Count){
-            Debug.LogWarning($"invalid Lick Port: {lickInd}");
-            return -1;
-        }
+        // if(lickInd >= contextInfo.avaliablePosArray.Count){
+        //     Debug.LogWarning($"invalid Lick Port: {lickInd}");
+        //     return -1;
+        // }
 
         lickCountGetSet("set", lickInd, lickTrial);
 
@@ -883,11 +888,11 @@ public class Moving : MonoBehaviour
         "NowPos"      
         "lickPosCount"
         "waitSec"
-        "lickCountArrayLength"
         "lickCount"0,1,2...
         "TrialSuccessNum"0,1,2...
         "TrialFailNum"0,1,2...
         "LickPortTotalTrial"0,1,2...
+        "lickPort"0,1,2...
         */
         Dictionary<string, int> trialInfo = new Dictionary<string, int>
         {
@@ -896,14 +901,13 @@ public class Moving : MonoBehaviour
             {"NowPos"               , contextInfo.GetRightLickPosIndInTrial(nowTrial)},
             {"lickPosCount"         , showLickPortNum},
             {"waitSec"              , Convert.ToInt16(waitSec)},
-            {"lickCountArrayLength" , lickCount.Count},
             {"TrialSuccessNum"  , trialResult.FindAll(value => value == 1).Count},
             {"TrialFailNum"     , trialResult.FindAll(value => value <= 0).Count},
         };
         if(lickCount.Count > 0){
             if(lickCount.Count > nowTrial){
                 for(int i = 0; i < showLickPortNum; i++){
-                    trialInfo.Add($"lickCount{i}", lickCount[nowTrial][i]);
+                    trialInfo.Add($"lickCount{i}", lickCount[nowTrial][lickPosLsCopy[i]]);
                 }
             }
             else{// start
@@ -912,12 +916,13 @@ public class Moving : MonoBehaviour
                 }
             }
         }
+
         if(trialResultPerLickPort.Count > 0){
             for(int i = 0; i < showLickPortNum; i++){
-                trialInfo.Add($"TrialSuccessNum{i}"     , trialResultPerLickPort[i * 2].FindAll(value => value == 1).Count);
-                trialInfo.Add($"TrialFailNum{i}"        , trialResultPerLickPort[i * 2].FindAll(value => value == 0).Count);
-                trialInfo.Add($"TrialMissNum{i}"        , trialResultPerLickPort[i * 2+1].Count);
-                trialInfo.Add($"LickPortTotalTrial{i}"  , trialResultPerLickPort[i * 2].Count);
+                trialInfo.Add($"TrialSuccessNum{i}"     , trialResultPerLickPort[lickPosLsCopy[i] * 2].FindAll(value => value == 1).Count);
+                trialInfo.Add($"TrialFailNum{i}"        , trialResultPerLickPort[lickPosLsCopy[i] * 2].FindAll(value => value == 0).Count);
+                trialInfo.Add($"TrialMissNum{i}"        , trialResultPerLickPort[lickPosLsCopy[i] * 2+1].Count);
+                trialInfo.Add($"LickPortTotalTrial{i}"  , trialResultPerLickPort[lickPosLsCopy[i] * 2].Count);
             }
         }else{
             for(int i = 0; i < showLickPortNum; i++){
@@ -927,6 +932,11 @@ public class Moving : MonoBehaviour
                 trialInfo.Add($"LickPortTotalTrial{i}", 0);
             }
         }
+
+        for(int i = 0; i < showLickPortNum; i++){
+            trialInfo.Add($"lickPort{i}", lickPosLsCopy[i]);
+        }
+
 
         return trialInfo;
     }
@@ -1456,6 +1466,7 @@ public class Moving : MonoBehaviour
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
         standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "5" ));
+        lickPosLsCopy = contextInfo.lickPosLs;
 
         audioPlayTime[0] = contextInfo.soundLength;
         trialStartTriggerMode = contextInfo.trialTriggerMode;
