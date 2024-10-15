@@ -29,10 +29,16 @@ public class UIUpdate : MonoBehaviour
     float manualWaitSec = 5;
 
     //public Image LineChartImage;
+    public int AddSelf(UnityEngine.UI.Button button){
+        if(buttons.Contains(button)){return 0;}
+
+        buttons.Add(button);
+        return 1;
+    }
     
-    public void ControlsParse(string controls_name,float value, string stringArg=""){
+    public void ControlsParse(string elementsName,float value, string stringArg=""){
         //if(string_arg==""){return;}
-        switch (controls_name){
+        switch (elementsName){
             case "StartButton":{
                 moving.SetTrial(manual: true, waitSoundCue: true);
                 break;
@@ -106,22 +112,6 @@ public class UIUpdate : MonoBehaviour
                 // MessageUpdate($"config changed:{mode1ConfigDropdown.captionText.text} from {temp_value} to {value}\n");
                 break;
             }
-            case "LickPort0":{
-                moving.CommandParsePublic($"lick:0:{moving.NowTrial}");
-                break;
-            }
-            case "LickPort1":{
-                moving.CommandParsePublic($"lick:1:{moving.NowTrial}");
-                break;
-            }
-            case "LickPort2":{
-                moving.CommandParsePublic($"lick:2:{moving.NowTrial}");
-                break;
-            }
-            case "LickPort3":{
-                moving.CommandParsePublic($"lick:3:{moving.NowTrial}");
-                break;
-            }
             case "InfraRedIn":{
                 moving.CommandParsePublic("entrance:-1:In");
                 moving.CommandParsePublic("entrance:-1:Leave");
@@ -158,6 +148,14 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             default:break;
+        }
+
+        if(elementsName.StartsWith("LickPort")){
+            string port = elementsName.Substring(8, 1);
+            moving.CommandParsePublic($"lick:{port}:{moving.NowTrial}");
+        }else if (elementsName.StartsWith("WaterPort")){
+            string port = elementsName.Substring(elementsName.Length-1, 1);
+            moving.alarmPublic.TrySetAlarm($"sw={port}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
         }
     }
 

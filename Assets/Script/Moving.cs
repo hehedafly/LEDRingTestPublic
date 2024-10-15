@@ -17,7 +17,7 @@ using UnityEngine.Experimental.GlobalIllumination;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, bool _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, string _assigned_pos = "", int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, string _assigned_pos = "", int _seed = -1){
         startMethod = _start_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
         maxTrial = _maxTrial;
@@ -73,7 +73,7 @@ class ContextInfo{
                 }
             }
             
-            errorMessage = "assign";
+            errorMessage = "assign or random";
             if(_start_method.StartsWith("random")){
                 if(_maxTrial != -1){
                     List<int> ints = new List<int>();
@@ -111,6 +111,9 @@ class ContextInfo{
                             if(avaliablePosArray.Contains(Convert.ToInt16(posUnit))){
                                 barPosLs.Add(posUnit % 360);
                             }
+                            else{
+                                throw new Exception("");
+                            }
                         }
                     }
 
@@ -129,7 +132,7 @@ class ContextInfo{
                             barPosLs.Add(Convert.ToInt16(lastUnit));
                         }
                     }else{
-                        barPosLs.Add(0);
+                        barPosLs.Add(avaliablePosArray[UnityEngine.Random.Range(0, avaliablePosArray.Count)]);
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
@@ -210,7 +213,7 @@ class ContextInfo{
     public float        waitFromLastLick{get;}
     public float        soundLength     {get;}
     public int          backgroundLight {get;}
-    public bool         backgroundRedMode{get;}
+    public int         backgroundRedMode{get;}
     public List<float>  trialInterval   {get;}
     public float        sWaitSec        {get;}
     public float        fWaitSec        {get;}
@@ -244,6 +247,10 @@ class ContextInfo{
         return avaliablePosArray[pos];
     }
 
+    public int GetBarPos(int trial){
+        if(trial < 0 || trial > barPosLs.Count){return -1;}
+        return avaliablePosArray.IndexOf(barPosLs[trial]);
+    }
     public int GetRightLickPosIndInTrial(int trial){
         if(trial < 0 || trial > barPosLs.Count){return -1;}
         return lickPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
@@ -290,6 +297,8 @@ public class Moving : MonoBehaviour
     float trialStartTime = -1;
     float waitSecRec = -1;
     float waitSec = -1;
+    float standingSec = -1;
+    float standingSecNow = -1;
     bool waiting = true;
     bool forceWaiting = true;
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
@@ -299,7 +308,7 @@ public class Moving : MonoBehaviour
                                 List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11};
                         public  List<int> TrialModes { get { return trialModes; } }
 
-    int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆
+    int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆, 3：视频检测位置
     public int TrialStartTriggerMode {get{return trialStartTriggerMode;}}
     List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆"};
     bool trialStartReady = false;
@@ -310,13 +319,14 @@ public class Moving : MonoBehaviour
     AudioSource audioSource;
     float[] audioPlayTime = new float[3];
     UIUpdate ui_update;
-    Alarm alarm;
+    IPCClient ipcclient;
+    Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
 
     #region communicating
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
-    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog"};
+    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay"};//stay为虚拟command，从另一脚本实现
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
@@ -342,6 +352,14 @@ public class Moving : MonoBehaviour
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
 
+    void Quit(){
+        #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+        #else
+            Application.Quit();
+        #endif
+    }
+
     public float DegToPos(float deg){
         if(displayPixels <= 0){return -1;}
         float temp_value = deg % 360 /360;
@@ -352,32 +370,8 @@ public class Moving : MonoBehaviour
         bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
     }
 
-    void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
-        GameObject tempBar = otherBar == null? bar: otherBar;
-        Debug.Log(tempBar.name);
-        Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
-        if(isDriftGrating){
-            // var tempMaterial = new Material(Shader.Find("Unlit/Color"))//会出错，暂时不用
-            // {
-            //     shader = Shader.Find("ShaDriftGrating")
-            // };
-            var tempMaterial = tempBar.GetComponent<MeshRenderer>().material;
-            tempMaterial.SetFloat("_speed", _speed);
-            tempMaterial.SetFloat("_Frequency", _frequency);
-            tempMaterial.SetFloat("_Direction", _direction);
-            tempMaterial.SetFloat("_Horizontal", _horizontal);
-            if(_backgroundLight >= 0){
-            tempMaterial.SetFloat("_BackgroundLight", _backgroundLight);
-            tempMaterial.SetFloat("_Frequency", _frequency * 2);
-            }
-            tempBar.GetComponent<MeshRenderer>().material = tempMaterial;
-            if(isRing && otherBar == null){
-                barChild.GetComponent<MeshRenderer>().material = tempMaterial;
-                barChild2.GetComponent<MeshRenderer>().material = tempMaterial;
-            }
-
-        }else{
-            Material tempMaterial = materialMissing;
+    void SetMaterial(List<GameObject> goList, string _mat){
+        Material tempMaterial = materialMissing;
             if(_mat.StartsWith("#")){
                 Color color;
                 if(!ColorUtility.TryParseHtmlString(_mat, out color)){
@@ -407,11 +401,48 @@ public class Moving : MonoBehaviour
                     tempMaterial.mainTextureScale = new Vector2(barWidth/400, 5);
                 }
             }
+        foreach(GameObject go in goList){
+            go.GetComponent<MeshRenderer>().material = tempMaterial;
+        }
+    }
 
+    void SetMaterial(GameObject go, string _mat){
+        SetMaterial(new List<GameObject>(){go}, _mat);
+    }
+
+    void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
+        GameObject tempBar = otherBar == null? bar: otherBar;
+        Debug.Log(tempBar.name);
+        Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
+        if(isDriftGrating){
+            // var tempMaterial = new Material(Shader.Find("Unlit/Color"))//会出错，暂时不用
+            // {
+            //     shader = Shader.Find("ShaDriftGrating")
+            // };
+            var tempMaterial = tempBar.GetComponent<MeshRenderer>().material;
+            tempMaterial.SetFloat("_speed", _speed);
+            tempMaterial.SetFloat("_Frequency", _frequency);
+            tempMaterial.SetFloat("_Direction", _direction);
+            tempMaterial.SetFloat("_Horizontal", _horizontal);
+            if(_backgroundLight >= 0){
+            tempMaterial.SetFloat("_BackgroundLight", _backgroundLight);
+            tempMaterial.SetFloat("_Frequency", _frequency * 2);
+            }
             tempBar.GetComponent<MeshRenderer>().material = tempMaterial;
             if(isRing && otherBar == null){
                 barChild.GetComponent<MeshRenderer>().material = tempMaterial;
                 barChild2.GetComponent<MeshRenderer>().material = tempMaterial;
+            }
+
+        }else{
+            
+            SetMaterial(tempBar, _mat);
+            // tempBar.GetComponent<MeshRenderer>().material = tempMaterial;
+            if(isRing && otherBar == null){
+                // barChild.GetComponent<MeshRenderer>().material = tempMaterial;
+                // barChild2.GetComponent<MeshRenderer>().material = tempMaterial;
+                SetMaterial(new List<GameObject>(){barChild, barChild2}, _mat);
+
             }
         }
     }
@@ -448,38 +479,38 @@ public class Moving : MonoBehaviour
     /// <param name="_frequency"></param>
     /// <param name="_direction"></param>
     /// <param name="_horizontal"></param>
-    /// <param name="_matName"></param>
+    /// <param name="_barMatName"></param>
     /// <param name="_isCircleBar"></param>
     /// <param name="_centerShaft"></param>
     /// <param name="_centerShaftPos"></param>
     /// <param name="_centerShaftMat"></param>
     /// <returns></returns>
-    int InitContext(bool isDriftGrating, float _speed, float _frequency, int _direction, int _horizontal, string _matName, bool _isCircleBar = false, bool _centerShaft = false, float _centerShaftPos = 180, string _centerShaftMat = "#000000"){
-        float displayLength = displayPixels / 18;
+    int InitContext(bool isDriftGrating, float _speed, float _frequency, int _direction, int _horizontal, string _barMatName, bool _isCircleBar = false, bool _centerShaft = false, float _centerShaftPos = 180, string _centerShaftMat = "#000000", string _backgroundMatName = "#000000"){
+        float displayLength = displayPixels / 10;
         GameObject tempPrefab = _isCircleBar? circleBarPrefab: barPrefab;
         bar = Instantiate(tempPrefab);
         if(!_isCircleBar){
-            bar.transform.localScale = new Vector3(displayLength*(float)barWidth/displayPixels *0.1f, 1, bar.transform.localScale.z);
+            bar.transform.localScale = new Vector3(-1, 1, bar.transform.localScale.z);
         }else{
-            bar.transform.localScale = new Vector3(displayLength*(float)barWidth/displayPixels *0.1f, 1, displayLength*(float)barWidth/displayPixels *0.1f);
+            bar.transform.localScale = new Vector3(-1, 1, displayLength*(float)barWidth/displayPixels *0.1f);
         }
         
+        bar.transform.localPosition = new Vector3(0, 0, -0.01f);
         if(isRing){
             barChild = Instantiate(tempPrefab);
-            barChild.transform.localScale = new Vector3(displayLength*(barWidth/displayPixels) *0.1f, 1, barChild.transform.localScale.z);
+            barChild.transform.localScale = new Vector3(-1, 1, barChild.transform.localScale.z);
             //barChild.transform.SetParent(transform.parent.transform);
             barChild.transform.SetParent(bar.transform);
-            bar.transform.localPosition = new Vector3(0, 0, -0.01f);
             barChild.transform.localPosition = new Vector3(-1*displayLength, 0, 0);
 
             barChild2 = Instantiate(tempPrefab);
-            barChild2.transform.localScale = new Vector3(displayLength*(barWidth/displayPixels) *0.1f, 1, barChild2.transform.localScale.z);
+            barChild2.transform.localScale = new Vector3(-1, 1, barChild2.transform.localScale.z);
             //barChild2.transform.SetParent(transform.parent.transform);
             barChild2.transform.SetParent(bar.transform);
             barChild2.transform.localPosition = new Vector3(displayLength, 0, 0f);
         }
         
-        SetBarMaterial(isDriftGrating, _speed, _frequency, _direction, _horizontal, _matName, (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8f));
+        SetBarMaterial(isDriftGrating, _speed, _frequency, _direction, _horizontal, _barMatName, (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8f));
         if(_centerShaft){
             centerShaft = Instantiate(centerShaftPrefab);
             SetBarMaterial(false, 0, 0, 0, _horizontal, _centerShaftMat, otherBar: centerShaft);
@@ -487,8 +518,11 @@ public class Moving : MonoBehaviour
         }
 
         float lightStrength = (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8);
-        background.GetComponent<Renderer>().material.color = new Color(contextInfo.backgroundRedMode? 1.0f: lightStrength, lightStrength, lightStrength);
-        
+        if(_backgroundMatName.StartsWith("#")){
+            background.GetComponent<Renderer>().material.color = new Color(contextInfo.backgroundRedMode == -1? lightStrength: (float)contextInfo.backgroundRedMode / 255, lightStrength, lightStrength);
+        }else{
+            SetMaterial(background, _backgroundMatName);
+        }
         DeactivateBar();
 
         return 1;
@@ -521,7 +555,9 @@ public class Moving : MonoBehaviour
     }
 
     public int SetTrial(bool manual, bool waitSoundCue, float _waitSec = -1){//延时触发仅在最初调用，其他主动触发调用此方法进行startTrial
+        if(forceWaiting && !manual){return -2;}
         if(manual){
+            forceWaiting = false;
             if(trialStartTriggerMode != 0){
                 trialStartReady = true;
                 ui_update.MessageUpdate("Ready");
@@ -588,8 +624,7 @@ public class Moving : MonoBehaviour
         alarm.SetAlarm(1, (int)(contextInfo.barDelayTime/Time.fixedDeltaTime), "SetWaitingToFalseAtTrialStart");
         ActivateBar(trial: nowTrial);
 
-        int nowBarPos = contextInfo.GetRightLickPosIndInTrial(nowTrial);
-        string _tempMsg = $"Trial {nowTrial} started at {nowBarPos}, pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
+        string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarPos(nowTrial)},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
         if(nowTrial > 0){
             string strLickCount = "";
             foreach(int count in lickCount[nowTrial-1]){
@@ -676,7 +711,7 @@ public class Moving : MonoBehaviour
         if(_mode == trialMode){
             return 0;
         }else{
-            if(_mode % 0x10 < 2){
+            if(_mode % 0x10 < 2){//zhengquemode都满足条件，以后改
                 trialResult.Clear();
                 trialResultPerLickPort.Clear();
                 EndTrial(isInit: true);
@@ -797,9 +832,9 @@ public class Moving : MonoBehaviour
                             LickResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(lickInd == -2? 1 : 0);
                             if(lickInd == -1){
-                                ui_update.MessageUpdate($"Trial expired at pos {lickInd}");
+                                ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
                             }else if(lickInd == -2){
-                                ui_update.MessageUpdate($"Trial completed manually at pos {lickInd}");
+                                ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
                         EndTrial(trialSuccess: true, rightLickPort: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
@@ -896,6 +931,29 @@ public class Moving : MonoBehaviour
         return trialInfo;
     }
 
+    int TriggerRespond(bool inOrLeave, int _recType){
+        if(trialStartTriggerMode == 1){
+            if(inOrLeave){
+                if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
+                    //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
+                    contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
+                    SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
+                }else{
+                    SetTrial(manual:false, waitSoundCue: false);
+                }
+            }
+            WriteInfo(recType:_recType, _lickPos:inOrLeave? 1: 0);
+            //ui_update.MessageUpdate("enter");
+        }
+        return 1;
+    }
+
+    bool CheckInRegion(int[] _pos, int[] selectedPos){
+        float tempx = (_pos[0] + _pos[2]) * 0.5f;
+        float tempy = (_pos[1] + _pos[3]) * 0.5f;
+        return (selectedPos[0] > tempx &&  tempx > selectedPos[2]) && (selectedPos[1] > tempy &&  tempy > selectedPos[3]);
+    }
+
     #endregion context generate end
 
     #region  file writing
@@ -910,19 +968,12 @@ public class Moving : MonoBehaviour
     
     #region methods of communicating
 
-    void Quit(){
-        #if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
-        #else
-            Application.Quit();
-        #endif
-    }
     string[] ScanPorts_API(){
         string[] portList = SerialPort.GetPortNames();
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand){//仅接收舔、红外、压杆信号模拟
+    public void CommandParsePublic(string limitedCommand){//仅接收舔、红外、压杆信号模拟，外加视频检测移动到特定位置
         string tempHead = limitedCommand.Split(":")[0];
         switch(tempHead){
             case "lick":{
@@ -934,6 +985,12 @@ public class Moving : MonoBehaviour
             case "press":{
                 break;
             }
+            case "stay":{
+                break ;
+            }
+            case "sw":{
+                return;
+            }
             default:{
                 return;
             }
@@ -944,7 +1001,7 @@ public class Moving : MonoBehaviour
         //看注释！
         //看注释！
         //看注释！
-        //"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog"
+        //"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay"
         //int startInd = -1;
         int temp_type = commandConverter.GetCommandType(_command, out _);
         string command = commandConverter.ConvertToString(_command);
@@ -975,34 +1032,36 @@ public class Moving : MonoBehaviour
             case 1:{//entrance
                 //Debug.Log("enter");
                 bool inOrLeave = command.EndsWith("In");
-                if(trialStartTriggerMode == 1){
-                    if(inOrLeave){
-                        if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
-                            //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
-                            contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
-                            SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
-                        }else{
-                            SetTrial(manual:false, waitSoundCue: false);
-                        }
-                    }
-                    WriteInfo(recType:4, _lickPos:inOrLeave? 1: 0);
-                    //ui_update.MessageUpdate("enter");
-                }
+                TriggerRespond(inOrLeave, 4);
+                // if(trialStartTriggerMode == 1){
+                //     if(inOrLeave){
+                //         if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
+                //             //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
+                //             contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
+                //             SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
+                //         }else{
+                //             SetTrial(manual:false, waitSoundCue: false);
+                //         }
+                //     }
+                //     WriteInfo(recType:4, _lickPos:inOrLeave? 1: 0);
+                //     //ui_update.MessageUpdate("enter");
+                // }
                 break;
             }
             case 2:{//press
-                Debug.Log("Lever Pressed");
-                if(trialStartTriggerMode == 2){
-                    if(contextInfo.trialTriggerDelay[0] > 0){
-                        //alarm.TrySetAlarm("SetTrialPressDelay", (int)(UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1])/Time.fixedUnscaledDeltaTime), out _);
-                        contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
-                        SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
-                    }else{
-                        SetTrial(manual:false, waitSoundCue: true);
-                    }
-                    WriteInfo(recType:5);
-                    ui_update.MessageUpdate("Lever Pressed");
-                }
+                //Debug.Log("Lever Pressed");
+                TriggerRespond(false, 5);
+                // if(trialStartTriggerMode == 2){
+                //     if(contextInfo.trialTriggerDelay[0] > 0){
+                //         //alarm.TrySetAlarm("SetTrialPressDelay", (int)(UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1])/Time.fixedUnscaledDeltaTime), out _);
+                //         contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
+                //         SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
+                //     }else{
+                //         SetTrial(manual:false, waitSoundCue: true);
+                //     }
+                //     WriteInfo(recType:5);
+                //     ui_update.MessageUpdate("Lever Pressed");
+                // }
                 break;
             }
             case 3:{//cotext_info
@@ -1034,6 +1093,10 @@ public class Moving : MonoBehaviour
             case 7:{break;}
             case 8:{
                 ui_update.MessageUpdate(command);
+                break;
+            }
+            case 9:{
+                TriggerRespond(false, 5);
                 break;
             }
             default: break;
@@ -1102,9 +1165,9 @@ public class Moving : MonoBehaviour
         sp.Write(temp_msg, 0, temp_msg.Length);
         return 1;
     }
-    public int DataSend(string message, bool variable_change = false, bool inVerifyOrVerifyNeedless=false){
+    public int DataSend(string message, bool needParse = false, bool inVerifyOrVerifyNeedless=false){
         if(sp!= null && sp.IsOpen){
-            if(variable_change){//form: p_.... = 1
+            if(needParse){//form: p_.... = 1
                 // if(simple_mode){
                 //     //byte[] temp_msg = new byte[]{0xAA, 0xBB, 0xCC, 0xDD};
                 //     byte[] temp_msg = new byte[]{0xAA, 0xBB, 0xCC, 0xDD};
@@ -1274,8 +1337,8 @@ public class Moving : MonoBehaviour
         if(! returnTypeHead && nowTrial == -1){return "";}
 
         List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger"
+            // 0        1       2     3         4          5           6           7        8
+            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay"
         };
         if(enqueueMsg != ""){
             writeQueue.Enqueue(enqueueMsg);
@@ -1362,6 +1425,7 @@ public class Moving : MonoBehaviour
             return;
         }
         ui_update = GetComponent<UIUpdate>();
+        ipcclient = GetComponent<IPCClient>();
         audioSource = GetComponent<AudioSource>();
         
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
@@ -1377,7 +1441,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                  )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
-            iniReader.ReadIniContent(                   "settings", "backgroundLightRed",   "false"                 ) == "true",       // int _backgroundLightRed
+            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
@@ -1391,6 +1455,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
+        standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "5" ));
 
         audioPlayTime[0] = contextInfo.soundLength;
         trialStartTriggerMode = contextInfo.trialTriggerMode;
@@ -1405,7 +1470,8 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent("barSettings", "isCircleBar", "false") == "true",
             iniReader.ReadIniContent("barSettings", "centerShaft", "false") == "true",
             Convert.ToSingle(iniReader.ReadIniContent("barSettings", "centerShaftPos", "180")),
-            iniReader.ReadIniContent("barSettings", "centerShaftMat", "#000000")
+            iniReader.ReadIniContent("barSettings", "centerShaftMat", "#000000"),
+            iniReader.ReadIniContent("settings", "backgroundMaterial", "#000000")
         );
 
         for(int i = 0; i<Arduino_var_list.Count; i++){
@@ -1515,10 +1581,24 @@ public class Moving : MonoBehaviour
             }
         }else{//其他主动触发模式下相关计算
             if(nowTrial >= contextInfo.maxTrial){
+                forceWaiting = true;
                 return;
             }
-            if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime){
+            if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime){//超时进入下一个trial
                 LickResultCheck(-1, nowTrial);
+            }
+
+            if(trialStartTriggerMode == 3){
+                int[] pos = ipcclient.GetPos();
+                int[] selectedPos = ipcclient.GetselectedArea();//xy, xy
+                if(pos.Length == 4 && selectedPos.Length == 4){
+                    if(CheckInRegion(pos, selectedPos)){
+                        standingSecNow = standingSecNow == -1? Time.unscaledTime: standingSecNow + Time.unscaledDeltaTime;
+                        if(standingSec > 0 && standingSecNow >= standingSec){
+                            CommandParsePublic("stay:0");
+                        }
+                    }
+                }
             }
         }
     }
@@ -1562,6 +1642,9 @@ public class Moving : MonoBehaviour
                 default:{
                     break;
                 }
+            }
+            if(alarmFinished.StartsWith("sw")){
+                DataSend(alarmFinished, false);
             }
         }
         alarm.AlarmFixUpdate();

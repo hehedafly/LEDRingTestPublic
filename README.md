@@ -45,6 +45,8 @@ backgroundLight = 50<br>
 #int 0-255背景亮度<br>
 backgroundLightRed = true<br>
 #true or false，true则屏幕红色分量为1，false时方便肉眼查看<br>
+backgroundMaterial = #000000<br>
+#如果为#开头颜色，backgroundLight等效果会最终覆盖，如果为其他，则查询对应名称png，环形屏要求分辨率1920*1080，其他按照副屏分辨率设定<br>
 seed = -1<br>
 #-1为随机种子<br>
 <br>
