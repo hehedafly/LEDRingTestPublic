@@ -73,7 +73,7 @@ class ContextInfo{
                 }
             }
             
-            errorMessage = "assign or random";
+            errorMessage = "assign or random port parse";
             if(_start_method.StartsWith("random")){
                 if(_maxTrial != -1){
                     List<int> ints = new List<int>();
@@ -85,7 +85,7 @@ class ContextInfo{
                         barPosLs.Add(avaliablePosArray[ints[i % ints.Count]]);
                     }
                 }
-            }else{
+            }else if(_start_method.StartsWith("assign")){
                 string lastUnit = "";
                 foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
@@ -136,6 +136,10 @@ class ContextInfo{
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
+            }
+            else{
+                errorMessage = $"incorrect mode:{_start_method}, should be assign or random";
+                throw new Exception("");
             }
 
             errorMessage = "trialInterval";
@@ -815,7 +819,7 @@ public class Moving : MonoBehaviour
 
         lickCountGetSet("set", lickInd, lickTrial);
 
-        if(!waiting){
+        if(!forceWaiting){
             WriteInfo(_lickPos: lickInd);
         }
 
@@ -854,7 +858,7 @@ public class Moving : MonoBehaviour
                     LickResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
                     if(result && trialMode == 0x11){CommandVerify("p_trial_set", 2);}
                     else{CommandVerify("p_trial_set", 0);}
-                    if(lickInd < 0 || !result){
+                    if(lickInd < 0){
                         ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {lickInd}, right place: {rightLickInd}");
                     }else{
                         ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {lickInd}, right place: {rightLickInd}");
@@ -1023,7 +1027,8 @@ public class Moving : MonoBehaviour
                 float waitFromLastLick = contextInfo.waitFromLastLick;
                 float soundCueLeadTime = contextInfo.soundCueLeadTime;
 
-                if(LickResultCheck(lickInd, lickTrialMark) == -3 && waitFromLastLick > 0){
+                // if(LickResultCheck(lickInd, lickTrialMark) == -3 && waitFromLastLick > 0){
+                if(LickResultCheck(lickInd, nowTrial) == -3 && waitFromLastLick > 0){
                     //Debug.Log(waitSec - (Time.fixedUnscaledTime - waitSecRec));
                     if(trialStartTriggerMode == 0){
                         float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
@@ -1423,16 +1428,22 @@ public class Moving : MonoBehaviour
         #if !UNITY_EDITOR
             InApp = true;
             config_path=Application.dataPath+"/Resources/config.ini";
-            if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
+            // if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
         #endif
 
         time_rec_for_log[0] = Time.fixedUnscaledTime;
         commandConverter = new CommandConverter(ls_types);
         alarm = new Alarm();
-        iniReader=new IniReader(config_path);
-        if(!iniReader.Exists()){
-            Debug.LogError("file not exist");
-            return;
+        string errorMessage = $"no config file: {config_path}";
+        try{
+            iniReader=new IniReader(config_path);
+            if(!iniReader.Exists()){
+                errorMessage = $"Failed to Create iniReader of config {config_path}";
+            }
+        }
+        catch(Exception ){
+            MessageBoxForUnity.Ensure(errorMessage, "error");
+            Quit();
         }
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
@@ -1495,7 +1506,8 @@ public class Moving : MonoBehaviour
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
-        foreach(string port in ScanPorts_API()){
+        string[] portLs = ScanPorts_API();
+        foreach(string port in portLs){
             if(port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
                     //Debug.Log(sp.IsOpen);
@@ -1526,10 +1538,12 @@ public class Moving : MonoBehaviour
                     ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
                     if(e.Message.Contains("拒绝访问")){
-                        MessageBoxForUnity.Ensure("Accssion Denied", "Serial Error");
+                        string strPortLs = string.Join(", ", portLs);
+                        MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\n all ports:{strPortLs}", "Serial Error");
                         Quit();
                     }else{
-                        MessageBoxForUnity.Ensure("Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator", "Serial Error");
+                        string strPortLs = string.Join(", ", portLs);
+                        MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nall ports: {strPortLs}", "Serial Error");
                         Quit();
                     }
                 }
@@ -1606,6 +1620,7 @@ public class Moving : MonoBehaviour
                     if(CheckInRegion(pos, selectedPos)){
                         standingSecNow = standingSecNow == -1? Time.unscaledTime: standingSecNow + Time.unscaledDeltaTime;
                         if(standingSec > 0 && standingSecNow >= standingSec){
+                            standingSecNow = -1;
                             CommandParsePublic("stay:0");
                         }
                     }
