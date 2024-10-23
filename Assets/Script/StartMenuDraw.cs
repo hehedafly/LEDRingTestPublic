@@ -22,7 +22,7 @@ class ConfigBody{
             string _head = _content.Split("=")[0];
             string _body = _content.Split("=")[1];
             configContent.Add(_head, _body);
-            configDefaultValues.Add(_head, defaultINIReader.ReadIniContent(SectionName, _head));
+            configDefaultValues.Add(_head, defaultINIReader.ReadIniContent(SectionName, _head, "<blank>"));
         }
     }
 

@@ -6551,7 +6551,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1407331290}
   m_HandleRect: {fileID: 1407331287}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -9824,12 +9824,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8966a69d300d42c4bbca3b92664b9d8c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  InApp: 0
   background: {fileID: 1478614804}
   barPrefab: {fileID: 6206584044498949341, guid: eb3c7a1ffcbbe93458ebba169b6f1c39, type: 3}
   circleBarPrefab: {fileID: 6206584044498949341, guid: 5f0cbdf759974944897e6bfdb45d1b4f, type: 3}
   centerShaftPrefab: {fileID: 6206584044498949341, guid: 342e54dbda6c2604c83bc31d1c312b92, type: 3}
   slider: {fileID: 1218840785}
   materialMissing: {fileID: 2100000, guid: 7f0772f51e5ba4a4fa0125331549a56a, type: 2}
+  driftGratingBase: {fileID: 2100000, guid: 1e8e59512131e2744a44ea72d738e546, type: 2}
 --- !u!114 &1571000272
 MonoBehaviour:
   m_ObjectHideFlags: 0

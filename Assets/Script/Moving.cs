@@ -17,10 +17,11 @@ using UnityEngine.Experimental.GlobalIllumination;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, string _assigned_pos = "", int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
         startMethod = _start_method;
+        matStartMethod = _matStart_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
-        maxTrial = _maxTrial;
+        maxTrial = Math.Max(1, _maxTrial);
         backgroundLight = _backgroundLight;
         backgroundRedMode = _backgroundRedMode;
         barDelayTime = _barDelayTime;
@@ -32,6 +33,7 @@ class ContextInfo{
         trialExpireTime = _trialExpireTime;
         trialTriggerMode = _trialStartType;
         barPosLs = new List<int>();
+        barmatLs = new List<string>();
 
         string errorMessage = "";
         try{
@@ -39,9 +41,15 @@ class ContextInfo{
             avaliablePosArray = new List<int>();
             foreach(string availablePos in _available_pos_array.Split(',')){
                 int temp_pos = Convert.ToInt16(availablePos) % 360;
-                if(!avaliablePosArray.Contains(temp_pos))avaliablePosArray.Add(temp_pos);
+                if(!avaliablePosArray.Contains(temp_pos)){avaliablePosArray.Add(temp_pos);}
             }
             avaliablePosArray.Sort();
+
+            errorMessage = "avaliableMatArray";
+            matAvaliableArray = new List<string>();
+            foreach(string availableMat in _matAvailable_array.Split(',')){
+                if(!matAvaliableArray.Contains(availableMat)){matAvaliableArray.Add(availableMat);}
+            }
             
             errorMessage = "pumpPosLs";
             pumpPosLs = new List<int>();
@@ -74,18 +82,25 @@ class ContextInfo{
             }
             
             errorMessage = "assign or random port parse";
-            if(_start_method.StartsWith("random")){
-                if(_maxTrial != -1){
-                    List<int> ints = new List<int>();
-                    for (int i = 0; i < avaliablePosArray.Count; i++){ints.Add(i % avaliablePosArray.Count);}
-                    for (int i=0; i<_maxTrial; i++){
-                        if(i % ints.Count == 0){
-                            Shuffle(ints);
-                        }
-                        barPosLs.Add(avaliablePosArray[ints[i % ints.Count]]);
-                    }
+            if(startMethod.StartsWith("random")){
+                List<int> posLs = new List<int>();
+                string content = startMethod[6..];
+                if(startMethod.Contains(",")){
+                    string[] temp = content.Split(",");
+                    posLs = temp.Select(str => Convert.ToInt32(str)).ToList();
                 }
-            }else if(_start_method.StartsWith("assign")){
+                if(posLs.Count() == 0){posLs = avaliablePosArray;}
+                
+                List<int> ints = new List<int>();
+                for (int i = 0; i < posLs.Count; i++){ints.Add(i % posLs.Count);}
+                for (int i=0; i<_maxTrial; i++){
+                    if(i % ints.Count == 0){
+                        Shuffle(ints);
+                    }
+                    barPosLs.Add(posLs[ints[i % ints.Count]]);
+                }
+                
+            }else if(startMethod.StartsWith("assign")){
                 string lastUnit = "";
                 foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
@@ -129,7 +144,7 @@ class ContextInfo{
                                 }
                             }
                         }else{
-                            barPosLs.Add(Convert.ToInt16(lastUnit));
+                            barPosLs.Add(barPosLs[-1]);
                         }
                     }else{
                         barPosLs.Add(avaliablePosArray[UnityEngine.Random.Range(0, avaliablePosArray.Count)]);
@@ -138,7 +153,79 @@ class ContextInfo{
                 }
             }
             else{
-                errorMessage = $"incorrect mode:{_start_method}, should be assign or random";
+                errorMessage = $"incorrect mode:{startMethod}, should be assign or random";
+                throw new Exception("");
+            }
+
+            errorMessage = "assign or random mat parse";
+            if(matStartMethod.StartsWith("random")){
+                List<string> matLs = new List<string>();
+                if(matStartMethod.Contains(",")){matLs = matStartMethod[6..].Split(",").ToList();}
+                if(matLs.Count() == 0){matLs = matAvaliableArray;}
+
+                List<int> ints = new List<int>();
+                for (int i = 0; i < matLs.Count; i++){ints.Add(i % matLs.Count);}
+                for (int i=0; i<_maxTrial; i++){
+                    if(i % ints.Count == 0){
+                        Shuffle(ints);
+                    }
+                    barmatLs.Add(matLs[ints[i % ints.Count]]);
+                }
+                
+            }else if(matStartMethod.StartsWith("assign")){
+                string lastUnit = "";
+                foreach(string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
+                    List<string> _mat = new List<string>();
+                    int multiple = 1;
+                    if(mat.Contains("*")){
+                        if(mat.Contains("-")){
+                            foreach(string matUnit in mat[..mat.IndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
+                                _mat.Add(matUnit);
+                            }
+                            multiple = Convert.ToInt16(mat[(mat.IndexOf("*") + 1)..]);
+                        }
+                        else{
+                            _mat.Add(mat.Substring(0, mat.IndexOf("*")));
+                            multiple = Convert.ToInt16(mat.Substring(mat.IndexOf("*") + 1));
+                        }
+                    }else{
+                        _mat.Add(mat);
+                    }
+
+                    
+                    for(int i = 0; i < multiple; i++){
+                        foreach(string matUnit in _mat){
+                            if(matAvaliableArray.Contains(matUnit)){
+                                barmatLs.Add(matUnit);
+                            }
+                            else{
+                                throw new Exception("");
+                            }
+                        }
+                    }
+
+                    lastUnit = mat;
+                }
+
+                for(int i=barmatLs.Count(); i<_maxTrial; i++){
+                    if(_matAssigned.EndsWith("..")){
+                        if(_matAssigned.EndsWith(")..")){
+                            while(barmatLs.Count() < maxTrial){
+                                foreach(string matUnit in lastUnit.Replace("(", "").Replace(")", "").Split('-')){
+                                    barmatLs.Add(matUnit);
+                                }
+                            }
+                        }else{
+                            barmatLs.Add(barmatLs[-1]);
+                        }
+                    }else{
+                        barmatLs.Add(matAvaliableArray[UnityEngine.Random.Range(0, matAvaliableArray.Count)]);
+                    }
+                    //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
+                }
+            }
+            else{
+                errorMessage = $"incorrect mode:{matStartMethod}, should be assign or random";
                 throw new Exception("");
             }
 
@@ -206,8 +293,8 @@ class ContextInfo{
     //public string start_method;
     public string       startMethod     {get;}
     public List<int>    avaliablePosArray {get;}//最多8个，从角度0开始对位置顺时针编号0-7
-    
-
+    public string       matStartMethod     {get;}
+    public List<string>    matAvaliableArray {get;}
     public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
     public List<int>    pumpPosLs       {get;}
     public int          maxTrial        {get;}
@@ -227,8 +314,8 @@ class ContextInfo{
 
     [JsonIgnore]
     List<int>    barPosLs        {get;}
+    List<string>    barmatLs        {get;}
     [JsonIgnore]
-
     public float soundCueLeadTime   {get;set;}
 
     void Quit(){
@@ -247,31 +334,31 @@ class ContextInfo{
     }
 
     public float GetDeg(int pos){
-        if(pos < 0 || pos > avaliablePosArray.Count){return -1;}
+        if(pos < 0 || pos >= avaliablePosArray.Count){return -1;}
         return avaliablePosArray[pos];
     }
 
     public int GetBarPos(int trial){
-        if(trial < 0 || trial > barPosLs.Count){return -1;}
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return avaliablePosArray.IndexOf(barPosLs[trial]);
     }
     public int GetRightLickPosIndInTrial(int trial){
-        if(trial < 0 || trial > barPosLs.Count){return -1;}
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return lickPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
     }
 
     public int GetPumpPosInTrial(int trial){
-        if(trial < 0 || trial > barPosLs.Count){return -1;}
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return pumpPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
     }
 
     public float GetDegInTrial(int trial){
-        if(trial < 0 || trial > barPosLs.Count){return -1;}
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return barPosLs[trial];
     }
 
     public bool verify(int lickInd, int trial){//传入的lickInd为RawInd,需要经过LickPos转换
-        if(lickInd < 0 || lickInd > lickPosLs.Count()){
+        if(lickInd < 0 || lickInd >= lickPosLs.Count()){
             return false;
         }
         int rightBarPosInd = GetRightLickPosIndInTrial(trial);
@@ -279,17 +366,23 @@ class ContextInfo{
         // if(lickInd >= avaliablePosArray.Count){return false;}
         return lickInd == rightBarPosInd;
     }
+
+    public string GetBarMaterialInTrial(int trial){
+        if(trial < 0 || trial >= barmatLs.Count){return "";}
+        return barmatLs[trial];
+    }
 }
 
 public class Moving : MonoBehaviour
 {
-    bool InApp = false;
+    public bool InApp = false;
     public GameObject background;
     public GameObject barPrefab;
     public GameObject circleBarPrefab;
     public GameObject centerShaftPrefab;
     public UnityEngine.UI.Slider slider;
     public Material materialMissing;
+    public Material driftGratingBase;
     int displayPixels;
     bool isRing;
     GameObject bar;
@@ -356,6 +449,96 @@ public class Moving : MonoBehaviour
 
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
+    Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
+
+    struct MaterialStruct{
+        string name;            public string Name          { get { return name;}}
+        bool isDriftGrating;    public bool IsDriftGrating  { get { return isDriftGrating;}}
+        bool isCircleBar;       public bool IsCircleBar     { get { return isCircleBar;}}
+        Material material;
+        int width;
+        float speed;
+        float frequency;
+        float direction;
+        float horizontal;
+        float backgroundLight;
+        public MaterialStruct Init(string _name, Material _driftGratingBase, bool _isCircleBar, int _width, float _speed, float _frequency, float _direction, float _horizontal, float _backgroundLight){
+            name               = _name;
+            isDriftGrating     = true;
+            isCircleBar        = _isCircleBar;
+            material           = new Material(_driftGratingBase);
+            width              = _width;
+            speed              = _speed;
+            frequency          = _frequency;
+            direction          = _direction;
+            horizontal         = _horizontal;
+            backgroundLight    = _backgroundLight;
+
+            material.SetFloat("_speed", speed);
+            material.SetFloat("_Frequency", frequency);
+            material.SetFloat("_Direction", direction);
+            material.SetFloat("_Horizontal", horizontal);
+            if(_backgroundLight >= 0){
+                material.SetFloat("_BackgroundLight", backgroundLight);
+                material.SetFloat("_Frequency", frequency * 2);
+            }
+            material.name = name;
+
+            return this;
+        }
+
+        public MaterialStruct Init(string _name, string _mat, Material materialMissing, int _width = 400){
+            name               = _name;
+            isDriftGrating     = false;
+            width              = _width;
+            speed              = -1;
+            frequency          = -1;
+            direction          = -1;
+            horizontal         = -1;
+            backgroundLight    = -1;
+            
+            material = new Material(materialMissing);
+            if(_mat.StartsWith("#")){
+                Color color;
+                if(!ColorUtility.TryParseHtmlString(_mat, out color)){
+                    return this;
+                }
+                // tempMaterial = null;
+                material = new Material(Shader.Find("Unlit/Color")){color = color};
+            }else{
+                #if UNITY_EDITOR
+                string tempPath = $"Assets/Resources/{_mat}.png";
+                #else
+                string tempPath = Application.dataPath + $"/Resources/{_mat}.png";
+                #endif
+                if(System.IO.File.Exists(tempPath)){
+                    //创建文件读取流
+                    FileStream fileStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read);
+                    fileStream.Seek(0, SeekOrigin.Begin);
+                    //创建文件长度缓冲区
+                    byte[] bytes = new byte[fileStream.Length]; 
+                    //读取文件
+                    fileStream.Read(bytes, 0, (int)fileStream.Length);
+                    //释放文件读取流
+                    fileStream.Close();
+                    fileStream.Dispose();
+                    fileStream = null;
+
+                    Texture2D texture = new Texture2D(100, 100);
+                    texture.LoadImage(bytes);
+                    material.SetTexture("_MainTex", texture);
+                    material.mainTextureScale = new Vector2(width/400, 5);
+                }else{
+                    Debug.LogWarning($"No such Material named {_mat}.png");
+                }
+            }
+            return this;
+
+        }
+        public void SetMaterial(GameObject gameObject){
+            gameObject.GetComponent<MeshRenderer>().material = material;
+        }
+    }
 
     void Quit(){
         #if UNITY_EDITOR
@@ -375,81 +558,40 @@ public class Moving : MonoBehaviour
         bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
     }
 
-    void SetMaterial(List<GameObject> goList, string _mat){
-        Material tempMaterial = materialMissing;
-            if(_mat.StartsWith("#")){
-                Color color;
-                if(!ColorUtility.TryParseHtmlString(_mat, out color)){
-                    return;
-                }
-                // tempMaterial = null;
-                tempMaterial = new Material(Shader.Find("Unlit/Color")){color = color};
-            }else{
-                string tempPath = InApp? Application.dataPath+$"/Resources/{_mat}.png" : $"Assets/Resources/{_mat}.png";
+    // void SetMaterial(List<GameObject> goList, string _mat){
+    // void SetMaterial(List<GameObject> goList, MaterialStruct _mat){
+        
+    //     foreach(GameObject go in goList){
+    //         // go.GetComponent<MeshRenderer>().material = tempMaterial;
+    //         _mat.SetMaterial(go);
+    //     }
+    // }
 
-                if(System.IO.File.Exists(tempPath)){
-                    //创建文件读取流
-                    FileStream fileStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read);
-                    fileStream.Seek(0, SeekOrigin.Begin);
-                    //创建文件长度缓冲区
-                    byte[] bytes = new byte[fileStream.Length]; 
-                    //读取文件
-                    fileStream.Read(bytes, 0, (int)fileStream.Length);
-                    //释放文件读取流
-                    fileStream.Close();
-                    fileStream.Dispose();
-                    fileStream = null;
+    // // void SetMaterial(GameObject go, string _mat){
+    // void SetMaterial(GameObject go, MaterialStruct _mat){
+    //     SetMaterial(new List<GameObject>(){go}, _mat);
+    // }
 
-                    Texture2D texture = new Texture2D(100, 100);
-                    texture.LoadImage(bytes);
-                    tempMaterial.SetTexture("_MainTex", texture);
-                    tempMaterial.mainTextureScale = new Vector2(barWidth/400, 5);
-                }
-            }
-        foreach(GameObject go in goList){
-            go.GetComponent<MeshRenderer>().material = tempMaterial;
-        }
-    }
-
-    void SetMaterial(GameObject go, string _mat){
-        SetMaterial(new List<GameObject>(){go}, _mat);
-    }
-
-    void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
+    // void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
+    void SetBarMaterial(MaterialStruct _mat, GameObject otherBar = null){
         GameObject tempBar = otherBar == null? bar: otherBar;
-        Debug.Log(tempBar.name);
-        Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
-        if(isDriftGrating){
-            // var tempMaterial = new Material(Shader.Find("Unlit/Color"))//会出错，暂时不用
-            // {
-            //     shader = Shader.Find("ShaDriftGrating")
-            // };
-            var tempMaterial = tempBar.GetComponent<MeshRenderer>().material;
-            tempMaterial.SetFloat("_speed", _speed);
-            tempMaterial.SetFloat("_Frequency", _frequency);
-            tempMaterial.SetFloat("_Direction", _direction);
-            tempMaterial.SetFloat("_Horizontal", _horizontal);
-            if(_backgroundLight >= 0){
-            tempMaterial.SetFloat("_BackgroundLight", _backgroundLight);
-            tempMaterial.SetFloat("_Frequency", _frequency * 2);
-            }
-            tempBar.GetComponent<MeshRenderer>().material = tempMaterial;
-            if(isRing && otherBar == null){
-                barChild.GetComponent<MeshRenderer>().material = tempMaterial;
-                barChild2.GetComponent<MeshRenderer>().material = tempMaterial;
-            }
-
-        }else{
-            
-            SetMaterial(tempBar, _mat);
-            // tempBar.GetComponent<MeshRenderer>().material = tempMaterial;
-            if(isRing && otherBar == null){
-                // barChild.GetComponent<MeshRenderer>().material = tempMaterial;
-                // barChild2.GetComponent<MeshRenderer>().material = tempMaterial;
-                SetMaterial(new List<GameObject>(){barChild, barChild2}, _mat);
-
-            }
+        if(tempBar.GetComponent<MeshRenderer>().material.name == _mat.Name+" (Instance)"){return;}
+        // Debug.Log(tempBar.name);
+        // Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
+        _mat.SetMaterial(tempBar);
+        if(isRing && otherBar == null){
+            _mat.SetMaterial(barChild);
+            _mat.SetMaterial(barChild2);
         }
+    }
+    
+    MaterialStruct GetMaterialStruct(string matName){
+        if(MaterialDict.ContainsKey(matName)){
+            return MaterialDict[matName];
+        }else{
+            return MaterialDict["default"];
+        }
+
     }
 
     void ActivateBar(int pos = -1, int trial = -1){
@@ -477,20 +619,34 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// 以bar参数及附属物体预创建bar
+    /// 
     /// </summary>
-    /// <param name="isDriftGrating"></param>
-    /// <param name="_speed"></param>
-    /// <param name="_frequency"></param>
-    /// <param name="_direction"></param>
-    /// <param name="_horizontal"></param>
-    /// <param name="_barMatName"></param>
-    /// <param name="_isCircleBar"></param>
+    /// <param name="barMat"></param>
+    /// <param name="centerShaftMat"></param>
+    /// <param name="backgroundMat"></param>
     /// <param name="_centerShaft"></param>
     /// <param name="_centerShaftPos"></param>
-    /// <param name="_centerShaftMat"></param>
     /// <returns></returns>
-    int InitContext(bool isDriftGrating, float _speed, float _frequency, int _direction, int _horizontal, string _barMatName, bool _isCircleBar = false, bool _centerShaft = false, float _centerShaftPos = 180, string _centerShaftMat = "#000000", string _backgroundMatName = "#000000"){
+    /// // int InitContext(bool isDriftGrating, float _speed, float _frequency, int _direction, int _horizontal, string _barMatName, bool _isCircleBar = false, bool _centerShaft = false, float _centerShaftPos = 180, string _centerShaftMat = "#000000", string _backgroundMatName = "#000000"){
+    int InitContext(MaterialStruct barMat, MaterialStruct centerShaftMat, MaterialStruct backgroundMat, bool _centerShaft = false, float _centerShaftPos = 180){
+
+        // MaterialStruct barMat = new MaterialStruct();
+        // if(isDriftGrating){
+        //     barMat.Init("drifGrating", driftGratingBase, _speed, _frequency, _direction, _horizontal, lightStrength);
+        // }else{
+        //     barMat.Init("picBar", _barMatName, materialMissing);
+        // }
+        // MaterialDict.Add("bar", barMat);
+
+        // MaterialStruct centerShaftMat = new MaterialStruct();
+        // centerShaftMat.Init("centerShaft", _centerShaftMat, materialMissing);
+        // MaterialDict.Add("centerShaft", centerShaftMat);
+
+        // MaterialStruct backgroundMat = new MaterialStruct();
+        // backgroundMat.Init("background", _backgroundMatName, materialMissing);
+        // MaterialDict.Add("background", backgroundMat);
+        bool _isCircleBar = barMat.IsCircleBar;
+
         float displayLength = displayPixels / 10;
         GameObject tempPrefab = _isCircleBar? circleBarPrefab: barPrefab;
         bar = Instantiate(tempPrefab);
@@ -515,19 +671,22 @@ public class Moving : MonoBehaviour
             barChild2.transform.localPosition = new Vector3(displayLength, 0, 0f);
         }
         
-        SetBarMaterial(isDriftGrating, _speed, _frequency, _direction, _horizontal, _barMatName, (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8f));
+        // SetBarMaterial(isDriftGrating, _speed, _frequency, _direction, _horizontal, _barMatName, (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8f));
+        SetBarMaterial(barMat, bar);
         if(_centerShaft){
             centerShaft = Instantiate(centerShaftPrefab);
-            SetBarMaterial(false, 0, 0, 0, _horizontal, _centerShaftMat, otherBar: centerShaft);
+            // SetBarMaterial(false, 0, 0, 0, _horizontal, _centerShaftMat, otherBar: centerShaft);
+            SetBarMaterial(centerShaftMat, otherBar:centerShaft);
             centerShaft.transform.localPosition = new Vector3(DegToPos(_centerShaftPos), bar.transform.localPosition.y, bar.transform.localPosition.z);
         }
 
-        float lightStrength = (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8);
-        if(_backgroundMatName.StartsWith("#")){
-            background.GetComponent<Renderer>().material.color = new Color(contextInfo.backgroundRedMode == -1? lightStrength: (float)contextInfo.backgroundRedMode / 255, lightStrength, lightStrength);
-        }else{
-            SetMaterial(background, _backgroundMatName);
-        }
+        // if(_backgroundMatName.StartsWith("#")){
+        //     background.GetComponent<Renderer>().material.color = new Color(contextInfo.backgroundRedMode == -1? lightStrength: (float)contextInfo.backgroundRedMode / 255, lightStrength, lightStrength);
+        // }else{
+        //     SetMaterial(background, _backgroundMatName);
+        // }
+        backgroundMat.SetMaterial(background);
+        // MaterialDict["backgroundMat"].SetMaterial(background);
         DeactivateBar();
 
         return 1;
@@ -626,6 +785,8 @@ public class Moving : MonoBehaviour
         nowTrial++;
         trialStartTime = Time.fixedUnscaledTime;
         ContextStartSync();
+        string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
+        SetBarMaterial(GetMaterialStruct(tempMatName));
 
         //waiting = false;
         alarm.SetAlarm(1, (int)(contextInfo.barDelayTime/Time.fixedDeltaTime), "SetWaitingToFalseAtTrialStart");
@@ -804,13 +965,14 @@ public class Moving : MonoBehaviour
         return LickResultCheck(lickInd, nowTrial);
     }
     int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial
-        int rightLickInd = contextInfo.GetRightLickPosIndInTrial(lickTrial);
-        if(nowTrial == -1){
-            return 0;
-        }
         if(lickTrial != nowTrial){
             Debug.LogWarning("trial not sync");
             lickTrial = nowTrial;
+        }
+        
+        int rightLickInd = contextInfo.GetRightLickPosIndInTrial(lickTrial);
+        if(nowTrial == -1){
+            return 0;
         }
         // if(lickInd >= contextInfo.avaliablePosArray.Count){
         //     Debug.LogWarning($"invalid Lick Port: {lickInd}");
@@ -900,11 +1062,11 @@ public class Moving : MonoBehaviour
         */
         Dictionary<string, int> trialInfo = new Dictionary<string, int>
         {
-            {"NowTrial"             , nowTrial},
-            {"IsPausing"            , forceWaiting? 1: 0},
-            {"NowPos"               , contextInfo.GetRightLickPosIndInTrial(nowTrial)},
-            {"lickPosCount"         , showLickPortNum},
-            {"waitSec"              , Convert.ToInt16(waitSec)},
+            {"NowTrial"         , nowTrial},
+            {"IsPausing"        , forceWaiting? 1: 0},
+            {"NowPos"           , contextInfo.GetRightLickPosIndInTrial(nowTrial)},
+            {"lickPosCount"     , showLickPortNum},
+            {"waitSec"          , Convert.ToInt16(waitSec)},
             {"TrialSuccessNum"  , trialResult.FindAll(value => value == 1).Count},
             {"TrialFailNum"     , trialResult.FindAll(value => value <= 0).Count},
         };
@@ -1251,7 +1413,7 @@ public class Moving : MonoBehaviour
                         temp_i = i+1;
                         break;
                     }else{
-                        serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)[0..-1]).Concat(new byte[]{0xDD}).ToArray());
+                        serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)).Concat(new byte[]{0xDD}).ToArray());
                     }
                 }
                 string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
@@ -1420,6 +1582,7 @@ public class Moving : MonoBehaviour
     #endregion methods of file write end
 
     void Awake(){
+
         for (int i = 0; i < Math.Min(3, Display.displays.Length); i++)
         {
             Display.displays[i].Activate();
@@ -1458,6 +1621,10 @@ public class Moving : MonoBehaviour
         contextInfo = new ContextInfo(
             iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
             iniReader.ReadIniContent(                   "settings", "available_pos"      ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
+            iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
+            iniReader.ReadIniContent(                   "settings", "MatStartMethod"      ,   "assign"                ),
+            iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"  ),               
+            iniReader.ReadIniContent(                   "settings", "MatAssign"        ,   "default.."  ),              
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                  )),               // int _maxTrial
@@ -1473,7 +1640,6 @@ public class Moving : MonoBehaviour
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "fail_wait_sec"     ,   "6"                     )),                // float _f_wait_sec
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
-            iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
         standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "5" ));
@@ -1481,20 +1647,57 @@ public class Moving : MonoBehaviour
 
         audioPlayTime[0] = contextInfo.soundLength;
         trialStartTriggerMode = contextInfo.trialTriggerMode;
+
+        MaterialStruct defaultMat = new MaterialStruct();
+        MaterialDict.Add("default", defaultMat.Init("default", "", materialMissing));
+        
+        List<string> MaterialStructKeyLs = iniReader.ReadIniContent("matSettings", "matList", "default,barMat,centerShaftMat,backgroundMat").Split(",").ToList();
+        foreach(string matName in MaterialStructKeyLs){
+            if(MaterialDict.ContainsKey(matName)){
+                continue;
+            }
+            bool isDriftGrating = iniReader.ReadIniContent(matName, "isDriftGrating", "default") == "true";
+            MaterialStruct tempMat = new MaterialStruct();
+            if(isDriftGrating){
+                tempMat.Init(matName, driftGratingBase,
+                    iniReader.ReadIniContent(                   matName, "isCircleBar", "false") == "true",
+                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400")),
+                    Convert.ToSingle(iniReader.ReadIniContent(  matName, "speed", "1")),
+                    Convert.ToSingle(iniReader.ReadIniContent(  matName, "frequency", "5")),
+                    iniReader.ReadIniContent(                   matName, "direction", "right") == "right" ? 1 : -1,
+                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "horizontal", "0")),
+                    (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8)
+                );
+            }else{
+                    tempMat.Init(matName,
+                    iniReader.ReadIniContent(matName, "mat", "#000000"),
+                    materialMissing, 
+                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400"))
+                );
+            }
+            MaterialDict.Add(matName, tempMat);
+        }
         
         InitContext(
-            iniReader.ReadIniContent("barSettings", "isDriftgrating", "true") == "true",
-            Convert.ToSingle(iniReader.ReadIniContent("barSettings", "speed", "1")),
-            Convert.ToSingle(iniReader.ReadIniContent("barSettings", "frequency", "5")),
-            iniReader.ReadIniContent("barSettings", "direction", "right") == "right" ? 1 : -1,
-            Convert.ToInt16(iniReader.ReadIniContent("barSettings", "horizontal", "0")),
-            iniReader.ReadIniContent("barSettings", "barMaterial", "#000000"),
-            iniReader.ReadIniContent("barSettings", "isCircleBar", "false") == "true",
-            iniReader.ReadIniContent("barSettings", "centerShaft", "false") == "true",
-            Convert.ToSingle(iniReader.ReadIniContent("barSettings", "centerShaftPos", "180")),
-            iniReader.ReadIniContent("barSettings", "centerShaftMat", "#000000"),
-            iniReader.ReadIniContent("settings", "backgroundMaterial", "#000000")
+            GetMaterialStruct("barMat"),
+            GetMaterialStruct("centerShaftMat"),
+            GetMaterialStruct("backgroundMat"),
+            iniReader.ReadIniContent("matSettings", "centerShaft", "false") == "true",
+            Convert.ToInt16(iniReader.ReadIniContent("centerShaft", "centerShaftPos", "0"))
         );
+        // InitContext(
+        //     iniReader.ReadIniContent("barSettings", "isDriftgrating", "true") == "true",
+        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "speed", "1")),
+        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "frequency", "5")),
+        //     iniReader.ReadIniContent("barSettings", "direction", "right") == "right" ? 1 : -1,
+        //     Convert.ToInt16(iniReader.ReadIniContent("barSettings", "horizontal", "0")),
+        //     iniReader.ReadIniContent("barSettings", "barMaterial", "#000000"),
+        //     iniReader.ReadIniContent("barSettings", "isCircleBar", "false") == "true",
+        //     iniReader.ReadIniContent("barSettings", "centerShaft", "false") == "true",
+        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "centerShaftPos", "180")),
+        //     iniReader.ReadIniContent("barSettings", "centerShaftMat", "#000000"),
+        //     iniReader.ReadIniContent("settings", "backgroundMaterial", "#000000")
+        // );
 
         for(int i = 0; i<Arduino_var_list.Count; i++){
             Arduino_var_map.Add(Arduino_var_list[i], i.ToString());

@@ -24,11 +24,11 @@ public void WriteIniContent(string section,string key,string value)
 }
 
 //读取Ini文件
-public string ReadIniContent(string section,string key, string value_in_default="", bool Confirm = false){
+public string ReadIniContent(string section,string key, string value_in_default, bool Confirm = false){
   StringBuilder temp=new StringBuilder(255);
   int i=GetPrivateProfileString(section,key,"",temp,255,this.path);
   if(temp.Length == 0 && Confirm){return "";}
-  if(temp.Length==0 && value_in_default!=""){
+  if(temp.Length==0){
     return value_in_default;
   }
   else{

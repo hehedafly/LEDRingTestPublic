@@ -210,18 +210,22 @@ public class UIUpdate : MonoBehaviour
                 string  temp_context_info =  $"trial:{tempStatus["NowTrial"]}     now pos:{tempStatus["NowPos"]}    {(tempStatus["IsPausing"] == 1? "paused" : "")}\n";
                         temp_context_info += "lick count in this trial: ";
                         // if(tempStatus["lickCountArrayLength"] > 0){
-                            for(int i =0; i < tempStatus["lickPosCount"]; i ++){
+                        for(int i =0; i < 8; i ++){
+                            if(tempStatus.ContainsKey("lickCount" + i.ToString())){
                                 temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
                             }
+                        }
                         // }
                         if(tempStatus["waitSec"] != -1){
                             temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
                         }
 
                         temp_context_info += $"\n          Success:    Fail:    Total:    Miss:\n";
-                        for(int i =0; i < tempStatus["lickPosCount"]; i ++){
-                            int RealPos = tempStatus[$"lickPort{i}"];
-                            temp_context_info += $"LickPort{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickPortTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                        for(int i =0; i < 8; i ++){
+                            if(tempStatus.ContainsKey("lickPort" + i.ToString())){
+                                int RealPos = tempStatus[$"lickPort{i}"];
+                                temp_context_info += $"LickPort{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickPortTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                            }
                         }
                         temp_context_info += $"Total: {tempStatus["TrialSuccessNum"]}        {tempStatus["TrialFailNum"]}\n";
                         
