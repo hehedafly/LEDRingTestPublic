@@ -1665,7 +1665,7 @@ public class Moving : MonoBehaviour
                     Convert.ToSingle(iniReader.ReadIniContent(  matName, "speed", "1")),
                     Convert.ToSingle(iniReader.ReadIniContent(  matName, "frequency", "5")),
                     iniReader.ReadIniContent(                   matName, "direction", "right") == "right" ? 1 : -1,
-                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "horizontal", "0")),
+                    Convert.ToSingle(iniReader.ReadIniContent(  matName, "horizontal", "0")),
                     (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8)
                 );
             }else{

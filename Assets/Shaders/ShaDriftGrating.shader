@@ -6,7 +6,7 @@ Shader "Custom/ShaDriftGrating"
         _Speed ("Speed", Float) = 1.0
         _Frequency ("Frequency", Float) = 10.0
         _Direction ("Direction", Int) = 1       //竖直时1为左-1为右，垂直时1为上-1为下
-        _Horizontal("Horizontal", Int) = 0      //0:竖直条纹左右运动, 1:水平条纹上下运动
+        _Horizontal("Horizontal", Float) = 0      //0:竖直条纹左右运动, 1:水平条纹上下运动
     }
     SubShader
     {
@@ -36,7 +36,7 @@ Shader "Custom/ShaDriftGrating"
             float _Speed;
             float _Frequency;
             int _Direction;
-            int _Horizontal;
+            float _Horizontal;
 
 
             v2f vert (appdata v)
@@ -50,13 +50,16 @@ Shader "Custom/ShaDriftGrating"
             fixed4 frag (v2f i) : SV_Target
             {
                 // 计算条纹的UV偏移
+                _Horizontal = sqrt(_Horizontal);
+                _Speed *= (1 - _Horizontal * 0.8);
+
                 float stripeOffset = _Time.y * _Speed * _Direction;
                 float2 uv = float2(i.uv.x * (1 - _Horizontal) + i.uv.y * _Horizontal, i.uv.x * _Horizontal + i.uv.y * (1 - _Horizontal));
                 
                 uv.x += stripeOffset;
 
                 // 使用正弦函数生成黑白条纹
-                float stripePattern = max((sin(uv.x * _Frequency * (1 + _Horizontal * 9)) + 1 - 0.4), 0) / 2;
+                float stripePattern = max((sin(uv.x * _Frequency * (1 + _Horizontal * 2)) + 0.6 - (_Horizontal * 0.4)), 0) / 2;
 
                 // 应用纹理和条纹图案
                 fixed4 col = tex2D(_MainTex, i.uv);

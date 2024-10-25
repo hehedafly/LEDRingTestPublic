@@ -98,7 +98,7 @@
 <br>direction = left
 <br>#direction为left时，垂直bar向左运动，水平bar向上运动，为right时反之
 <br>horizontal = 1
-<br>#0时driftgrating水平运动，1时上下运动
+<br>#float, 0时driftgrating水平运动，1时上下运动，中间值斜向运动
 <br>mat = spr_slash
 <br>#bar外观设置，若isDriftGrating为false，可设指定文件名按照给定图片设置bar外观，或设指定颜色如"#000000"为黑色，"#FFFFFF"为白色
 <br>
