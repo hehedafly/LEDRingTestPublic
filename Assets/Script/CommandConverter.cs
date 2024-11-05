@@ -29,7 +29,7 @@ public class CommandConverter
         for (int i = 0; i < readBuffer.Length; i++){
             if (IsStartOfMessage(readBuffer, i)){
                 int endIndex = FindMarkOfMessage(false, readBuffer, i);
-                if (endIndex != -1){
+                if (endIndex != -1 && endIndex - i >= 4){
                     int _msgLength = readBuffer[i+2];
                     if(endIndex - i -3 != _msgLength){
                         Debug.LogWarning("incomplete msg received: "+string.Join(",", readBuffer[i..(endIndex+1)]));
@@ -82,7 +82,7 @@ public class CommandConverter
         /*msg form:
         //start byte: 2byte
         start byte: 1byte
-        type:       2byte
+        type:       1byte
         length:     1byte
         content:    ...
         //end byte:   2byte
@@ -110,7 +110,7 @@ public class CommandConverter
         /*msg form:
         //start byte: 2byte
         start byte: 1byte
-        type:       2byte
+        type:       1byte
         length:     1byte
         content:    ...
         //end byte:   2byte

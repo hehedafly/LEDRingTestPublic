@@ -93,6 +93,7 @@ public class UIUpdate : MonoBehaviour
                     if(value != moving.TrialStartTriggerMode){
                         int _result = moving.ChangeTriggerMode((int)value);
                         if(_result == -1){Debug.LogWarning($"mode change failed because the next trial has already set, error code:{_result}");}
+                        else if(_result == -2){Debug.LogWarning("No connection to Python Script");}
                         MessageUpdate($"Trigger mode now: {moving.TrialStartTriggerMode}\n");
                         triggerModeSelect.value = moving.TrialStartTriggerMode;
                         triggerModeSelect.RefreshShownValue();

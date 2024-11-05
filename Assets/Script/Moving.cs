@@ -85,66 +85,34 @@ class ContextInfo{
             if(startMethod.StartsWith("random")){
                 List<int> posLs = new List<int>();
                 string content = startMethod[6..];
-                if(startMethod.Contains(",")){
-                    string[] temp = content.Split(",");
-                    posLs = temp.Select(str => Convert.ToInt32(str)).ToList();
-                }
+                string[] temp = content.Split(",");
+                posLs = temp.Select(str => Convert.ToInt32(str)).ToList();
                 if(posLs.Count() == 0){posLs = avaliablePosArray;}
                 
                 List<int> ints = new List<int>();
-                for (int i = 0; i < posLs.Count; i++){ints.Add(i % posLs.Count);}
-                for (int i=0; i<_maxTrial; i++){
-                    if(i % ints.Count == 0){
+                for (int i = 0; i < posLs.Count*2; i++){ints.Add(i);}
+                while(barPosLs.Count < _maxTrial){
+                    if(posLs.Count >= 3){
                         Shuffle(ints);
+                        foreach(int i in ints){barPosLs.Add(posLs[ints[i % ints.Count]]);}
+                    }else{
+                        barPosLs.Add(posLs[UnityEngine.Random.Range(0, posLs.Count)]);
                     }
-                    barPosLs.Add(posLs[ints[i % ints.Count]]);
                 }
+
                 
             }else if(startMethod.StartsWith("assign")){
                 string lastUnit = "";
                 foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
-                    int multiple = 1;
-                    if(pos.Contains("*")){
-                        if(pos.Contains("-")){
-                            foreach(string posUnit in pos[..pos.IndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
-                                _pos.Add(Convert.ToInt16(posUnit));
-                            }
-                            multiple = Convert.ToInt16(pos[(pos.IndexOf("*") + 1)..]);
-                        }
-                        else{
-                            _pos.Add(Convert.ToInt16(pos.Substring(0, pos.IndexOf("*"))));
-                            multiple = Convert.ToInt16(pos.Substring(pos.IndexOf("*") + 1));
-                        }
-                    }else{
-                        _pos.Add(Convert.ToInt16(pos));
-                    }
-
-                    
-                    for(int i = 0; i < multiple; i++){
-                        foreach(int posUnit in _pos){
-                            if(avaliablePosArray.Contains(Convert.ToInt16(posUnit))){
-                                barPosLs.Add(posUnit % 360);
-                            }
-                            else{
-                                throw new Exception("");
-                            }
-                        }
-                    }
-
+                    ProcessUnit(pos);
                     lastUnit = pos;
                 }
 
                 for(int i=barPosLs.Count(); i<_maxTrial; i++){
                     if(_assigned_pos.EndsWith("..")){
-                        if(_assigned_pos.EndsWith(")..")){
-                            while(barPosLs.Count() < maxTrial){
-                                foreach(string posUnit in lastUnit.Replace("(", "").Replace(")", "").Split('-')){
-                                    barPosLs.Add(Convert.ToInt16(posUnit));
-                                }
-                            }
-                        }else{
-                            barPosLs.Add(barPosLs[-1]);
+                        while(barPosLs.Count() < maxTrial){
+                            ProcessUnit(lastUnit);
                         }
                     }else{
                         barPosLs.Add(avaliablePosArray[UnityEngine.Random.Range(0, avaliablePosArray.Count)]);
@@ -175,48 +143,14 @@ class ContextInfo{
             }else if(matStartMethod.StartsWith("assign")){
                 string lastUnit = "";
                 foreach(string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
-                    List<string> _mat = new List<string>();
-                    int multiple = 1;
-                    if(mat.Contains("*")){
-                        if(mat.Contains("-")){
-                            foreach(string matUnit in mat[..mat.IndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
-                                _mat.Add(matUnit);
-                            }
-                            multiple = Convert.ToInt16(mat[(mat.IndexOf("*") + 1)..]);
-                        }
-                        else{
-                            _mat.Add(mat.Substring(0, mat.IndexOf("*")));
-                            multiple = Convert.ToInt16(mat.Substring(mat.IndexOf("*") + 1));
-                        }
-                    }else{
-                        _mat.Add(mat);
-                    }
-
-                    
-                    for(int i = 0; i < multiple; i++){
-                        foreach(string matUnit in _mat){
-                            if(matAvaliableArray.Contains(matUnit)){
-                                barmatLs.Add(matUnit);
-                            }
-                            else{
-                                throw new Exception("");
-                            }
-                        }
-                    }
-
+                    ProcessMatUnit(mat);
                     lastUnit = mat;
                 }
 
                 for(int i=barmatLs.Count(); i<_maxTrial; i++){
                     if(_matAssigned.EndsWith("..")){
-                        if(_matAssigned.EndsWith(")..")){
-                            while(barmatLs.Count() < maxTrial){
-                                foreach(string matUnit in lastUnit.Replace("(", "").Replace(")", "").Split('-')){
-                                    barmatLs.Add(matUnit);
-                                }
-                            }
-                        }else{
-                            barmatLs.Add(barmatLs[-1]);
+                        while(barmatLs.Count() < maxTrial){
+                            ProcessMatUnit(lastUnit);
                         }
                     }else{
                         barmatLs.Add(matAvaliableArray[UnityEngine.Random.Range(0, matAvaliableArray.Count)]);
@@ -318,6 +252,79 @@ class ContextInfo{
     [JsonIgnore]
     public float soundCueLeadTime   {get;set;}
 
+    void ProcessUnit(string pos){
+        List<int> _pos = new List<int>{};
+        int multiple = 1;
+        if(pos.Contains("*")){
+            if(pos.Contains("-")){
+                foreach(string posUnit in pos[..pos.LastIndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
+                    if(posUnit.Contains("*")){
+                        int tempMultiple = Convert.ToInt16(posUnit[(posUnit.IndexOf("*")+1)..]);
+                        for(int i = 0; i < tempMultiple; i++){_pos.Add(Convert.ToInt16(posUnit[..posUnit.IndexOf("*")]));}
+                    }else{
+                        _pos.Add(Convert.ToInt16(posUnit));
+                    }
+                }
+                multiple = Convert.ToInt16(pos[(pos.LastIndexOf("*") + 1)..]);
+            }
+            else{
+                _pos.Add(Convert.ToInt16(pos[..pos.IndexOf("*")]));
+                multiple = Convert.ToInt16(pos[(pos.IndexOf("*") + 1)..]);
+            }
+        }else{
+            _pos.Add(Convert.ToInt16(pos));
+        }
+
+        
+        for(int i = 0; i < multiple; i++){
+            foreach(int posUnit in _pos){
+                if(avaliablePosArray.Contains(Convert.ToInt16(posUnit))){
+                    barPosLs.Add(posUnit % 360);
+                }
+                else{
+                    throw new Exception("");
+                }
+            }
+        }
+    }
+
+    void ProcessMatUnit(string mat){
+        List<string> _mat = new List<string>();
+        int multiple = 1;
+        if(mat.Contains("*")){
+            if(mat.Contains("-")){
+                foreach(string matUnit in mat[..mat.IndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
+                    if(matUnit.Contains("*")){
+                        int tempMultiple = Convert.ToInt16(matUnit[(matUnit.IndexOf("*")+1)..]);
+                        for(int i = 0; i < tempMultiple; i++){_mat.Add(matUnit[..matUnit.IndexOf("*")]);}
+                    }else{
+                        _mat.Add(matUnit);
+                    }
+                }
+                multiple = Convert.ToInt16(mat[(mat.IndexOf("*") + 1)..]);
+            }
+            else{
+                _mat.Add(mat[..mat.IndexOf("*")]);
+                multiple = Convert.ToInt16(mat[(mat.IndexOf("*") + 1)..]);
+            }
+        }else{
+            _mat.Add(mat);
+        }
+
+        
+        for(int i = 0; i < multiple; i++){
+            foreach(string matUnit in _mat){
+                if(matAvaliableArray.Contains(matUnit)){
+                    barmatLs.Add(matUnit);
+                }
+                else{
+                    throw new Exception("");
+                }
+            }
+        }
+
+    }
+
     void Quit(){
         #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
@@ -383,7 +390,9 @@ public class Moving : MonoBehaviour
     public UnityEngine.UI.Slider slider;
     public Material materialMissing;
     public Material driftGratingBase;
-    int displayPixels;
+    int displayPixelsLength;
+    int displayPixelsHeight;
+    float displayVerticalPos = 0.5f;
     bool isRing;
     GameObject bar;
     GameObject barChild;
@@ -394,6 +403,7 @@ public class Moving : MonoBehaviour
     float trialStartTime = -1;
     float waitSecRec = -1;
     float waitSec = -1;
+    float[] standingPos = new float[2];
     float standingSec = -1;
     float standingSecNow = -1;
     bool waiting = true;
@@ -407,7 +417,7 @@ public class Moving : MonoBehaviour
 
     int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆, 3：视频检测位置
     public int TrialStartTriggerMode {get{return trialStartTriggerMode;}}
-    List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆"};
+    List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆", "位置检测"};
     bool trialStartReady = false;
     List<int> trialResult = new List<int>();//1:success 0:fail -1:manully skip -2:manually successful skip -3:unimportant fail(in mode 0x00 and 0x01)
     List<List<int>> trialResultPerLickPort = new List<List<int>>();//0, 2, 4, 6,...success/fail, 1, 3, 5, 7,...:miss
@@ -474,7 +484,7 @@ public class Moving : MonoBehaviour
             horizontal         = _horizontal;
             backgroundLight    = _backgroundLight;
 
-            material.SetFloat("_speed", speed);
+            material.SetFloat("_Speed", speed);
             material.SetFloat("_Frequency", frequency);
             material.SetFloat("_Direction", direction);
             material.SetFloat("_Horizontal", horizontal);
@@ -487,15 +497,17 @@ public class Moving : MonoBehaviour
             return this;
         }
 
-        public MaterialStruct Init(string _name, string _mat, Material materialMissing, int _width = 400){
+        public MaterialStruct Init(string _name, string _mat, Material materialMissing, int _width = 400,  float _backgroundLight = 0, int backgroundLightRedModeValue = 0){
             name               = _name;
             isDriftGrating     = false;
             width              = _width;
+            backgroundLight    = Math.Max(_backgroundLight, backgroundLightRedModeValue);
             speed              = -1;
             frequency          = -1;
             direction          = -1;
             horizontal         = -1;
-            backgroundLight    = -1;
+            
+            bool BackgroundLightRedMode  = backgroundLightRedModeValue > 0;
             
             material = new Material(materialMissing);
             if(_mat.StartsWith("#")){
@@ -503,7 +515,9 @@ public class Moving : MonoBehaviour
                 if(!ColorUtility.TryParseHtmlString(_mat, out color)){
                     return this;
                 }
-                // tempMaterial = null;
+                if(name.Contains("background")){
+                    color = new Color(Math.Max(backgroundLight, color.r)/255, Math.Max(BackgroundLightRedMode? 0: backgroundLight, color.g)/255, Math.Max(BackgroundLightRedMode? 0: backgroundLight, color.b)/255);
+                }
                 material = new Material(Shader.Find("Unlit/Color")){color = color};
             }else{
                 #if UNITY_EDITOR
@@ -532,6 +546,7 @@ public class Moving : MonoBehaviour
                     Debug.LogWarning($"No such Material named {_mat}.png");
                 }
             }
+
             return this;
 
         }
@@ -549,9 +564,9 @@ public class Moving : MonoBehaviour
     }
 
     public float DegToPos(float deg){
-        if(displayPixels <= 0){return -1;}
+        if(displayPixelsLength <= 0){return -1;}
         float temp_value = deg % 360 /360;
-        return (float)((temp_value - 0.5)*(displayPixels/10));
+        return (float)((temp_value - 0.5)*(displayPixelsLength/10));
     }
 
     public void SetBarPos(float actual_pos){//0-1，角度输入时需要配合DegToPos
@@ -647,28 +662,31 @@ public class Moving : MonoBehaviour
         // MaterialDict.Add("background", backgroundMat);
         bool _isCircleBar = barMat.IsCircleBar;
 
-        float displayLength = displayPixels / 10;
+        float displayLength = (float)displayPixelsLength / 100;
+        float displayHeight = (float)displayPixelsHeight / 100;
+        float barWidthScale = (float)(displayLength * barWidth) / displayPixelsLength;
         GameObject tempPrefab = _isCircleBar? circleBarPrefab: barPrefab;
         bar = Instantiate(tempPrefab);
         if(!_isCircleBar){
-            bar.transform.localScale = new Vector3(-1, 1, bar.transform.localScale.z);
+            bar.transform.localScale = new Vector3(barWidthScale, 1f, displayHeight);
         }else{
-            bar.transform.localScale = new Vector3(-1, 1, displayLength*(float)barWidth/displayPixels *0.1f);
+            bar.transform.localScale = new Vector3(barWidthScale, 1f, displayHeight);
         }
         
-        bar.transform.localPosition = new Vector3(0, 0, -0.01f);
+        bar.transform.localPosition = new Vector3(0, displayPixelsHeight * 0.1f * (displayVerticalPos - 0.5f), -0.01f);
         if(isRing){
             barChild = Instantiate(tempPrefab);
-            barChild.transform.localScale = new Vector3(-1, 1, barChild.transform.localScale.z);
-            //barChild.transform.SetParent(transform.parent.transform);
             barChild.transform.SetParent(bar.transform);
-            barChild.transform.localPosition = new Vector3(-1*displayLength, 0, 0);
+            barChild.transform.localScale = new Vector3(1, 1, 1);
+            barChild.transform.localPosition = new Vector3(displayLength / barWidthScale* 10f, 0, 0);
+            SetBarMaterial(barMat, barChild);
+
 
             barChild2 = Instantiate(tempPrefab);
-            barChild2.transform.localScale = new Vector3(-1, 1, barChild2.transform.localScale.z);
-            //barChild2.transform.SetParent(transform.parent.transform);
             barChild2.transform.SetParent(bar.transform);
-            barChild2.transform.localPosition = new Vector3(displayLength, 0, 0f);
+            barChild2.transform.localScale = new Vector3(1, 1, 1);
+            barChild2.transform.localPosition = new Vector3(displayLength / barWidthScale * -10f, 0, 0f);
+            SetBarMaterial(barMat, barChild2);
         }
         
         // SetBarMaterial(isDriftGrating, _speed, _frequency, _direction, _horizontal, _barMatName, (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8f));
@@ -880,7 +898,7 @@ public class Moving : MonoBehaviour
         if(_mode == trialMode){
             return 0;
         }else{
-            if(_mode % 0x10 < 2){//zhengquemode都满足条件，以后改
+            if(_mode < 0x20){
                 trialResult.Clear();
                 trialResultPerLickPort.Clear();
                 EndTrial(isInit: true);
@@ -900,8 +918,8 @@ public class Moving : MonoBehaviour
         if(_triggerMode == trialStartTriggerMode){
             return 0;
         }else{
-
-            if(_triggerMode < 3 && IntervalCheck() == -2){
+            if(_triggerMode == 3 && !ipcclient.Activated){return -2;}
+            if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2){
                 trialStartTriggerMode = _triggerMode;
                 waitSec = -1;
                 waitSecRec = -1;
@@ -964,7 +982,7 @@ public class Moving : MonoBehaviour
     public int LickResultCheckPubic(int lickInd){
         return LickResultCheck(lickInd, nowTrial);
     }
-    int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial
+    int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测达完成trial
         if(lickTrial != nowTrial){
             Debug.LogWarning("trial not sync");
             lickTrial = nowTrial;
@@ -1005,6 +1023,7 @@ public class Moving : MonoBehaviour
                             if(lickInd == -1){
                                 ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
                             }else if(lickInd == -2){
+                                if(trialMode == 0x01){CommandVerify("p_trial_set", 2);}
                                 ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
@@ -1107,8 +1126,20 @@ public class Moving : MonoBehaviour
         return trialInfo;
     }
 
+    /// <summary>
+    /// recType: same as _recType in WriteInfo
+    /// "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "moving", "stay"
+    /// </summary>
+    /// <param name="inOrLeave"></param>
+    /// <param name="_recType"></param> 
+    /// <returns></returns> <summary>
+    /// 
+    /// </summary>
+    /// <param name="inOrLeave"></param>
+    /// <param name="_recType"></param> 
+    /// <returns></returns>
     int TriggerRespond(bool inOrLeave, int _recType){
-        if(trialStartTriggerMode == 1){
+        if(trialStartTriggerMode > 0){
             if(inOrLeave){
                 if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
                     //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
@@ -1128,6 +1159,10 @@ public class Moving : MonoBehaviour
         float tempx = (_pos[0] + _pos[2]) * 0.5f;
         float tempy = (_pos[1] + _pos[3]) * 0.5f;
         return (selectedPos[0] > tempx &&  tempx > selectedPos[2]) && (selectedPos[1] > tempy &&  tempy > selectedPos[3]);
+    }
+
+    string CheckMouseStat(){//待加其他内容
+        return "";
     }
 
     #endregion context generate end
@@ -1210,35 +1245,11 @@ public class Moving : MonoBehaviour
                 //Debug.Log("enter");
                 bool inOrLeave = command.EndsWith("In");
                 TriggerRespond(inOrLeave, 4);
-                // if(trialStartTriggerMode == 1){
-                //     if(inOrLeave){
-                //         if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
-                //             //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
-                //             contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
-                //             SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
-                //         }else{
-                //             SetTrial(manual:false, waitSoundCue: false);
-                //         }
-                //     }
-                //     WriteInfo(recType:4, _lickPos:inOrLeave? 1: 0);
-                //     //ui_update.MessageUpdate("enter");
-                // }
                 break;
             }
             case 2:{//press
                 //Debug.Log("Lever Pressed");
                 TriggerRespond(false, 5);
-                // if(trialStartTriggerMode == 2){
-                //     if(contextInfo.trialTriggerDelay[0] > 0){
-                //         //alarm.TrySetAlarm("SetTrialPressDelay", (int)(UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1])/Time.fixedUnscaledDeltaTime), out _);
-                //         contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
-                //         SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
-                //     }else{
-                //         SetTrial(manual:false, waitSoundCue: true);
-                //     }
-                //     WriteInfo(recType:5);
-                //     ui_update.MessageUpdate("Lever Pressed");
-                // }
                 break;
             }
             case 3:{//cotext_info
@@ -1268,12 +1279,12 @@ public class Moving : MonoBehaviour
             }
             case 6:{break;}
             case 7:{break;}
-            case 8:{
+            case 8:{//debugLog
                 ui_update.MessageUpdate(command);
                 break;
             }
-            case 9:{
-                TriggerRespond(false, 5);
+            case 9:{//stay
+                TriggerRespond(false, 9);
                 break;
             }
             default: break;
@@ -1514,8 +1525,8 @@ public class Moving : MonoBehaviour
         if(! returnTypeHead && nowTrial == -1){return "";}
 
         List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7        8
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay"
+            // 0        1       2     3         4          5           6           7        8         9
+            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "moving", "stay"
         };
         if(enqueueMsg != ""){
             writeQueue.Enqueue(enqueueMsg);
@@ -1546,7 +1557,7 @@ public class Moving : MonoBehaviour
                                         +$"\t"
                                         //+$"\t{(recType == 1? strLickCount : "")}"
                                         ;
-                string resultORAddInfo = null;
+                string resultORAddInfo = "";
                 switch(recType){
                     case 2:{//end
                         resultORAddInfo = trialResult[nowTrial].ToString();
@@ -1556,10 +1567,10 @@ public class Moving : MonoBehaviour
                         //resultORAddInfo = _lickPos.ToString();
                         break;
                     }
-                    // case 5:{
-                    //     resultORAddInfo = _lickPos.ToString();
-                    //     break;
-                    // }
+                    case 8:{
+                        resultORAddInfo = string.Join(";", standingPos);
+                        break;
+                    }
                     default:{
                         break;
                     }
@@ -1615,8 +1626,11 @@ public class Moving : MonoBehaviour
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
         barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "bar_width", "400"));
-        displayPixels = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixels", "2160"));
+        displayPixelsLength = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsLength", "1920"));
+        displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
+        displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
         isRing = iniReader.ReadIniContent(  "displaySettings", "isRing", "false") == "true";
+        displayVerticalPos = Math.Clamp(displayVerticalPos, -1, 2);
 
         contextInfo = new ContextInfo(
             iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
@@ -1664,7 +1678,7 @@ public class Moving : MonoBehaviour
                     Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400")),
                     Convert.ToSingle(iniReader.ReadIniContent(  matName, "speed", "1")),
                     Convert.ToSingle(iniReader.ReadIniContent(  matName, "frequency", "5")),
-                    iniReader.ReadIniContent(                   matName, "direction", "right") == "right" ? 1 : -1,
+                    iniReader.ReadIniContent(                   matName, "direction", "right") == "right" ? -1 : 1,
                     Convert.ToSingle(iniReader.ReadIniContent(  matName, "horizontal", "0")),
                     (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8)
                 );
@@ -1672,7 +1686,9 @@ public class Moving : MonoBehaviour
                     tempMat.Init(matName,
                     iniReader.ReadIniContent(matName, "mat", "#000000"),
                     materialMissing, 
-                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400"))
+                    Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400")),
+                    contextInfo.backgroundLight,
+                    contextInfo.backgroundRedMode
                 );
             }
             MaterialDict.Add(matName, tempMat);
@@ -1819,6 +1835,7 @@ public class Moving : MonoBehaviour
             if(trialStartTriggerMode == 3){
                 int[] pos = ipcclient.GetPos();
                 int[] selectedPos = ipcclient.GetselectedArea();//xy, xy
+                WriteInfo(recType:8);
                 if(pos.Length == 4 && selectedPos.Length == 4){
                     if(CheckInRegion(pos, selectedPos)){
                         standingSecNow = standingSecNow == -1? Time.unscaledTime: standingSecNow + Time.unscaledDeltaTime;

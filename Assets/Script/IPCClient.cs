@@ -8,7 +8,7 @@ public class IPCClient : MonoBehaviour
 {
     // Start is called before the first frame update
     Sharedmm sharedmm;
-    bool activited = true;
+    bool activited = true;      public bool Activated{get {return activited;}}
     int[] pos;//[l, t, r, b]
     int[] selectedArea;
 

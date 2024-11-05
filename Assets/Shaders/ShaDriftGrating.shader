@@ -52,8 +52,9 @@ Shader "Custom/ShaDriftGrating"
                 // 计算条纹的UV偏移
                 _Horizontal = sqrt(_Horizontal);
                 _Speed *= (1 - _Horizontal * 0.8);
+                _Direction = _Direction > 0? 1: -1;
 
-                float stripeOffset = _Time.y * _Speed * _Direction;
+                float stripeOffset = _Time.x * _Speed * _Direction;
                 float2 uv = float2(i.uv.x * (1 - _Horizontal) + i.uv.y * _Horizontal, i.uv.x * _Horizontal + i.uv.y * (1 - _Horizontal));
                 
                 uv.x += stripeOffset;
