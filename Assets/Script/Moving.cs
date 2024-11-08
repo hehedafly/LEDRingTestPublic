@@ -82,26 +82,24 @@ class ContextInfo{
             }
             
             errorMessage = "assign or random port parse";
+            List<int> posLs = new List<int>();
             if(startMethod.StartsWith("random")){
-                List<int> posLs = new List<int>();
-                string content = startMethod[6..];
-                string[] temp = content.Split(",");
-                posLs = temp.Select(str => Convert.ToInt32(str)).ToList();
-                if(posLs.Count() == 0){posLs = avaliablePosArray;}
+                string content = startMethod[6..].Replace(" ", "");
+                string[] temp = content.Length > 0? content.Split(",") : new string[]{};
+                Debug.Log(temp.Length > 0);
+                if(temp.Length > 0){posLs = temp.Select(str => Convert.ToInt32(str)).ToList();}
+                else{posLs = avaliablePosArray;}
                 
                 List<int> ints = new List<int>();
-                for (int i = 0; i < posLs.Count*2; i++){ints.Add(i);}
+                for (int i = 0; i < posLs.Count * 3; i++){ints.Add(i % posLs.Count);}
                 while(barPosLs.Count < _maxTrial){
-                    if(posLs.Count >= 3){
-                        Shuffle(ints);
-                        foreach(int i in ints){barPosLs.Add(posLs[ints[i % ints.Count]]);}
-                    }else{
-                        barPosLs.Add(posLs[UnityEngine.Random.Range(0, posLs.Count)]);
-                    }
+                    Shuffle(ints);
+                    foreach(int j in ints){barPosLs.Add(posLs[j]);}
                 }
 
                 
             }else if(startMethod.StartsWith("assign")){
+                posLs = avaliablePosArray;
                 string lastUnit = "";
                 foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
@@ -128,34 +126,59 @@ class ContextInfo{
             errorMessage = "assign or random mat parse";
             if(matStartMethod.StartsWith("random")){
                 List<string> matLs = new List<string>();
-                if(matStartMethod.Contains(",")){matLs = matStartMethod[6..].Split(",").ToList();}
-                if(matLs.Count() == 0){matLs = matAvaliableArray;}
+                string content = matStartMethod[6..].Replace(" ", "");
+                string[] temp = content.Length > 0? content.Split(",") : new string[]{};
+                if(temp.Length > 0){matLs = temp.ToList();}
+                else{matLs = matAvaliableArray;}
 
-                List<int> ints = new List<int>();
-                for (int i = 0; i < matLs.Count; i++){ints.Add(i % matLs.Count);}
-                for (int i=0; i<_maxTrial; i++){
-                    if(i % ints.Count == 0){
-                        Shuffle(ints);
+                bool posMatMatch = true;
+                if(matLs.Count != posLs.Count){
+                    if(MessageBoxForUnity.YesOrNo("materials random setting does not match the pos settings, are you want to quit and edit?", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                        Quit();
                     }
-                    barmatLs.Add(matLs[ints[i % ints.Count]]);
+                    posMatMatch = false;
+                }
+
+                if(posMatMatch && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                    errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
+                    for (int i=0; i<_maxTrial; i++){
+                        barmatLs.Add(matAvaliableArray[avaliablePosArray.IndexOf(barPosLs[i])]);
+                    }
+                }else{
+
+                    List<int> ints = new List<int>();
+                    for (int i = 0; i < matLs.Count; i++){ints.Add(i % matLs.Count);}
+                    for (int i=0; i<_maxTrial; i++){
+                        if(i % ints.Count == 0){
+                            Shuffle(ints);
+                        }
+                        barmatLs.Add(matLs[ints[i % ints.Count]]);
+                    }
                 }
                 
             }else if(matStartMethod.StartsWith("assign")){
-                string lastUnit = "";
-                foreach(string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
-                    ProcessMatUnit(mat);
-                    lastUnit = mat;
-                }
-
-                for(int i=barmatLs.Count(); i<_maxTrial; i++){
-                    if(_matAssigned.EndsWith("..")){
-                        while(barmatLs.Count() < maxTrial){
-                            ProcessMatUnit(lastUnit);
-                        }
-                    }else{
-                        barmatLs.Add(matAvaliableArray[UnityEngine.Random.Range(0, matAvaliableArray.Count)]);
+                if(MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                    errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
+                    for (int i=0; i<_maxTrial; i++){
+                        barmatLs.Add(matAvaliableArray[avaliablePosArray.IndexOf(barPosLs[i])]);
                     }
-                    //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
+                }else{
+                    string lastUnit = "";
+                    foreach(string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
+                        ProcessMatUnit(mat);
+                        lastUnit = mat;
+                    }
+
+                    for(int i=barmatLs.Count(); i<_maxTrial; i++){
+                        if(_matAssigned.EndsWith("..")){
+                            while(barmatLs.Count() < maxTrial){
+                                ProcessMatUnit(lastUnit);
+                            }
+                        }else{
+                            barmatLs.Add(matAvaliableArray[UnityEngine.Random.Range(0, matAvaliableArray.Count)]);
+                        }
+                        //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
+                    }
                 }
             }
             else{
