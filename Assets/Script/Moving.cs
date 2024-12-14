@@ -17,7 +17,7 @@ using UnityEngine.Experimental.GlobalIllumination;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, float _s_wait_sec, float _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
         startMethod = _start_method;
         matStartMethod = _matStart_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
@@ -28,12 +28,11 @@ class ContextInfo{
         barLastingTime = _barLastingTime;
         waitFromLastLick = _waitFromLastLick;
         soundLength = _soundLength;
-        sWaitSec = _s_wait_sec;
-        fWaitSec = _f_wait_sec;
         trialExpireTime = _trialExpireTime;
         trialTriggerMode = _trialStartType;
         barPosLs = new List<int>();
         barmatLs = new List<string>();
+        materialsInfo = new List<string>();
 
         string errorMessage = "";
         try{
@@ -156,8 +155,8 @@ class ContextInfo{
                     }
                 }
                 
-            }else if(matStartMethod.StartsWith("assign")){
-                if(MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+            }else if(matStartMethod.StartsWith("assign")){//有多种barmat时才考虑align
+                if(matAvaliableArray.Count > 1 && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                     errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
                     for (int i=0; i<_maxTrial; i++){
                         barmatLs.Add(matAvaliableArray[avaliablePosArray.IndexOf(barPosLs[i])]);
@@ -187,58 +186,24 @@ class ContextInfo{
             }
 
             errorMessage = "trialInterval";
-            if(_trialInterval.StartsWith("random")){
-                string[] temp_ls=_trialInterval[6..].Split("~");
-                if(temp_ls.Length==2){
-                    try{
-                        trialInterval = new List<float>{-1, -1};
-                        trialInterval[0] = Convert.ToSingle(temp_ls[0]);
-                        trialInterval[1] = Convert.ToSingle(temp_ls[1]);
-                        if(trialInterval[0] >= trialInterval[1]){
-                            trialInterval[1] = trialInterval[0];
-                        }
-                    }catch{
-                        Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
-                        trialInterval = new List<float>{15, 45};
-                    }
-                }else{
-                    Debug.Log("error in _trialWaitSec parse");
-                    trialInterval = new List<float>{15, 45};
-                }
-            }else{
-                trialInterval = new List<float>{-1, -1};
-                if(float.TryParse(_trialInterval, out float _interval)){
-                    trialInterval[0] = _interval;
-                    trialInterval[1] = _interval;
-                }
-            }
+            trialInterval = new List<float>{};
+            RandomParse(_trialInterval, trialInterval);
+
+            errorMessage = "interval when success or fail";
+            sWaitSec = new List<float>();
+            fWaitSec = new List<float>();
+            RandomParse(_s_wait_sec, sWaitSec);
+            RandomParse(_f_wait_sec, fWaitSec);
 
             errorMessage = "trialTriggerDelay";
-            if(_trialTriggerDelay.StartsWith("random")){
-                string[] temp_ls=_trialTriggerDelay[6..].Split("~");
-                if(temp_ls.Length==2){
-                    try{
-                        trialTriggerDelay = new List<float>{-1, -1};
-                        trialTriggerDelay[0] = Convert.ToSingle(temp_ls[0]);
-                        trialTriggerDelay[1] = Convert.ToSingle(temp_ls[1]);
-                        if(trialTriggerDelay[0] >= trialTriggerDelay[1]){
-                            trialTriggerDelay[1] = trialTriggerDelay[0];
-                        }
-                    }catch{
-                        Debug.Log($"error in _trialWaitSec parse, invalid input: {temp_ls[0]}, {temp_ls[1]}");
-                        trialTriggerDelay = new List<float>{1.5f, 2};
-                    }
-                }else{
-                    Debug.Log("error in _trialWaitSec parse");
-                    trialTriggerDelay = new List<float>{2, 3};
-                }
-            }else{
-                trialTriggerDelay = new List<float>{-1, -1};
-                if(float.TryParse(_trialTriggerDelay, out float _interval)){
-                    trialTriggerDelay[0] = _interval;
-                    trialTriggerDelay[1] = _interval;
-                }
-            }
+            trialTriggerDelay = new List<float>();
+            RandomParse(_trialTriggerDelay, trialTriggerDelay);
+
+
+            errorMessage = "waitFromStart";
+            waitFromStart = new List<float>();
+            RandomParse(_waitFromStart, waitFromStart);
+            
         }
         catch{
             MessageBoxForUnity.Ensure($"Value Error in Config: {errorMessage}", "Config Parse Failed");
@@ -251,29 +216,57 @@ class ContextInfo{
     public string       startMethod     {get;}
     public List<int>    avaliablePosArray {get;}//最多8个，从角度0开始对位置顺时针编号0-7
     public string       matStartMethod     {get;}
-    public List<string>    matAvaliableArray {get;}
+    public List<string> matAvaliableArray {get;}
     public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
     public List<int>    pumpPosLs       {get;}
     public int          maxTrial        {get;}
     public int          seed            {get;}
-    public float        barDelayTime    {get;}
+    public float        barDelayTime    {get;}//主动触发的trial间最短间隔
     public float        barLastingTime  {get;}
+    public List<float>  waitFromStart   {get;}
     public float        waitFromLastLick{get;}
     public float        soundLength     {get;}
     public int          backgroundLight {get;}
-    public int         backgroundRedMode{get;}
+    public int          backgroundRedMode{get;}
     public List<float>  trialInterval   {get;}
-    public float        sWaitSec        {get;}
-    public float        fWaitSec        {get;}
+    public List<float>  sWaitSec        {get;}
+    public List<float>  fWaitSec        {get;}
     public int          trialTriggerMode{get;}
     public List<float>  trialTriggerDelay{get;}
     public float        trialExpireTime {get;}
+    public List<string> materialsInfo   {get;set;}
 
     [JsonIgnore]
     List<int>    barPosLs        {get;}
     List<string>    barmatLs        {get;}
     [JsonIgnore]
-    public float soundCueLeadTime   {get;set;}
+    public float soundCueLeadTime   {get;set;}//仅在延时模式下trial开始时使用
+    [JsonIgnore]
+    public float GoCueLeadTime   {get;set;}
+
+    void RandomParse<T>(string randomArg, List<T> ls){
+        if(randomArg.StartsWith("random")){
+            string[] temp_ls=randomArg[6..].Split("~");
+            if(temp_ls.Length==2){
+                try{
+                    ls.Clear();
+                    ls.Add((T)Convert.ChangeType(temp_ls[0], typeof(T)));
+                    ls.Add((T)Convert.ChangeType(temp_ls[1], typeof(T)));
+                    ls.Sort();
+                }catch{
+                    Debug.Log($"error in parse, invalid input: {randomArg}");
+                    throw new Exception("");
+                }
+            }else{
+                Debug.Log("error in parse, invalid input: {randomArg}");
+                throw new Exception("");
+            }
+        }else{
+            ls.Clear();
+            ls.Add((T)Convert.ChangeType(randomArg, typeof(T)));
+            ls.Add((T)Convert.ChangeType(randomArg, typeof(T)));
+        }
+    }
 
     void ProcessUnit(string pos){
         List<int> _pos = new List<int>{};
@@ -388,7 +381,7 @@ class ContextInfo{
     }
 
     public bool verify(int lickInd, int trial){//传入的lickInd为RawInd,需要经过LickPos转换
-        if(lickInd < 0 || lickInd >= lickPosLs.Count()){
+        if(lickInd < 0){
             return false;
         }
         int rightBarPosInd = GetRightLickPosIndInTrial(trial);
@@ -406,6 +399,7 @@ class ContextInfo{
 public class Moving : MonoBehaviour
 {
     public bool InApp = false;
+    bool DebugWithoutArduino = false;
     public GameObject background;
     public GameObject barPrefab;
     public GameObject circleBarPrefab;
@@ -413,6 +407,8 @@ public class Moving : MonoBehaviour
     public UnityEngine.UI.Slider slider;
     public Material materialMissing;
     public Material driftGratingBase;
+    int barWidth;
+    int barHeight;
     int displayPixelsLength;
     int displayPixelsHeight;
     float displayVerticalPos = 0.5f;
@@ -421,34 +417,56 @@ public class Moving : MonoBehaviour
     GameObject barChild;
     GameObject barChild2;
     GameObject centerShaft;
-    int barWidth;
     float trialInitTime = 0;    public float TrialInitTime {get{return trialInitTime;}}
     float trialStartTime = -1;
-    float waitSecRec = -1;
+    /// <summary>
+    /// 设置为上一个tiral的end trial时间，不清零
+    /// </summary>
+    // float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value; Debug.Log("waitSecRecChanged: "+value);}}
+    float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value;}}
     float waitSec = -1;
     float[] standingPos = new float[2];
     float standingSec = -1;
     float standingSecNow = -1;
+    float[] standingPosInTrial = new float[2];
+    float standingSecInTrial = -1;
+    float standingSecNowInTrial = -1;
     bool waiting = true;
     bool forceWaiting = true;
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
-    int trialMode = 0x00;// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的，舔到错的
+    int trialMode = 0x00;// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间
                          // 0x0?, 0x1? : 0:trial开始就给水; 1:舔了才给水
                         public int TrialMode { get { return trialMode; } }
-                                List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11};
+                                List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11, 0x20, 0x21};
                         public  List<int> TrialModes { get { return trialModes; } }
 
-    int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆, 3：视频检测位置
+    int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆, 3：视频检测位置, 4: trial结束后便开始
     public int TrialStartTriggerMode {get{return trialStartTriggerMode;}}
     List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆", "位置检测"};
+    public List<int> TrialSoundPlayMode = new List<int>{};
+    public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
+
+    /// <summary>
+    /// {"Off", 0}, {"BeforeTrial", 1}, {"NearStart", 2}, {"BeforeGoCue", 3}, {"BeforeLickCue", 4}, {"InPos", 5}, {"EnableReward", 6}, {"AtFail", 7}
+    /// </summary>
+    /// <typeparam name="string"></typeparam>
+    /// <typeparam name="int"></typeparam>
+    /// <returns></returns>
+    public Dictionary<string, int> TrialSoundPlayModeCorresponding = new Dictionary<string, int>(){};//0 无声音、1 trial开始前、2将要开始trial但延迟、3 可以舔之前、4 开始后可以舔时、5 trial中、6 可获取奖励、7 失败
+    public Dictionary<int, string> TrialSoundPlayModeAudio = new Dictionary<int, string>{};//int(key): TrialSoundPlayModeCorresponding.values; value: "6000hz", "alarm"
     bool trialStartReady = false;
     List<int> trialResult = new List<int>();//1:success 0:fail -1:manully skip -2:manually successful skip -3:unimportant fail(in mode 0x00 and 0x01)
-    List<List<int>> trialResultPerLickPort = new List<List<int>>();//0, 2, 4, 6,...success/fail, 1, 3, 5, 7,...:miss
+    List<List<int>> trialResultPerLickSpout = new List<List<int>>();//0, 2, 4, 6,...success/fail, 1, 3, 5, 7,...:miss
     List<int> lickPosLsCopy;
     
     List<List<int>> lickCount = new List<List<int>>();
-    AudioSource audioSource;
-    float[] audioPlayTime = new float[3];
+    public Dictionary<string, AudioSource> audioSources = new Dictionary<string, AudioSource>{};
+    public Dictionary<string, int> audioSourceInds = new Dictionary<string, int>();
+    Dictionary<int, float[]> audioPlayTimes = new Dictionary<int, float[]>{};
+    // float[] cueSoundPlayTime    {get{return audioPlayTimes.Count > 0? audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]]: new float[3];} set{if(audioPlayTimes.Count > 0){audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]] = value;}}}
+    float alarmPlayTimeInterval;
+    bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
+    float alarmLickDelaySec = 2;
     UIUpdate ui_update;
     IPCClient ipcclient;
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
@@ -513,7 +531,6 @@ public class Moving : MonoBehaviour
             material.SetFloat("_Horizontal", horizontal);
             if(_backgroundLight >= 0){
                 material.SetFloat("_BackgroundLight", backgroundLight);
-                material.SetFloat("_Frequency", frequency * 2);
             }
             material.name = name;
 
@@ -564,7 +581,7 @@ public class Moving : MonoBehaviour
                     Texture2D texture = new Texture2D(100, 100);
                     texture.LoadImage(bytes);
                     material.SetTexture("_MainTex", texture);
-                    material.mainTextureScale = new Vector2(width/400, 5);
+                    material.mainTextureScale = new Vector2(width/400, 1);
                 }else{
                     Debug.LogWarning($"No such Material named {_mat}.png");
                 }
@@ -576,6 +593,17 @@ public class Moving : MonoBehaviour
         public void SetMaterial(GameObject gameObject){
             gameObject.GetComponent<MeshRenderer>().material = material;
         }
+
+        public string PrintArgs(){
+            return $"name:{name}, "+
+                    $"isDriftGrating {isDriftGrating }"+
+                    $"width          {width          }"+
+                    $"backgroundLight{backgroundLight}"+
+                    $"speed          {speed          }"+
+                    $"frequency      {frequency      }"+
+                    $"direction      {direction      }"+
+                    $"horizontal     {horizontal     }";
+        }
     }
 
     void Quit(){
@@ -584,6 +612,10 @@ public class Moving : MonoBehaviour
         #else
             Application.Quit();
         #endif
+    }
+    
+    T GetRandom<T>(List<T> _range){
+        return (T)Convert.ChangeType(UnityEngine.Random.Range(Convert.ToSingle(_range[0]), Convert.ToSingle(_range[1])), typeof(T));
     }
 
     public float DegToPos(float deg){
@@ -648,7 +680,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    void DeactivateBar(){
+    void DeactivateBar(){//后续和endtrial分离?
         bar.SetActive(false);
         if(barChild != null && barChild2 != null){
             barChild.SetActive(false);
@@ -686,7 +718,7 @@ public class Moving : MonoBehaviour
         bool _isCircleBar = barMat.IsCircleBar;
 
         float displayLength = (float)displayPixelsLength / 100;
-        float displayHeight = (float)displayPixelsHeight / 100;
+        float displayHeight = (float)barHeight / 100;
         float barWidthScale = (float)(displayLength * barWidth) / displayPixelsLength;
         GameObject tempPrefab = _isCircleBar? circleBarPrefab: barPrefab;
         bar = Instantiate(tempPrefab);
@@ -733,6 +765,98 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
+    /// <summary>
+    /// audioSources.ContainsKey(soundName) -> audioSources[soundName].Play(), return 1: played, 0: alarm not ready
+    /// </summary>
+    /// <param name="soundName"></param>
+    /// <param name="isAlarm"></param>
+    /// <returns></returns> <summary>
+    /// 
+    /// </summary>
+    /// <param name="soundName"></param>
+    /// <param name="isAlarm"></param>
+    /// <returns></returns>
+    int PlaySound(string soundName = "6000hz", string addInfo = ""){
+        if(!audioSources.ContainsKey(soundName)){ return -1;}
+        if(audioSources[soundName].isPlaying){return 0;}
+
+
+        if(soundName == "alarm"){
+            if(alarmPlayReady){
+                Debug.Log("sound played: " + soundName);
+                audioSources[soundName].Play();
+                WriteInfo(recType:9, _lickPos:audioSourceInds[soundName], addInfo:addInfo);
+                alarmPlayReady = false;
+                alarm.TrySetAlarm("SetAlarmReadyToTrue", alarmPlayTimeInterval, out _);
+            }
+            else{
+                return 0;
+            }
+        }else{
+            Debug.Log("sound played: " + soundName);
+            audioSources[soundName].Play();
+            WriteInfo(recType:9, _lickPos:audioSourceInds[soundName], addInfo:addInfo);
+        }
+        return 1;
+    }
+
+    /// <summary>
+    /// Look for TrialSoundPlayModeCorresponding.keys, 可随意设置，仅在soundMode包括对应模式时才会真正播放声音
+    /// </summary>
+    /// <param name="soundMode"></param>
+    /// <param name="isAlarm"></param>
+    /// <returns></returns>
+    int PlaySound(int soundMode, string addInfo = ""){
+        if(TrialSoundPlayMode.Contains(soundMode)){
+            int playResult = PlaySound(TrialSoundPlayModeAudio[soundMode], addInfo:addInfo);
+            Debug.Log("playResult"+playResult);
+            if(playResult == 1){
+                float[] _audioPlayTime = audioPlayTimes[soundMode];
+                _audioPlayTime[1] = Time.fixedUnscaledTime;
+                _audioPlayTime[2] = Time.fixedUnscaledTime + (TrialSoundPlayModeAudio[soundMode] == "alarm"? alarmPlayTimeInterval:  _audioPlayTime[0]);
+                // Debug.Log(string.Join(", ", _audioPlayTime));
+            }
+
+            return playResult;
+        }else{
+            return -1;
+        }
+    }
+
+    int StopSound(string audioName = "", bool all = true){
+        if(audioName != ""){all = false;}
+        foreach(string _soundName in audioSources.Keys){
+            if(audioSources[_soundName].isPlaying && ((audioName != "" && _soundName == audioName) || all)){
+                audioSources[_soundName].Stop();
+                // Debug.Log("sond stopped: "+ _soundName);
+            }
+        }
+        return 1;
+    }
+
+    int StopSound(int soundMode, bool all = true){
+        float[] tempTimes = audioPlayTimes[soundMode];
+        if(tempTimes[2] > 0){
+            audioPlayTimes[soundMode][1] = -1;
+            audioPlayTimes[soundMode][2] = -1;
+            return StopSound(TrialSoundPlayModeAudio[soundMode], all:all);
+        }else{
+            return -1;
+        }
+    }
+
+    void TryStopSound(){
+        foreach(int soundMode in TrialSoundPlayMode){
+            float[] tempTimes = audioPlayTimes[soundMode];
+            if(tempTimes[0] > 0 && tempTimes[2] > 0){
+                if(Time.fixedUnscaledTime >= tempTimes[2]){
+                    StopSound(soundMode);
+                }
+            }
+        }
+
+    }
+
     int ContextInitSync(){
         List<string> names = new List<string>(){"p_lick_mode", "p_trial"};
         List<int> values = new List<int>(){trialMode % 0x10, 0};
@@ -773,21 +897,20 @@ public class Moving : MonoBehaviour
         }
         
         if(trialStartTriggerMode == 0 && manual || (!manual && trialStartReady == true)){
-            if(waitSoundCue && audioPlayTime[0] > 0){
-                // waiting = true;
-                // float _waitSec = contextInfo.soundCueLeadTime + 0.5f;
-                // waitSec = _waitSec;
-                // waitSecRec = Time.fixedUnscaledTime;
-                audioSource.Play();
-                audioPlayTime[1] = Time.fixedUnscaledTime;
-                audioPlayTime[2] = Time.fixedUnscaledTime + audioPlayTime[0];
-                alarm.TrySetAlarm("StartTrialWaitSoundCue", _waitSec == -1? audioPlayTime[0]: _waitSec, out _);
-                trialStartReady = false;//无论声音，无论mode，到这步直接设false
+            trialStartReady = false;//无论声音，无论mode，到这步直接设false
+            if(waitSec < 0){
+                // contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
+                contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
+            }
+
+            if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && waitSoundCue){//需要根据是否有声音决定trial开始方式，不能省略contains
+                PlaySound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+                waiting = true;
+                alarm.TrySetAlarm("StartTrialWaitSoundCue", _waitSec < 0? contextInfo.soundLength + contextInfo.soundCueLeadTime: _waitSec, out _);
                 WriteInfo(recType: 7);
                 return 0;
             }else{
                 StartTrial();
-                trialStartReady = false;//无论声音，无论mode，到这步直接设false
                 return 0;
             }
         }else{
@@ -799,39 +922,53 @@ public class Moving : MonoBehaviour
         nowTrial = -1;
         ContextInitSync();
         forceWaiting = false;
+        waiting = true;
         waitSec = -1;
         waitSecRec = -1;
+        trialStartTime = -1;
         lickCount.Clear();
         trialResult.Clear();
-        trialResultPerLickPort.Clear();
-        trialResultPerLickPort = new List<List<int>>(){};
+        trialResultPerLickSpout.Clear();
+        trialResultPerLickSpout = new List<List<int>>(){};
         // foreach(int _ in contextInfo.avaliablePosArray){
         // foreach(int _ in contextInfo.avaliablePosArray){
         for(int i = 0; i < 8; i++){//暂时固定为8
-            trialResultPerLickPort.Add(new List<int>());
-            trialResultPerLickPort.Add(new List<int>());
+            trialResultPerLickSpout.Add(new List<int>());
+            trialResultPerLickSpout.Add(new List<int>());
         }
-        audioPlayTime = new float[]{audioPlayTime[0], -1, -1};
-        audioSource.Stop();
+        // cueSoundPlayTime = new float[]{cueSoundPlayTime[0], -1, -1};
+        StopSound();
+        DeactivateBar();
         trialInitTime = Time.fixedUnscaledTime;
         ui_update.MessageUpdate("Trial initialized");
         return 0;
     }
 
     int StartTrial(bool isInit = false){//根据soundCueLeadTime在alarm中设置waiting
-        // if(isInit){
-        //     InitTrial();
-        // }else{
-        // }
+ 
         nowTrial++;
         trialStartTime = Time.fixedUnscaledTime;
         ContextStartSync();
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
-        SetBarMaterial(GetMaterialStruct(tempMatName));
+        MaterialStruct tempMs = GetMaterialStruct(tempMatName);
+        // Debug.Log(tempMs.PrintArgs());
+        SetBarMaterial(tempMs);
+        alarmPlayReady = true;//为waiting的delay允许alarm
 
         //waiting = false;
-        alarm.SetAlarm(1, (int)(contextInfo.barDelayTime/Time.fixedDeltaTime), "SetWaitingToFalseAtTrialStart");
+
+        // float tempDelay = contextInfo.waitFromStart[0] > 0 ? UnityEngine.Random.Range(contextInfo.waitFromStart[0], contextInfo.waitFromStart[1]): 0;
+        float tempDelay = contextInfo.waitFromStart[0] > 0 ? GetRandom(contextInfo.waitFromStart): 0;
+        contextInfo.GoCueLeadTime = tempDelay;
+        alarm.TrySetAlarm("PlaySoundWhenSetWaitingToFalse", (int)(tempDelay/Time.fixedDeltaTime), out _);
+        alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", 1, out _);
+        alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlaySoundWhenSetWaitingToFalse");
         ActivateBar(trial: nowTrial);
+
+        if(trialStartTriggerMode == 0){
+            // contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
+            contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
+        }
 
         string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarPos(nowTrial)},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
         if(nowTrial > 0){
@@ -843,6 +980,7 @@ public class Moving : MonoBehaviour
         }
         ui_update.MessageUpdate(_tempMsg);
         WriteInfo(recType: 1);
+
         List<int> ints = new List<int>();
         // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
         for(int i = 0; i < 8; i++){//暂时固定为8
@@ -853,25 +991,34 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickPort = -1, float trialReadyWaitSec = -1){
+    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1){
         ContextEndSync();
         if(isInit || !trialSuccess){DeactivateBar();}
-        else{alarm.SetAlarm(0, (int)(contextInfo.barLastingTime/Time.fixedDeltaTime), "DeactiveBar");}
+        else{alarm.TrySetAlarm("DeactiveBar", contextInfo.barLastingTime, out _);}
+        
+        if(!isInit && !trialSuccess){PlaySound(TrialSoundPlayModeCorresponding["AtFail"]);}
 
         waiting = true;
-        WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickPort);
-        //Debug.Log("rightLickPort" + rightLickPort);
+        alarmPlayReady = false;
+        alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);
+        alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
+
+        
+        WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
+        //Debug.Log("rightLickSpout" + rightLickSpout);
 
         if(!isInit){
             waitSecRec = Time.fixedUnscaledTime;
+            
             //lickCount.Clear();
             if(contextInfo.trialInterval[0] > 0){
                 float _temp_waitSec;
                 if(trialStartTriggerMode == 0){
-                    _temp_waitSec = UnityEngine.Random.Range(contextInfo.trialInterval[0], contextInfo.trialInterval[1]);
+                    // _temp_waitSec = UnityEngine.Random.Range(contextInfo.trialInterval[0], contextInfo.trialInterval[1]);
+                    _temp_waitSec = GetRandom(contextInfo.trialInterval);
                 }else{//其他主动触发模式，用于intervalCheck
                     //_temp_waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
-                    _temp_waitSec = trialSuccess? contextInfo.barDelayTime: 0;
+                    _temp_waitSec = contextInfo.barDelayTime;
                 }
 
                 if(_temp_waitSec > 0){
@@ -881,16 +1028,31 @@ public class Moving : MonoBehaviour
                 waitSec = _temp_waitSec;
             }else{
                 if(trialStartTriggerMode == 0){
-                    waitSec = trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec;
+                    
+                    waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
+                    ui_update.MessageUpdate($"Interval: {waitSec}");
+
                 }else{//其他主动触发模式
+                    waitSec = contextInfo.barDelayTime;
+                    ui_update.MessageUpdate($"Interval: {waitSec}");
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
                     // ui_update.MessageUpdate($"Interval: {waitSec}");
                     // Debug.Log($"Interval: {waitSec}");
                 }
             }
-            if(trialReadyWaitSec <= 0) {trialStartReady = true;}
+            
+            if(trialReadyWaitSec <= 0){
+                trialStartReady = true;
+            }
             else{
                 alarm.TrySetAlarm("SetTrialReadyToTrue", trialReadyWaitSec, out _);
+            }
+
+            if(trialStartTriggerMode == 4){
+                alarm.TrySetAlarm("SetTrialAfterReady", 1, out _);
+                if(alarm.GetAlarm("SetTrialReadyToTrue") > -1){
+                    alarm.StartAlarmAfter("SetTrialAfterReady", "SetTrialReadyToTrue");
+                }
             }
         }
         trialStartTime = -1;
@@ -898,18 +1060,24 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    int IntervalCheck(){//-2:完全处于空闲时期，0：已经可以开始下一个trial，1/-1：已经可以播放声音
+    /// <summary>
+    /// 根据waitSecRec以及waitSec判断， -2:完全处于空闲时期，0：已经可以开始下一个trial，1/-1：已经可以播放声音
+    /// </summary>
+    /// <returns></returns>
+    int IntervalCheck(){
         //waitSecRec以及waitSec每个trial不初始化，可以持续使用
         float soundCueLeadTime = contextInfo.soundCueLeadTime;
         float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
-        if(waitSec == -1 || waitSecRec == -1){
+        // Debug.Log(_lasttime);
+        if(waitSec < 0 || waitSecRec == -1){
             return -2;
         }
 
         if(Time.fixedUnscaledTime - waitSecRec >= waitSec){
+            Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
-        else if(Math.Abs(_lasttime - (audioPlayTime[0] + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
+        else if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
             return soundCueLeadTime > 0? 1: -1;
         }
         else{
@@ -923,7 +1091,7 @@ public class Moving : MonoBehaviour
         }else{
             if(_mode < 0x20){
                 trialResult.Clear();
-                trialResultPerLickPort.Clear();
+                trialResultPerLickSpout.Clear();
                 EndTrial(isInit: true);
                 trialMode = _mode;
                 nowTrial = -1;
@@ -957,18 +1125,53 @@ public class Moving : MonoBehaviour
         }
     }
 
+    public int ChangeCueSoundPlayMode(int _playMode, bool addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
+        // if(audioSources[0].isPlaying){return -1;}
+        // else{
+            if(TrialSoundPlayMode.Contains(0)){
+
+            }else{
+                if(contextInfo.soundLength > 0){
+
+                }else{
+                    ui_update.MessageUpdate("Invlid sound length!");
+                    return -2;
+                }
+            }
+
+            if(addOrRemove){//add
+                if(TrialSoundPlayMode.Contains(_playMode)){return 0;}
+                TrialSoundPlayMode.Add(_playMode);
+                TrialSoundPlayModeAudio[_playMode] = soundName;
+                audioPlayTimes.Add(_playMode, new float[]{contextInfo.soundLength, -1, -1});
+            }
+            else{//remove
+                if(clearAll || clearOtherAll){
+                    TrialSoundPlayMode.Clear();
+                    TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
+                }
+                if(!TrialSoundPlayMode.Contains(_playMode)){return 0;}
+                TrialSoundPlayMode.Remove(_playMode);
+                audioPlayTimes.Remove(_playMode);
+            }
+        // }
+        return 1;
+    }
+
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
-        if(lickInd < 0){return -1;}
+        if(lickInd < 0 || lickTrial < 1){return -1;}
 
         if(getOrSet == "set"){
             if(lickCount.Count <= lickTrial){
-                List<int> ints = new List<int>();
-                // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
-                for(int i = 0; i < 8; i++){//临时固定为最多8个
-                    ints.Add(0);
+                while(lickCount.Count <= lickTrial){
+                    if(lickCount.Count == lickTrial){
+                        List<int> ints = new int[8].ToList();
+                        ints[lickInd] ++;
+                        lickCount.Add(ints);
+                    }else{
+                        lickCount.Add(new int[8].ToList());
+                    }
                 }
-                ints[lickInd] ++;
-                lickCount.Add(ints);
             }else{
                 //Debug.Log(string.Join(",", lickCount[nowTrial]));
                 lickCount[nowTrial][lickInd]++;
@@ -976,20 +1179,23 @@ public class Moving : MonoBehaviour
         }else if(getOrSet == "get"){
             if(lickTrial >= lickCount.Count){
                 Debug.Log($"index out of lickCountLs range: lickInd {lickInd}, list length {lickCount.Count}");
+            }else{
+                return lickCount[lickTrial][lickInd];
             }
         }else{
-            return lickCount[lickTrial][lickInd];
+            Debug.Log("wrong command in lickCountGetSet");
+            return -1;
         }
         return 1;
     }
 
-    int LickResultAdd(int result, int trial, int lickPort, int rightLickPort, bool force = false){
+    int LickResultAdd(int result, int trial, int LickSpout, int rightLickSpout, bool force = false){
         if(trialResult.Count() == trial){
             trialResult.Add(result);
-            if(lickPort >= 0){
-                trialResultPerLickPort[lickPort*2].Add(result);
+            if(LickSpout >= 0){
+                trialResultPerLickSpout[LickSpout*2].Add(result);
                 if(result == 0){
-                    trialResultPerLickPort[rightLickPort*2+1].Add(1);
+                    trialResultPerLickSpout[rightLickSpout*2+1].Add(1);
                 }
             }
         }else{
@@ -1005,20 +1211,18 @@ public class Moving : MonoBehaviour
     public int LickResultCheckPubic(int lickInd){
         return LickResultCheck(lickInd, nowTrial);
     }
-    int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测达完成trial
+
+    int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial
         if(lickTrial != nowTrial){
             Debug.LogWarning("trial not sync");
             lickTrial = nowTrial;
         }
         
         int rightLickInd = contextInfo.GetRightLickPosIndInTrial(lickTrial);
-        if(nowTrial == -1){
-            return 0;
+        
+        if(lickInd >= 0 && trialMode >> 4 == 3){
+            lickInd = -4;
         }
-        // if(lickInd >= contextInfo.avaliablePosArray.Count){
-        //     Debug.LogWarning($"invalid Lick Port: {lickInd}");
-        //     return -1;
-        // }
 
         lickCountGetSet("set", lickInd, lickTrial);
 
@@ -1032,8 +1236,9 @@ public class Moving : MonoBehaviour
             //     return -2;//错误trial
             // }
 
-            if(trialMode < 0x20){
-                if(trialMode < 0x10){//只要舔到对的就进入下一个，不管错没错，待endtrial结束进入下一个trial
+            if(trialMode < 0x30){
+                if(trialMode >> 4 == 0){
+                    //只要舔到对的就进入下一个，不管错没错，待endtrial结束进入下一个trial
                     if(result || lickInd == -2){
                         if(lickInd >= 0){
                             LickResultAdd(1, nowTrial, lickInd, rightLickInd);
@@ -1050,14 +1255,15 @@ public class Moving : MonoBehaviour
                                 ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
-                        EndTrial(trialSuccess: true, rightLickPort: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
+                        EndTrial(trialSuccess: true, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                     }else{
                         LickResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd, rightLickInd);
                         if(lickInd == -1){
-                            EndTrial(trialSuccess:false, rightLickPort: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
+                            EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                         }
                     }
-                }else{//只能舔对的
+                }else if(trialMode >> 4 == 1){
+                    //只能舔对的
                     result = result || lickInd == -2;
                     LickResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
                     if(result && trialMode == 0x11){CommandVerify("p_trial_set", 2);}
@@ -1067,29 +1273,31 @@ public class Moving : MonoBehaviour
                     }else{
                         ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {lickInd}, right place: {rightLickInd}");
                     }
-                    EndTrial(trialSuccess: result, rightLickPort: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
+                    EndTrial(trialSuccess: result, rightLickSpout: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
+                }else if(trialMode >> 4 == 2){//到特定地方
+                    if(lickInd == -3){
+                        CommandVerify("p_trial_set", 2);
+                        DeactivateBar();
+                        ui_update.MessageUpdate("Trial finished");
+                    }else if(lickInd == -4){
+                        EndTrial(trialSuccess: true);
+                        ui_update.MessageUpdate("Trial end");
+                    }
                 }
                 ui_update.MessageUpdate();
 
             }else{
-                //mode错误
-                //trialResult.Add(-1);
+                
             }
             return 1;//正常判断完成
         }else{
             ui_update.MessageUpdate();
-            //alarm.SetAlarm("StartTrialWaitSoundCue", (int)alarm.GetAlarm("StartTrialWaitSoundCue")+1);
-            // alarm.DeleteAlarm("StartTrialWaitSoundCue", forceDelete:true);
-            // WriteInfo(recType:6);//计expire
-            //暂时不需要在trial间对lick做进一步处理
-            //waitSecRec = Time.fixedUnscaledTime;
-            //Debug.Log($"still licking");
             return -3;//不需要判断，已返回给commandParse做延时处理
         }
     }
 
     public Dictionary<string, int> GetTrialInfo(){
-        int showLickPortNum = contextInfo.avaliablePosArray.Count;
+        int showLickSpoutNum = contextInfo.avaliablePosArray.Count;
         /*
         "NowTrial"    
         "IsPausing"   
@@ -1099,50 +1307,50 @@ public class Moving : MonoBehaviour
         "lickCount"0,1,2...
         "TrialSuccessNum"0,1,2...
         "TrialFailNum"0,1,2...
-        "LickPortTotalTrial"0,1,2...
-        "lickPort"0,1,2...
+        "LickSpoutTotalTrial"0,1,2...
+        "LickSpout"0,1,2...
         */
         Dictionary<string, int> trialInfo = new Dictionary<string, int>
         {
             {"NowTrial"         , nowTrial},
             {"IsPausing"        , forceWaiting? 1: 0},
             {"NowPos"           , contextInfo.GetRightLickPosIndInTrial(nowTrial)},
-            {"lickPosCount"     , showLickPortNum},
+            {"lickPosCount"     , showLickSpoutNum},
             {"waitSec"          , Convert.ToInt16(waitSec)},
             {"TrialSuccessNum"  , trialResult.FindAll(value => value == 1).Count},
             {"TrialFailNum"     , trialResult.FindAll(value => value <= 0).Count},
         };
         if(lickCount.Count > 0){
             if(lickCount.Count > nowTrial){
-                for(int i = 0; i < showLickPortNum; i++){
+                for(int i = 0; i < showLickSpoutNum; i++){
                     trialInfo.Add($"lickCount{i}", lickCount[nowTrial][lickPosLsCopy[i]]);
                 }
             }
             else{// start
-                for(int i = 0; i < showLickPortNum; i++){
+                for(int i = 0; i < showLickSpoutNum; i++){
                     trialInfo.Add($"lickCount{i}", 0);
                 }
             }
         }
 
-        if(trialResultPerLickPort.Count > 0){
-            for(int i = 0; i < showLickPortNum; i++){
-                trialInfo.Add($"TrialSuccessNum{i}"     , trialResultPerLickPort[lickPosLsCopy[i] * 2].FindAll(value => value == 1).Count);
-                trialInfo.Add($"TrialFailNum{i}"        , trialResultPerLickPort[lickPosLsCopy[i] * 2].FindAll(value => value == 0).Count);
-                trialInfo.Add($"TrialMissNum{i}"        , trialResultPerLickPort[lickPosLsCopy[i] * 2+1].Count);
-                trialInfo.Add($"LickPortTotalTrial{i}"  , trialResultPerLickPort[lickPosLsCopy[i] * 2].Count);
+        if(trialResultPerLickSpout.Count > 0){
+            for(int i = 0; i < showLickSpoutNum; i++){
+                trialInfo.Add($"TrialSuccessNum{i}"     , trialResultPerLickSpout[lickPosLsCopy[i] * 2].FindAll(value => value == 1).Count);
+                trialInfo.Add($"TrialFailNum{i}"        , trialResultPerLickSpout[lickPosLsCopy[i] * 2].FindAll(value => value == 0).Count);
+                trialInfo.Add($"TrialMissNum{i}"        , trialResultPerLickSpout[lickPosLsCopy[i] * 2+1].Count);
+                trialInfo.Add($"LickSpoutTotalTrial{i}"  , trialResultPerLickSpout[lickPosLsCopy[i] * 2].Count);
             }
         }else{
-            for(int i = 0; i < showLickPortNum; i++){
+            for(int i = 0; i < showLickSpoutNum; i++){
                 trialInfo.Add($"TrialSuccessNum{i}", 0);
                 trialInfo.Add($"TrialFailNum{i}", 0);
                 trialInfo.Add($"TrialMissNum{i}", 0);
-                trialInfo.Add($"LickPortTotalTrial{i}", 0);
+                trialInfo.Add($"LickSpoutTotalTrial{i}", 0);
             }
         }
 
-        for(int i = 0; i < showLickPortNum; i++){
-            trialInfo.Add($"lickPort{i}", lickPosLsCopy[i]);
+        for(int i = 0; i < showLickSpoutNum; i++){
+            trialInfo.Add($"LickSpout{i}", lickPosLsCopy[i]);
         }
 
 
@@ -1164,10 +1372,9 @@ public class Moving : MonoBehaviour
     int TriggerRespond(bool inOrLeave, int _recType){
         if(trialStartTriggerMode > 0){
             if(inOrLeave){
-                if(contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
+                if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
                     //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
-                    contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
-                    SetTrial(manual:false, waitSoundCue: true, _waitSec: contextInfo.soundCueLeadTime  + audioPlayTime[0]);
+                    SetTrial(manual:false, waitSoundCue: true);
                 }else{
                     SetTrial(manual:false, waitSoundCue: false);
                 }
@@ -1191,10 +1398,12 @@ public class Moving : MonoBehaviour
     #endregion context generate end
 
     #region  file writing
-    StreamWriter streamWriter;
+    StreamWriter logStreamWriter;
+    StreamWriter posStreamWriter;
     string filePath = "";
     List<string> logList = new List<string>();  public List<string> LogList { get { return logList; } }
-    Queue<string> writeQueue = new Queue<string>();
+    Queue<string> logWriteQueue = new Queue<string>();
+    Queue<string> posWriteQueue = new Queue<string>();
     const int BUFFER_SIZE = 256;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
@@ -1229,7 +1438,7 @@ public class Moving : MonoBehaviour
                 return;
             }
         }
-        CommandParse(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
     }
     void CommandParse(byte[] _command){//在主线程调用时内容不能有锁,目前全部在主线程调用
         //看注释！
@@ -1244,23 +1453,61 @@ public class Moving : MonoBehaviour
             case 0:{//lick, format: lick:lickInd:TrialMark
                 int lickInd = Convert.ToInt16(command.Split(":")[1]);
                 int lickTrialMark = Convert.ToInt16(command.Split(":")[2]);
-                float waitFromLastLick = contextInfo.waitFromLastLick;
                 float soundCueLeadTime = contextInfo.soundCueLeadTime;
+                float waitFromLastLick = Math.Max(soundCueLeadTime, contextInfo.waitFromLastLick);
 
                 // if(LickResultCheck(lickInd, lickTrialMark) == -3 && waitFromLastLick > 0){
-                if(LickResultCheck(lickInd, nowTrial) == -3 && waitFromLastLick > 0){
-                    //Debug.Log(waitSec - (Time.fixedUnscaledTime - waitSecRec));
-                    if(trialStartTriggerMode == 0){
-                        float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
-                        if(waitSec != -1 && _lasttime <= waitFromLastLick && (trialStartTriggerMode != 0 || _lasttime > (audioPlayTime[0] + soundCueLeadTime))){//目前主动触发时声音立即发生，舔的时候需要延迟bar出现时间。
-                            waitSecRec = Time.fixedUnscaledTime - waitSec + waitFromLastLick;//声音出现之前，trial开始前舔则延迟trial开始
+                if(LickResultCheck(lickInd, nowTrial) == -3){//仍在waiting
+                    if(trialStartTime < 0){//trial开始前指定时间舔了应延迟
+                        if(waitFromLastLick > 0){
+                            float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
+                            Debug.Log($"from lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+                            if(_lasttime < waitFromLastLick){
+                                float tempDelay = (soundCueLeadTime < 0 || soundCueLeadTime > waitFromLastLick)? waitFromLastLick: (_lasttime < soundCueLeadTime? soundCueLeadTime* 0.95f: _lasttime);
+                                if(alarm.GetAlarm("StartTrialWaitSoundCue") > 0){alarm.TrySetAlarm("StartTrialWaitSoundCue", tempDelay, out _);}
+                                waitSecRec = Time.fixedUnscaledTime - waitSec + tempDelay;//无论声音是否出现，trial开始前舔则延迟trial开始
+                                Debug.Log($"after lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+
+                                // Debug.Log("waitSecRec" + waitSecRec);
+                                // PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);
+                            }
                         }
-                    }else{
-                        float _lasttime = alarm.GetAlarm("StartTrialWaitSoundCue") * Time.fixedUnscaledDeltaTime;
-                        if(_lasttime > 0){
-                            alarm.SetAlarm("StartTrialWaitSoundCue", (int)(Math.Max(_lasttime, contextInfo.waitFromLastLick) / Time.fixedUnscaledDeltaTime));
+                        Debug.Log("alarm of SetAlarmReadyToTrueAfterTrianEnd: " + alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd"));
+                        if(alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd") < 0){
+                            PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);//无论等待时间，间隔舔了都播放警报
+                        }else{
+                            alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
+                        }
+                    }else{//trial开始后在Go Cue之前舔了应延迟
+                        float _lasttime = alarm.GetAlarm("PlaySoundWhenSetWaitingToFalse") * Time.fixedUnscaledDeltaTime;//waitFromStart无设置时此alarm一直为-1
+                        if(_lasttime > 0){//仍在等待Go Cue
+                        
+                            // alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", contextInfo.GoCueLeadTime, out _);//SetWaitingToFalseAtTrialStart将在playSound后开始，不必要延迟这个
+                            alarm.TrySetAlarm("PlaySoundWhenSetWaitingToFalse", contextInfo.GoCueLeadTime, out _);
+                            PlaySound(TrialSoundPlayModeCorresponding["BeforeGoCue"]);
                         }
                     }
+                    // if(trialStartTriggerMode == 0){
+                    //     if(waitFromLastLick > 0){
+                    //         float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
+                    //         Debug.Log(_lasttime);
+                    //         if(waitSec != -1 && _lasttime <= waitFromLastLick){//延时触发模式，无论声音是否播放，trial将要开始前舔需要根据配置延迟bar出现时间。
+                    //             if(_lasttime > (cueSoundPlayTime[0] + soundCueLeadTime) || contextInfo.waitFromStart[0] > 0){//是否需考虑声音播放后绝对会按时开始？可能和waitFromStart联用
+                    //                 waitSecRec = Time.fixedUnscaledTime - waitSec + waitFromLastLick;//声音出现之前，trial开始前舔则延迟trial开始
+                    //                 if(trialStartTime < 0 && TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["NearStart"])){//trial开始前舔导致的延迟可能需要播放噪声
+                    //                     PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);
+                    //                 }
+                    //             }
+                    //         }
+                    //     }
+                    // }else{//主动触发时声音立即发生，延迟声音后的trial开始
+                    //     float _lasttime = alarm.GetAlarm("StartTrialWaitSoundCue") * Time.fixedUnscaledDeltaTime;
+                    //     if(_lasttime > 0){
+                    //         alarm.TrySetAlarm("StartTrialWaitSoundCue", Math.Max(_lasttime, contextInfo.waitFromLastLick), out _);
+                    //     }
+                    // }
+
+
                 }
                 break;
             }
@@ -1307,7 +1554,12 @@ public class Moving : MonoBehaviour
                 break;
             }
             case 9:{//stay
-                TriggerRespond(false, 9);
+                int tempType = Convert.ToInt16(command.Split(":")[1]);
+                if(tempType == 0){
+                    TriggerRespond(true, 9);
+                }else if(temp_type == 1){
+                    LickResultCheckPubic(-3);
+                }
                 break;
             }
             default: break;
@@ -1423,12 +1675,13 @@ public class Moving : MonoBehaviour
             return 1;
         }
         else{
-            Debug.LogError("port not open");
+            if(!DebugWithoutArduino){Debug.LogError("port not open");}
             return -2;
         }
     }
     
     public int CommandVerify(List<string> messages, List<int> values){
+        if(sp == null){return -3;}
         manualResetEventVerify.Reset();
         sp.ReadTimeout = 200;
         Debug.Log("verify start");
@@ -1507,13 +1760,16 @@ public class Moving : MonoBehaviour
         try{
             #if UNITY_EDITOR
                 if(!Directory.Exists("Assets/Resources/Logs/")){Directory.CreateDirectory("Assets/Resources/Logs/");}
-                filePath ="Assets/Resources/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm") + "_rec.txt";
+                filePath ="Assets/Resources/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
             #else
                 if(!Directory.Exists(Application.dataPath+"/Logs")){Directory.CreateDirectory(Application.dataPath+"/Logs");}
-                filePath=Application.dataPath+"/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm") + "_rec.txt";
+                filePath=Application.dataPath+"/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
             #endif
-            FileStream fileStream = new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
-            streamWriter = new StreamWriter(fileStream);
+            FileStream logfileStream = new FileStream(filePath + "_rec.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            logStreamWriter = new StreamWriter(logfileStream);
+            FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            posStreamWriter = new StreamWriter(posfileStream);
+            
         }
         catch (Exception e){
             Debug.LogError($"Error initializing StreamWriter: {e.Message}");
@@ -1522,56 +1778,68 @@ public class Moving : MonoBehaviour
 
     private void ProcessWriteQueue(bool writeAll = false)//txt文件写入，位于主进程
     {
-        while (writeQueue.Count > 0 && streamWriter !=  null){
-            string chunk = writeQueue.Peek();
-            streamWriter.WriteLine(chunk);
+        while (logWriteQueue.Count > 0 && logStreamWriter !=  null){
+            string chunk = logWriteQueue.Peek();
+            logStreamWriter.WriteLine(chunk);
 
-            if (writeAll || streamWriter.BaseStream.Position >=  streamWriter.BaseStream.Length - BUFFER_THRESHOLD){
-                streamWriter.Flush();
+            if (writeAll || logStreamWriter.BaseStream.Position >=  logStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
+                logStreamWriter.Flush();
             }
 
-            writeQueue.Dequeue();
+            logWriteQueue.Dequeue();
+        }
+
+        while (posWriteQueue.Count > 0 && posStreamWriter !=  null){
+            string chunk = posWriteQueue.Peek();
+            posStreamWriter.WriteLine(chunk);
+
+            if (writeAll || posStreamWriter.BaseStream.Position >=  posStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
+                posStreamWriter.Flush();
+            }
+
+            posWriteQueue.Dequeue();
         }
     }
 
     private void CleanupStreamWriter()
     {
-        if (streamWriter !=  null)
+        if (logStreamWriter !=  null)
         {
-            streamWriter.Close();
-            streamWriter.Dispose();
-            streamWriter = null;
+            logStreamWriter.Close();
+            logStreamWriter.Dispose();
+            logStreamWriter = null;
+        }
+
+        if (posStreamWriter !=  null)
+        {
+            posStreamWriter.Close();
+            posStreamWriter.Dispose();
+            posStreamWriter = null;
         }
     }
 
-    public string WriteInfo(bool returnTypeHead = false, int recType = 0, int _lickPos = -1, string enqueueMsg = ""){
+    /// <summary>
+    /// rectype: 
+    /// </summary>
+    /// <param name="returnTypeHead"></param>
+    /// <param name="recType"></param>
+    /// <param name="_lickPos"></param>
+    /// <param name="enqueueMsg"></param>
+    /// <returns></returns>
+    public string WriteInfo(bool returnTypeHead = false, int recType = 0, int _lickPos = -1, string enqueueMsg = "", string addInfo = ""){
         if(! returnTypeHead && nowTrial == -1){return "";}
 
         List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7        8         9
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "moving", "stay"
+            // 0        1       2     3         4          5           6           7        8          9
+            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay"
         };
         if(enqueueMsg != ""){
-            writeQueue.Enqueue(enqueueMsg);
+            logWriteQueue.Enqueue(enqueueMsg);
             ProcessWriteQueue();
         }
         else if(!returnTypeHead){
             time_rec_for_log[1] = Time.fixedUnscaledTime;
-            // float[] temp_context_info=position_control.GetcontextInfo();
-            // // results[0] = now_context;
-            // // results[1] = X - contextZoneStartAndEnd[now_context*2];
-            // // results[2] = contextZoneStartAndEnd[now_context*2+1] - contextZoneStartAndEnd[now_context*2];
-            // // results[3] = rewardZoneStartAndEnd[now_context*2] - contextZoneStartAndEnd[now_context*2];
-            // // results[4] = rewardZoneStartAndEnd[now_context*2+1] - contextZoneStartAndEnd[now_context*2];
-            // // results[5] = context_info_ls[now_context].is_inf? 1: 0;
-            // //string temp_time = (time_rec_for_log[1]-time_rec_for_log[0]).ToString(".00");
-            // string strLickCount = "";
-            // if(recType == 1 && nowTrial > 0){
-            //     foreach(int count in lickCount[nowTrial -1]){
-            //         strLickCount += count.ToString() + "\t";
-            //     }
-            // }
-                try{
+            try{
                 string data_write =   $@"{recTypeLs[recType]}"
                                         +$"\t{time_rec_for_log[1]-time_rec_for_log[0]}"
                                         +$"\t0x{trialMode:X2}"
@@ -1580,10 +1848,9 @@ public class Moving : MonoBehaviour
                                         +$"\t"
                                         //+$"\t{(recType == 1? strLickCount : "")}"
                                         ;
-                string resultORAddInfo = "";
                 switch(recType){
                     case 2:{//end
-                        resultORAddInfo = trialResult[nowTrial].ToString();
+                        addInfo = trialResult[nowTrial].ToString();
                         break;
                     }
                     case 4:{//entrance
@@ -1591,19 +1858,22 @@ public class Moving : MonoBehaviour
                         break;
                     }
                     case 8:{
-                        resultORAddInfo = string.Join(";", standingPos);
+                        addInfo = string.Join(";", standingPos);
+                        break;
+                    }
+                    case 9:{
                         break;
                     }
                     default:{
                         break;
                     }
                 }
-                data_write += resultORAddInfo;
+                data_write += addInfo;
 
                 if(recType == 3){
-                    writeQueue.Enqueue($"Mode 0x{trialMode:X2}, Start at {DateTime.Now.ToString("HH:mm:ss ")}");
+                    logWriteQueue.Enqueue($"Mode 0x{trialMode:X2}, Start at {DateTime.Now.ToString("HH:mm:ss ")}");
                 }
-                writeQueue.Enqueue(data_write);
+                logWriteQueue.Enqueue(data_write);
                 ProcessWriteQueue();
             }
             finally{
@@ -1613,20 +1883,36 @@ public class Moving : MonoBehaviour
         return "type\tdelta time\tmode\ttrial\tlickPos\tresult";
     }
 
+    public string WriteInfo(int posx, int posy, int ind){
+        string tempPosText = string.Join("\t", new int[]{ posx, posy, ind }.Select(v => v.ToString("")).ToList());
+        posWriteQueue.Enqueue(tempPosText);
+        ProcessWriteQueue();
+        return "";
+    }
+
     #endregion methods of file write end
 
     void Awake(){
 
-        for (int i = 0; i < Math.Min(3, Display.displays.Length); i++)
-        {
-            Display.displays[i].Activate();
-            //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
-        }
+        // for (int i = 0; i < Math.Min(3, Display.displays.Length); i++)
+        // {
+        //     Display.displays[i].Activate();
+        //     Screen.fullScreen = false;
+        //     //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+        // }
+
         #if !UNITY_EDITOR
             InApp = true;
             config_path=Application.dataPath+"/Resources/config.ini";
             // if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
         #endif
+        
+        Display mainScreen = Display.displays[0];
+        mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
+        Screen.fullScreen = false;
+
+        if(InApp && Display.displays.Count() > 1){Display.displays[1].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});}
+        Resolution[] resolutions= Screen.resolutions;
 
         time_rec_for_log[0] = Time.fixedUnscaledTime;
         commandConverter = new CommandConverter(ls_types);
@@ -1644,11 +1930,20 @@ public class Moving : MonoBehaviour
         }
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
-        audioSource = GetComponent<AudioSource>();
+        // audioSources.Add(GetComponent<AudioSource>());
+
+        foreach(string modeExplain in TrialSoundPlayModeExplain){
+            TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
+        }
+        foreach(AudioSource _audioSource in GetComponents<AudioSource>()){
+            audioSources.Add(_audioSource.clip.name, _audioSource);
+            audioSourceInds.Add(_audioSource.clip.name, audioSourceInds.Count);
+        }
         
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
-        barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "bar_width", "400"));
+        barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barWidth", "100"));
+        barHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barHeight", "1080"));
         displayPixelsLength = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsLength", "1920"));
         displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
         displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
@@ -1657,33 +1952,42 @@ public class Moving : MonoBehaviour
 
         contextInfo = new ContextInfo(
             iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
-            iniReader.ReadIniContent(                   "settings", "available_pos"      ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
+            iniReader.ReadIniContent(                   "settings", "available_pos"     ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
             iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
-            iniReader.ReadIniContent(                   "settings", "MatStartMethod"      ,   "assign"                ),
-            iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"  ),               
-            iniReader.ReadIniContent(                   "settings", "MatAssign"        ,   "default.."  ),              
+            iniReader.ReadIniContent(                   "settings", "MatStartMethod"    ,   "assign"                ),
+            iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"               ),               
+            iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                  )),               // int _maxTrial
+            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
+            iniReader.ReadIniContent(                   "settings", "waitFromStart"      ,  "random2~5"             ),                // float go cue
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "soundLength"       ,   "0.2"                   )),                // float 
             iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
             iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "success_wait_sec"  ,   "3"                     )),                // float _s_wait_sec
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "fail_wait_sec"     ,   "6"                     )),                // float _f_wait_sec
+            iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
+            iniReader.ReadIniContent(                   "settings", "fail_wait_sec"     ,   "6"                     ),                // string _f_wait_sec
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
         standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "5" ));
+        standingSecInTrial = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrial",   "5" ));
         lickPosLsCopy = contextInfo.lickPosLs;
 
-        audioPlayTime[0] = contextInfo.soundLength;
         trialStartTriggerMode = contextInfo.trialTriggerMode;
+        foreach(int mode in iniReader.ReadIniContent("settings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
+            if(contextInfo.soundLength < 0){TrialSoundPlayMode.Add(0); break;}
+
+            TrialSoundPlayMode.Add(mode);
+            audioPlayTimes.Add(mode, new float[]{contextInfo.soundLength, -1, -1});
+        }//以后连着dropdown做成struct, json存储
+
+        alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("settings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
         MaterialStruct defaultMat = new MaterialStruct();
         MaterialDict.Add("default", defaultMat.Init("default", "", materialMissing));
@@ -1706,7 +2010,8 @@ public class Moving : MonoBehaviour
                     (float)Math.Clamp((float)contextInfo.backgroundLight / 255, 0, 0.8)
                 );
             }else{
-                    tempMat.Init(matName,
+                tempMat.Init(
+                    matName,
                     iniReader.ReadIniContent(matName, "mat", "#000000"),
                     materialMissing, 
                     Convert.ToInt16(iniReader.ReadIniContent(   matName, "width", "400")),
@@ -1715,6 +2020,7 @@ public class Moving : MonoBehaviour
                 );
             }
             MaterialDict.Add(matName, tempMat);
+            contextInfo.materialsInfo.Add(tempMat.PrintArgs());
         }
         
         InitContext(
@@ -1724,19 +2030,6 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent("matSettings", "centerShaft", "false") == "true",
             Convert.ToInt16(iniReader.ReadIniContent("centerShaft", "centerShaftPos", "0"))
         );
-        // InitContext(
-        //     iniReader.ReadIniContent("barSettings", "isDriftgrating", "true") == "true",
-        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "speed", "1")),
-        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "frequency", "5")),
-        //     iniReader.ReadIniContent("barSettings", "direction", "right") == "right" ? 1 : -1,
-        //     Convert.ToInt16(iniReader.ReadIniContent("barSettings", "horizontal", "0")),
-        //     iniReader.ReadIniContent("barSettings", "barMaterial", "#000000"),
-        //     iniReader.ReadIniContent("barSettings", "isCircleBar", "false") == "true",
-        //     iniReader.ReadIniContent("barSettings", "centerShaft", "false") == "true",
-        //     Convert.ToSingle(iniReader.ReadIniContent("barSettings", "centerShaftPos", "180")),
-        //     iniReader.ReadIniContent("barSettings", "centerShaftMat", "#000000"),
-        //     iniReader.ReadIniContent("settings", "backgroundMaterial", "#000000")
-        // );
 
         for(int i = 0; i<Arduino_var_list.Count; i++){
             Arduino_var_map.Add(Arduino_var_list[i], i.ToString());
@@ -1801,10 +2094,14 @@ public class Moving : MonoBehaviour
         if(sp!= null){
             InitializeStreamWriter();
             string data_write = WriteInfo(returnTypeHead: true);
-            writeQueue.Enqueue(data_write);
+            logWriteQueue.Enqueue(data_write);
         }else{
             MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
-            Quit();
+            if(MessageBoxForUnity.YesOrNo("Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                DebugWithoutArduino = true;
+            }else{
+                Quit();
+            }
         }
 
     }
@@ -1812,11 +2109,144 @@ public class Moving : MonoBehaviour
     void Start(){
         ui_update.ControlsParse("ModeSelect", trialMode, "passive");
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
+        foreach(int mode in TrialSoundPlayMode){
+            ui_update.ControlsParse("sound", mode, "passive;add");
+        }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
         else{                          ui_update.MessageUpdate($"interval: {contextInfo.trialTriggerDelay[0]} ~ {contextInfo.trialTriggerDelay[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
     }
 
     void Update(){
+        // Debug.LogWarning(Display.displays[0].systemHeight);
+        
+    }
+
+    void FixedUpdate(){
+        ui_update.MessageUpdate(UpdateFreq: 1);
+        List<string> tempFInishedLs = alarm.GetAlarmFinish();
+        foreach (string alarmFinished in tempFInishedLs){
+            switch(alarmFinished){
+                case "StartTrialWaitSoundCue":{
+                    StartTrial(false);
+                    break;
+                }
+                case "DeactiveBar":{
+                    DeactivateBar();
+                    Debug.Log("bar deactivited");
+                    break ;
+                }
+                case "SetWaitingToFalseAtTrialStart":{
+                    waiting = false;
+                    alarmPlayReady = true;//这个trial内已经不会触发alarm了
+                    Debug.Log("waiting set to false");
+                    break ;
+                }
+                case "SetWaitingToFalse":{
+                    waiting = false;
+                    Debug.Log("waiting set to false");
+                    break ;
+                }
+                case "SetTrialInfraRedLightDelay":{
+                    SetTrial(manual:false, waitSoundCue: true);
+                    break;
+                }
+                case "SetTrialPressDelay":{
+                    SetTrial(manual:false, waitSoundCue: true);
+                    break;
+                }
+                case "SetTrialReadyToTrue":{
+                    trialStartReady = true;
+                    break;
+                }
+                case "PlaySoundWhenSetWaitingToFalse":{
+                    PlaySound(TrialSoundPlayModeCorresponding["BeforeLickCue"], addInfo:"go cue");
+                    break;
+                }
+                case "SetAlarmReadyToTrue":{
+                    alarmPlayReady = true;
+                    break ;
+                }
+                case "SetAlarmReadyToTrueAfterTrianEnd":{
+                    alarmPlayReady = true;
+                    break ;
+                }
+                default:{
+                    break;
+                }
+            }
+            if(alarmFinished.StartsWith("sw")){
+                DataSend(alarmFinished, false);
+            }
+        }
+        alarm.AlarmFixUpdate();
+
+        if(waitSec != -1 && trialStartTriggerMode == 0 && TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"])){//延时模式到时间播放声音，但trial开始还要看小鼠是否继续舔
+            if(IntervalCheck() == 1){
+                PlaySound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+            }
+        }
+
+        // if(cueSoundPlayTime[1] > 0 && Time.fixedUnscaledTime >= cueSoundPlayTime[2]){
+        //     StopSound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+        // }
+        TryStopSound();
+
+        while(commandQueue.Count()>0){//解析保存的command
+            commandQueue.TryDequeue(out byte[] _command);
+            CommandParse(_command);
+        }
+        if(commandVerifyDict.Count>0){//重新发送之前未能同步成功的内容
+            List<float> temp_keys = commandVerifyDict.Keys.ToList();
+            temp_keys.Sort();
+            foreach(float time in temp_keys){
+                if(Time.fixedUnscaledTime-time>=commandVerifyExpireTime){
+                    Debug.LogWarning($"verify failed at {time}: {commandVerifyDict[time]}");
+                    commandVerifyDict.Remove(time, out string removeValue);
+                }else{
+                    DataSend(commandVerifyDict[time], false);
+                }
+            }
+        }
+
+        if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
+            int[] pos = ipcclient.GetPos();//x, y, frameInd
+            int[] selectedPos = ipcclient.GetselectedArea();
+
+            if(trialStartTriggerMode == 3){//可能还需要再加判定条件使得只响应一次
+                pos[0..2].CopyTo(standingPos, 0);
+                if(CheckInRegion(pos, selectedPos)){
+                        PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
+                    standingSecNow = standingSecNow == -1? Time.fixedUnscaledDeltaTime: standingSecNow + Time.fixedUnscaledDeltaTime;
+                    if(standingSec > 0 && standingSecNow >= standingSec){
+                        standingSecNow = -1;
+                        WriteInfo(recType:8);
+                        CommandParsePublic("stay:0");
+                    }
+                }else{
+                    StopSound(TrialSoundPlayModeCorresponding["InPos"]);
+                    standingSecNow = -1;
+                }
+            }
+            if(trialMode >> 4 == 2){//可能还需要再加判定条件使得只响应一次
+                WriteInfo(pos[0], pos[1], pos[2]);
+
+                pos[0..2].CopyTo(standingPosInTrial, 0);
+                if(CheckInRegion(pos, selectedPos)){
+                    PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
+                    standingSecNowInTrial = standingSecNowInTrial == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrial + Time.fixedUnscaledDeltaTime;
+                    if(standingSecInTrial > 0 && standingSecNowInTrial >= standingSecInTrial){
+                        standingSecNowInTrial = -1;
+                        WriteInfo(recType:8);
+                        CommandParsePublic("stay:1");
+                        PlaySound(TrialSoundPlayModeCorresponding["EnableReward"]);
+                    }
+                }
+                else{
+                    StopSound(TrialSoundPlayModeCorresponding["InPos"]);
+                    standingSecNowInTrial = -1;
+                }
+            }
+        }
 
         if(waiting){//延时模式下下一个trial开始相关计算
             if(!forceWaiting){
@@ -1825,6 +2255,7 @@ public class Moving : MonoBehaviour
                 if(waitSec != -1 && IntervalCheck() == 0){
                     if(trialStartTriggerMode == 0){
                         StartTrial(isInit:false);
+                        contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
                         waitSec = -1;
                         if(nowTrial >= contextInfo.maxTrial){
                             DeactivateBar();
@@ -1855,138 +2286,26 @@ public class Moving : MonoBehaviour
                 LickResultCheck(-1, nowTrial);
             }
 
-            if(trialStartTriggerMode == 3){
-                int[] pos = ipcclient.GetPos();
-                int[] selectedPos = ipcclient.GetselectedArea();//xy, xy
-                WriteInfo(recType:8);
-                if(pos.Length == 4 && selectedPos.Length == 4){
-                    if(CheckInRegion(pos, selectedPos)){
-                        standingSecNow = standingSecNow == -1? Time.unscaledTime: standingSecNow + Time.unscaledDeltaTime;
-                        if(standingSec > 0 && standingSecNow >= standingSec){
-                            standingSecNow = -1;
-                            CommandParsePublic("stay:0");
-                        }
-                    }
-                }
-            }
         }
     }
 
-    void FixedUpdate(){
-        ui_update.MessageUpdate(UpdateFreq: 1);
-        List<string> tempFInishedLs = alarm.GetAlarmFinish();
-        foreach (string alarmFinished in tempFInishedLs){
-            switch(alarmFinished){
-                case "StartTrialWaitSoundCue":{
-                    StartTrial(false);
-                    break;
-                }
-                case "DeactiveBar":{
-                    DeactivateBar();
-                    Debug.Log("bar deactivited");
-                    break ;
-                }
-                case "SetWaitingToFalseAtTrialStart":{
-                    waiting = false;
-                    Debug.Log("waiting set to false");
-                    break ;
-                }
-                case "SetWaitingToFalse":{
-                    waiting = false;
-                    Debug.Log("waiting set to false");
-                    break ;
-                }
-                case "SetTrialInfraRedLightDelay":{
-                    SetTrial(manual:false, waitSoundCue: true);
-                    break;
-                }
-                case "SetTrialPressDelay":{
-                    SetTrial(manual:false, waitSoundCue: true);
-                    break;
-                }
-                case "SetTrialReadyToTrue":{
-                    trialStartReady = true;
-                    break;
-                }
-                default:{
-                    break;
-                }
+    public void Exit(){
+        try{
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
+            logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
+            foreach(string logs in logList){
+                logWriteQueue.Enqueue(logs);
             }
-            if(alarmFinished.StartsWith("sw")){
-                DataSend(alarmFinished, false);
+            ProcessWriteQueue(true);
+            CleanupStreamWriter();
+            if(sp!= null){
+                sp.Close();
+                Debug.Log("serial closed");
             }
         }
-        alarm.AlarmFixUpdate();
-
-        if(waitSec != -1 && trialStartTriggerMode == 0){
-            if(IntervalCheck() == 1){
-                if(!audioSource.isPlaying){
-                    audioSource.Play();
-                    Debug.Log("sound played");
-                    audioPlayTime[1] = Time.fixedUnscaledTime;
-                    audioPlayTime[2] = Time.fixedUnscaledTime + audioPlayTime[0];
-                }
-            }
-        }
-
-        if(audioPlayTime[1] != 0 && Time.fixedUnscaledTime >= audioPlayTime[2]){
-            audioSource.Stop();
-            audioPlayTime[1] = 0;
-        }
-        // if(alarm.GetAlarm("DeactiveBar") == 0){
-        //     DeactivateBar();
-        //     Debug.Log("bar deactivited");
-        // }
-        // if(alarm.GetAlarm("SetWaitingToFalseAtTrialStart") == 0){
-        //     waiting = false;
-        //     Debug.Log("waiting set to false");
-        // }
-        // if(alarm.GetAlarm("SetWaitingToFalse") == 0){
-        //     waiting = false;
-        //     Debug.Log("waiting set to false");
-        // }
-        //WriteInfo();
-
-        while(commandQueue.Count()>0){//解析保存的command
-            commandQueue.TryDequeue(out byte[] _command);
-            CommandParse(_command);
-        }
-        if(commandVerifyDict.Count>0){//重新发送之前未能同步成功的内容
-            List<float> temp_keys = commandVerifyDict.Keys.ToList();
-            temp_keys.Sort();
-            foreach(float time in temp_keys){
-                if(Time.fixedUnscaledTime-time>=commandVerifyExpireTime){
-                    Debug.LogWarning($"verify failed at {time}: {commandVerifyDict[time]}");
-                    commandVerifyDict.Remove(time, out string removeValue);
-                }else{
-                    DataSend(commandVerifyDict[time], false);
-                }
-            }
-        }
-
-        if (Input.GetKey(KeyCode.Escape)){
-            try{
-                writeQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
-                logList.Add(ui_update.logMessage.text);
-                logList.Add(ui_update.TexContextInfo.text);
-                foreach(string logs in logList){
-                    writeQueue.Enqueue(logs);
-                }
-                ProcessWriteQueue(true);
-                CleanupStreamWriter();
-                if(sp!= null){
-                    sp.Close();
-                    Debug.Log("serial closed");
-                }
-            }
-            catch{}
-            finally{
-                #if UNITY_EDITOR
-                    UnityEditor.EditorApplication.isPlaying = false;
-                #else
-                    Application.Quit();
-                #endif
-            }
+        catch{}
+        finally{
+            Quit();
         }
     }
 

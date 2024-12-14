@@ -10,6 +10,8 @@ public class Alarm
     // Start is called before the first frame update
     long[] alarm = new long[20];
     long[] alarmRec = new long[20];
+    int[] alarmPause = new int[20];
+    int[] alarmStartAfter = new int[20];
     int[] alarmExecuteTimes = new int[20];
     Dictionary<string, int> alarmNameIndDic = new Dictionary<string, int>();
     List<string> alarmName = new List<string>();
@@ -18,13 +20,15 @@ public class Alarm
             alarm = new long[size];
         }
         Array.Fill(alarm, initValue);
+        Array.Fill(alarmStartAfter, -1);
         for (int i = 0; i < alarm.Length; i++){
             alarmName.Add("");
         }
     }
 
-    public void SetAlarm(int ind, long fixedFrames, string _name = "", int executeCount = 0){
+    void SetAlarm(int ind, long fixedFrames, string _name = "", int executeCount = 0, bool force = false){//提供ind分配对应alarm，由TrySetAlarm调用
         if(ind < 0 || ind >= 20){return;}
+        if(alarmPause[ind] == 1 && !force){return;}
 
         fixedFrames = Math.Max(fixedFrames, 1);
         alarm[ind] = fixedFrames;
@@ -40,13 +44,14 @@ public class Alarm
         }
     }
 
-    public void SetAlarm(string _alarmName, long fixedFrames, int executeCount = 0){//不确定时使用TrySetAlarm
+    void SetAlarm(string _alarmName, long fixedFrames, int executeCount = 0){//使用TrySetAlarm
         if(_alarmName != "" && alarmName.Contains(_alarmName)){
             SetAlarm(alarmNameIndDic[_alarmName], fixedFrames, executeCount:executeCount);
         }else{}
     }
 
     public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0){
+        Debug.Log($"{_alarmName} set for {frames} frames");
         if(!alarmName.Contains(_alarmName)){
             for(int i = 0; i < alarm.Count(); i++){
                 if(alarmName[i] == ""){
@@ -68,8 +73,49 @@ public class Alarm
         return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount);
     }
 
+    public int PauseAlarm(int ind){
+        if(ind < 0 || ind >= 20){return 0;}
+
+        alarmPause[ind] = 1;
+        return 1;
+    }
+    public int PauseAlarm(string _alarmName){
+        if(alarmNameIndDic.TryGetValue(_alarmName, out int ind)){
+            return PauseAlarm(ind);
+        }else{return -1;}
+    }
+
+    public int StartAlarm(int ind){
+        if(ind < 0 || ind >= 20){return 0;}
+
+        alarmPause[ind] = 0;
+        return 1;
+    }
+
+     public int StartAlarm(string _alarmName){
+        if(alarmNameIndDic.TryGetValue(_alarmName, out int ind)){
+            return StartAlarm(ind);
+        }else{return -1;}
+    }
+
+    public int StartAlarmAfter(int subsequent, int nextTo){//一个alarm只能跟在另一个后触发，但多个alarm都可以跟在同一个alarm后触发
+        if(subsequent < 0 || subsequent >= 20 || nextTo < 0 || nextTo >= 20){return 0;}
+
+        PauseAlarm(subsequent);
+        alarmStartAfter[subsequent] = nextTo;
+        return 1;
+    }
+
+    public int StartAlarmAfter(string _alarmName, string _alarmNameAfter){
+        if(alarmNameIndDic.TryGetValue(_alarmName, out int _ind) && alarmNameIndDic.TryGetValue(_alarmNameAfter, out int _indAfter)){
+            return StartAlarmAfter(_ind, _indAfter);
+        }else{
+            return -1;
+        }
+    }
+
 /// <summary>
-/// return 0:未删除成功，正在进行
+/// return 0:未删除成功，正在进行, 1:正常删除， 2：强制删除
 /// </summary>
 /// <param name="_alarmName"></param>
 /// <param name="forceDelete"></param>
@@ -84,16 +130,18 @@ public class Alarm
             int ind = alarmName.IndexOf(_alarmName);
             if(alarm[ind] == -1){
                 alarmNameIndDic.Remove(_alarmName);
-                alarmName.Remove(_alarmName);
+                alarmName[ind] = "";
                 alarmRec[ind] = -1;
                 alarmExecuteTimes[ind] = 0;
+                alarmStartAfter[ind] = -1;
                 return 1;
             }else{
                 if(forceDelete){
                     alarmNameIndDic.Remove(_alarmName);
-                    alarmName.Remove(_alarmName);
+                    alarmName[ind] = "";
                     alarmRec[ind] = -1;
                     alarmExecuteTimes[ind] = 0;
+                    alarmStartAfter[ind] = -1;
                     return 2;
                 }else{
                     return 0;
@@ -127,6 +175,11 @@ public class Alarm
             if(alarm[i] == 0){
                 alarm[i] = -1;
                 tempLs.Add(alarmName[i]);
+                while(alarmStartAfter.Contains(i)){
+                    int tempInd = Array.IndexOf(alarmStartAfter, i);
+                    StartAlarm(tempInd);
+                    alarmStartAfter[tempInd] = -1;
+                }
                 if(alarmExecuteTimes[i] > 0 && alarmRec[i] > 0){
                     //Debug.Log(alarmExecuteTimes[i]);
                     SetAlarm(i, alarmRec[i]);
@@ -140,10 +193,15 @@ public class Alarm
     }
     public void AlarmFixUpdate(){
         for (int i = 0; i < alarm.Length; i++){
-            if (alarm[i] != -1){
+            if (alarm[i] != -1 && alarmPause[i] == 0){
                 alarm[i]--;
                 if(alarm[i] == -1){
-                //同样的内容发生在 GetAlarmFinish 中，基本不会再这里发生
+                    //同样的内容发生在 GetAlarmFinish 中，基本不会在这里发生
+                    while(alarmStartAfter.Contains(i)){
+                        int tempInd = Array.IndexOf(alarmStartAfter, i);
+                        StartAlarm(tempInd);
+                        alarmStartAfter[tempInd] = -1;
+                    }
                     if(alarmExecuteTimes[i] > 0){
                         SetAlarm(i, alarmRec[i]);
                         alarmExecuteTimes[i] -= 1;

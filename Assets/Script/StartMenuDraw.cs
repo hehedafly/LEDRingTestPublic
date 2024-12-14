@@ -34,9 +34,13 @@ class ConfigBody{
     public bool isBlank(){
         return configContent.Count > 0;
     }
+    
     public int ChangeContent(string newContent){
-        string _content_head = newContent.Split(":")[0];
-        string _content_body = newContent.Split(":")[1];
+        string[] _content = newContent.Split(":");
+        if (_content.Count() < 2){return -1;}
+
+        string _content_head = _content[0];
+        string _content_body = _content[1];
         if(configContent.ContainsKey(_content_head)){
             configContent[_content_head] = _content_body;
             return 1;
@@ -47,7 +51,7 @@ class ConfigBody{
     }   
 
     public string PrintContent(){
-        string result = "";//"context_name"       + ":" + context_name      +";"+
+        string result = "";
         foreach(string key in configContent.Keys){
             result += key + ":" + configContent[key]+";";
         }

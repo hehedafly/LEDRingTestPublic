@@ -51,8 +51,9 @@ Shader "Custom/ShaDriftGrating"
             {
                 // 计算条纹的UV偏移
                 _Horizontal = sqrt(_Horizontal);
-                _Speed *= (1 - _Horizontal * 0.8);
                 _Direction = _Direction > 0? 1: -1;
+
+                float whiteOcpOffset = 0.6;//-1 ~ 1
 
                 float stripeOffset = _Time.x * _Speed * _Direction;
                 float2 uv = float2(i.uv.x * (1 - _Horizontal) + i.uv.y * _Horizontal, i.uv.x * _Horizontal + i.uv.y * (1 - _Horizontal));
@@ -60,7 +61,7 @@ Shader "Custom/ShaDriftGrating"
                 uv.x += stripeOffset;
 
                 // 使用正弦函数生成黑白条纹
-                float stripePattern = max((sin(uv.x * _Frequency * (1 + _Horizontal * 2)) + 0.6 - (_Horizontal * 0.4)), 0) / 2;
+                float stripePattern = max((sin(uv.x * UNITY_PI * _Frequency) + whiteOcpOffset), 0) / 2;
 
                 // 应用纹理和条纹图案
                 fixed4 col = tex2D(_MainTex, i.uv);

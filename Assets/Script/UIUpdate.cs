@@ -14,6 +14,9 @@ public class UIUpdate : MonoBehaviour
     public UnityEngine.UI.Button startButton;
     public Dropdown modeSelect;
     public Dropdown triggerModeSelect;
+    // public Dropdown SoundrModeSelect;
+    public GameObject soundOptions;
+    public Dictionary<int, UnityEngine.UI.Button> soundOptionsDict;
     public Text TexContextHighFreqInfo;
     public Text TexContextFixInfo;
     public Text TexContextInfo;
@@ -21,12 +24,15 @@ public class UIUpdate : MonoBehaviour
     public Scrollbar logScrollBar;
     List<InputField> inputFields = new List<InputField>();
     List<Dropdown> dropdowns = new List<Dropdown>();
+    List<Dropdown> soundDropdowns = new List<Dropdown>();
     public List<UnityEngine.UI.Button> buttons = new List<UnityEngine.UI.Button>();
+
 
     Moving moving;
     InputField focus_input_field;
     Alarm alarm;
     float manualWaitSec = 5;
+    
 
     //public Image LineChartImage;
     public int AddSelf(UnityEngine.UI.Button button){
@@ -34,6 +40,10 @@ public class UIUpdate : MonoBehaviour
 
         buttons.Add(button);
         return 1;
+    }
+
+    void SetButtonColor(UnityEngine.UI.Button _button, Color color){
+        _button.GetComponent<ScrButton>().ChangeColor(color);
     }
     
     public void ControlsParse(string elementsName,float value, string stringArg=""){
@@ -54,6 +64,10 @@ public class UIUpdate : MonoBehaviour
             }
             case "SkipButton":{
                 moving.LickResultCheckPubic(lickInd: -1);
+                break;
+            }
+            case "ExitButton":{
+                moving.Exit();
                 break;
             }
             case "SliderPos":{
@@ -96,21 +110,14 @@ public class UIUpdate : MonoBehaviour
                         else if(_result == -2){Debug.LogWarning("No connection to Python Script");}
                         MessageUpdate($"Trigger mode now: {moving.TrialStartTriggerMode}\n");
                         triggerModeSelect.value = moving.TrialStartTriggerMode;
-                        triggerModeSelect.RefreshShownValue();
                     }else{}
                 }
                 triggerModeSelect.RefreshShownValue();
                 
                 break;
             }
-
             case "IFConfigValue":{
-                // if(position_control.serve_water_mode == 0){break;}
 
-                // float temp_value = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1];
-                // position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, value, position_control.serve_water_mode);
-                // mode1ConfigInputs.placeholder.GetComponent<Text>().text = value.ToString();
-                // MessageUpdate($"config changed:{mode1ConfigDropdown.captionText.text} from {temp_value} to {value}\n");
                 break;
             }
             case "InfraRedIn":{
@@ -143,24 +150,69 @@ public class UIUpdate : MonoBehaviour
                 moving.DebugMode = !moving.DebugMode;
                 foreach(UnityEngine.UI.Button button in buttons){
                     if(button.name == "DebugButton"){
-                        button.GetComponent<Image>().color = moving.DebugMode? Color.green: Color.grey;
+                        SetButtonColor(button, moving.DebugMode? Color.green: Color.grey);
                     }
                 }
                 break;
             }
-            default:break;
+            default:{
+                if(elementsName.StartsWith("sound")){
+                    if(stringArg.StartsWith("passive")){//format: passive
+                        MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.TrialSoundPlayMode)}\n");
+                        foreach(int buttonInd in moving.TrialSoundPlayMode){
+                            soundOptionsDict[buttonInd].GetComponent<ScrButton>().pressCount ++;
+                            SetButtonColor(soundOptionsDict[buttonInd], Color.green);
+
+                        }
+                        //triggerModeSelect.GetComponent<ScrDropDown>().isPassive = true;
+                    }else{
+                        string soundOptionSelected = elementsName.Substring(5);//0 无声音、1 trial开始前、2 开始后可以舔之前、3 trial中、4 可获取奖励、5 失败
+                        if(moving.TrialSoundPlayModeCorresponding.TryGetValue(soundOptionSelected, out int tempId)){//buttons
+                            if(tempId == 0){//"Off"
+                                moving.ChangeCueSoundPlayMode(0, false, "", true);
+                                foreach(UnityEngine.UI.Button button in soundOptionsDict.Values){
+                                    SetButtonColor(button, Color.gray);
+                                    button.GetComponent<ScrButton>().pressCount = 0;
+                                }
+                            }else{//其他
+                                moving.TrialSoundPlayMode.Remove(0);
+                                SetButtonColor(soundOptionsDict[0], Color.gray);
+                                soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
+
+                                bool selected = soundOptionsDict[tempId].GetComponent<ScrButton>().pressCount % 2 == 1;
+                                int _result = moving.ChangeCueSoundPlayMode(tempId, selected, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
+                                SetButtonColor(soundOptionsDict[tempId], selected? Color.green: Color.gray);
+                                // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
+                                MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.TrialSoundPlayMode)}\n");
+                            }
+                        }else if(soundOptionSelected.StartsWith("Dropdown")){//dropdowns
+                            string parentNameAfter = soundOptionSelected.Substring(8);
+                            int _tempId = moving.TrialSoundPlayModeCorresponding[parentNameAfter];
+                            if(moving.TrialSoundPlayModeAudio.ContainsKey(_tempId)){
+                                moving.TrialSoundPlayModeAudio[_tempId] = stringArg;
+                            }
+                        }
+                    }
+                    break;
+                }
+                break;
+            }
         }
 
-        if(elementsName.StartsWith("LickPort")){
-            string port = elementsName.Substring(8, 1);
-            moving.CommandParsePublic($"lick:{port}:{moving.NowTrial}");
-        }else if (elementsName.StartsWith("WaterPort")){
-            string port = elementsName.Substring(elementsName.Length-1, 1);
-            moving.alarmPublic.TrySetAlarm($"sw={port}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
+        if(elementsName.StartsWith("LickSpout")){
+            string Spout = elementsName.Substring(elementsName.Length-1);
+            moving.CommandParsePublic($"lick:{Spout}:{moving.NowTrial}");
+        }else if (elementsName.StartsWith("WaterSpout")){
+            string Spout = elementsName.Substring(elementsName.Length-1);
+            moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
         }
     }
 
-    public void MessageUpdate(string add_log_message="", int UpdateFreq = 0){//随时可能被调用，需要对内容做null检查
+    public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false){//随时可能被调用，需要对内容做null检查
+        if(returnAllMsg){
+            return TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
+        }
+
         if(UpdateFreq == 1){//高频
             if(moving.TrialInitTime != 0){
                 int time = (int)(Time.fixedUnscaledTime - moving.TrialInitTime);
@@ -181,7 +233,7 @@ public class UIUpdate : MonoBehaviour
 
                 string _time = DateTime.Now.ToString("HH:mm:ss ");
                 if(logMessage.text.Contains(_time) && logMessage.text.Contains(_time+add_log_message)){
-                    return;
+                    return "";
                 }else{
                     logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }
@@ -201,21 +253,21 @@ public class UIUpdate : MonoBehaviour
                 "lickCount"0,1,2...
                 "TrialSuccessNum"0,1,2...
                 "TrialFailNum"0,1,2...
-                "LickPortTotalTrial"0,1,2...
+                "LickSpoutTotalTrial"0,1,2...
                 */
                 Dictionary<string, int> tempStatus = moving.GetTrialInfo();
                 if(tempStatus["NowTrial"] == -1){
-                    return;
+                    return "";
                 }
 
                 string  temp_context_info =  $"trial:{tempStatus["NowTrial"]}     now pos:{tempStatus["NowPos"]}    {(tempStatus["IsPausing"] == 1? "paused" : "")}\n";
                         temp_context_info += "lick count in this trial: ";
                         // if(tempStatus["lickCountArrayLength"] > 0){
-                        for(int i =0; i < 8; i ++){
-                            if(tempStatus.ContainsKey("lickCount" + i.ToString())){
-                                temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
-                            }
-                        }
+                        // for(int i =0; i < 8; i ++){
+                        //     if(tempStatus.ContainsKey("lickCount" + i.ToString())){
+                        //         temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
+                        //     }
+                        // }
                         // }
                         if(tempStatus["waitSec"] != -1){
                             temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
@@ -223,9 +275,9 @@ public class UIUpdate : MonoBehaviour
 
                         temp_context_info += $"\n          Success:    Fail:    Total:    Miss:\n";
                         for(int i =0; i < 8; i ++){
-                            if(tempStatus.ContainsKey("lickPort" + i.ToString())){
-                                int RealPos = tempStatus[$"lickPort{i}"];
-                                temp_context_info += $"LickPort{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickPortTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                            if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
+                                int RealPos = tempStatus[$"LickSpout{i}"];
+                                temp_context_info += $"LickSpout{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickSpoutTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
                             }
                         }
                         temp_context_info += $"Total: {tempStatus["TrialSuccessNum"]}        {tempStatus["TrialFailNum"]}\n";
@@ -240,6 +292,7 @@ public class UIUpdate : MonoBehaviour
                 TexContextInfo.text=temp_context_info; 
             }
         }
+        return "";
     }
 
     void Awake()
@@ -249,7 +302,24 @@ public class UIUpdate : MonoBehaviour
         buttons.Add(startButton);
         dropdowns.Add(modeSelect);
         dropdowns.Add(triggerModeSelect);
+        soundOptionsDict = new Dictionary<int, UnityEngine.UI.Button>();
         logScrollBar.GetComponent<ScrScrollBar>().ui_update = this;
+
+        foreach(UnityEngine.UI.Button button in soundOptions.GetComponentsInChildren<UnityEngine.UI.Button>()){
+            if(moving.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))){
+                soundOptionsDict.Add(moving.TrialSoundPlayModeExplain.IndexOf(button.name.Substring(5)), button);
+                button.GetComponent<ScrButton>().ui_update = this;
+                Dropdown _dropdown = button.GetComponentInChildren<Dropdown>();
+                if(_dropdown != null){
+                    _dropdown.name = "soundDropdown" + button.name.Substring(5);
+                    _dropdown.AddOptions(moving.audioSources.Keys.ToList());
+                    _dropdown.GetComponentInChildren<Text>().fontSize = 10;
+                    moving.TrialSoundPlayModeAudio.Add(moving.TrialSoundPlayModeAudio.Count, _dropdown.captionText.text);
+                    soundDropdowns.Add(_dropdown);
+                }
+            }
+        }
+
         foreach(UnityEngine.UI.Slider slider in sliders){
             if(slider.GetComponent<ScrSlider>() != null){
                 slider.GetComponent<ScrSlider>().ui_update = this;
@@ -261,6 +331,12 @@ public class UIUpdate : MonoBehaviour
             }
         }
         foreach(UnityEngine.UI.Dropdown dropdown in dropdowns){
+            if(dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null){
+                dropdown.GetComponent<ScrDropDown>().ui_update = this;
+                //dropdown.RefreshShownValue();
+            }
+        }
+        foreach(UnityEngine.UI.Dropdown dropdown in soundDropdowns){
             if(dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null){
                 dropdown.GetComponent<ScrDropDown>().ui_update = this;
                 //dropdown.RefreshShownValue();

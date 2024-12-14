@@ -9,8 +9,16 @@ public class ScrButton : MonoBehaviour
     public UIUpdate ui_update;
     
     bool added = false;
+    public int pressCount = 0;
     public void OnClick(){
-        if(ui_update != null){ui_update.ControlsParse(name, 1);}
+        if(ui_update != null){
+            pressCount ++;
+            ui_update.ControlsParse(name, 1);
+        }
+    }
+
+    public void ChangeColor(Color color){
+        GetComponent<Image>().color = color;
     }
 
     void Awake(){

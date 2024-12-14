@@ -12,6 +12,8 @@ public class RowContent : MonoBehaviour
     private string head;
     public string annotate = "";
     public bool isFocused = false;
+    string ocontent;
+    string textColor = "black";
     private TableDraw manager;
     private TMP_InputField inputField;
     private TMP_Text childText;
@@ -27,7 +29,8 @@ public class RowContent : MonoBehaviour
         return head+ ":" + GetContent();
     }
 
-    public void SetContent(string _content, string color = "black"){
+    public void SetContent(string _content, string color = ""){
+        if(color == ""){color = textColor;}
         inputField.text = _content;
         ColorUtility.TryParseHtmlString(color, out Color _color);
         childText.color = _color;
@@ -36,10 +39,12 @@ public class RowContent : MonoBehaviour
     public void Init(TableDraw _manager, string _content, int _level, string _annotate, string _head, string _color = "black"){
         manager = _manager;
         content = _content;
+        ocontent = content;
         level = _level;
         annotate = _annotate;
         head = _head;
         childAnnotate.text = annotate;
+        textColor = _color;
         ChangeColor(_color);
     }
 
@@ -85,6 +90,10 @@ public class RowContent : MonoBehaviour
         isFocused = inputField.isFocused;
         if(isFocused){
             manager.CheckFocus(inputField);
+        }
+
+        if(content == ocontent){
+            ChangeColor("black");
         }
     }
 }

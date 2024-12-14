@@ -13,7 +13,7 @@ public class ScrDropDown : MonoBehaviour
             isPassive = false;
             return;
         }
-        if(ui_update != null){ui_update.ControlsParse(name, GetComponent<Dropdown>().value);}
+        if(ui_update != null){ui_update.ControlsParse(name, GetComponent<Dropdown>().value, GetComponent<Dropdown>().captionText.text);}
     }
 
     void Start()
