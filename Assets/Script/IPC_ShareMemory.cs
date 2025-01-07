@@ -5,7 +5,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.IO.MemoryMappedFiles;
-using System.Diagnostics;
+using UnityEngine;
+
+// using System.Diagnostics;
 
 namespace SharedMMF
 {
@@ -103,25 +105,46 @@ if(sharedmm.CheckServerOnlineStatus()){
         IntPtr m_hSharedMemoryFile = IntPtr.Zero;
         IntPtr m_pwData = IntPtr.Zero;
         // bool m_bAlreadyExist = false;
-        bool m_bInit = false;
+        /// <summary>
+        /// m_hSharedMemoryFile, m_hSharedMemoryFile = CreateFileMapping != null;  CloseHandle(m_hSharedMemoryFile);
+        /// </summary>
+        bool shmCreated = false;
+        /// <summary>
+        /// m_pwData, m_pwData = MapViewOfFile != IntPtr.Zero;  UnmapViewOfFile(m_pwData);
+        /// </summary> <summary>
+        /// 
+        /// </summary>
+        bool shmInitiled = false;
         long m_MemSize = 32+5*16*1024;
 
         string name;
         string care;
-        int index;
+        int UID;
         int careIndex;//write时关注对应用户读取自己内容情况
         // int contentBegin;
         unsafe byte* ShmBuffer;
         int maxClientNum;
+
+        /// <summary>
+        /// +0: writting tof; +1 + projected_id*2: read mark; +9:writtenmark; +11/13: newest starrt/end number
+        /// </summary>
         int writeBufferStartPos;
         int writeBufferLength;
         List<int> writeBufferStartPosAll;
+        bool closed = false;
 
         byte[] splitCondon = new byte[]{0xFF, 0xFF};
         int writtenmark = -1;
+        /// <summary>
+        /// number from own writebuffer start to new msg start
+        /// </summary>
         int newestStartPos = -1;
+        /// <summary>
+        /// mubner from own writebuffer start to new msg end(include splitCondon)
+        /// </summary>
         int newestEndPos = -1;
-        List<int> messageStartPos = new List<int>();
+        List<int> messageStartPosLs = new List<int>();
+        List<int> messageLengthLs = new List<int>();
  
         /// <summary>
         /// name: "server" or other client name, not the name of the shared memory(claim in Init func)
@@ -136,7 +159,7 @@ if(sharedmm.CheckServerOnlineStatus()){
         {
             name = _name;
             care = _care;
-            index = -1;
+            UID = -1;
             careIndex = -1;
             // contentBegin = 0;
             writeBufferLength = 16 * 1024;
@@ -145,10 +168,10 @@ if(sharedmm.CheckServerOnlineStatus()){
 
         ~Sharedmm()
         {
-            if(m_hSharedMemoryFile != IntPtr.Zero){
-                CloseHandle(m_hSharedMemoryFile);
-            }
-            Close();
+            // if(m_hSharedMemoryFile != IntPtr.Zero){
+            //     CloseHandle(m_hSharedMemoryFile);
+            // }
+            CloseSharedmm();
         }
  
         /// <summary>
@@ -171,15 +194,16 @@ if(sharedmm.CheckServerOnlineStatus()){
                 }
 
                 // if (m_hSharedMemoryFile == IntPtr.Zero)
-                if (m_hSharedMemoryFile == null)
+                if (m_hSharedMemoryFile == IntPtr.Zero)
                 {
                     // m_bAlreadyExist = false;
                     int errorCode = GetLastError();
-                    m_bInit = false;
+                    // shmInitiled = false;
                     throw new Exception("failed to create and map");
                 }
                 else
-                {
+                {   
+                    shmCreated = true;
                     int errorCode = GetLastError();
                     if (errorCode == ERROR_ALREADY_EXISTS)  //已经创建
                     {
@@ -202,13 +226,15 @@ if(sharedmm.CheckServerOnlineStatus()){
                 m_pwData = MapViewOfFile(m_hSharedMemoryFile, 0x0002, 0, 0, (uint)lngSize);
                 if (m_pwData == IntPtr.Zero)
                 {
-                    m_bInit = false;
+                    // shmInitiled = false;
                     CloseHandle(m_hSharedMemoryFile);
+                    shmCreated = false;
+
                     throw new Exception("failed to map to" + m_hSharedMemoryFile.ToString());
                 }
                 else
                 {
-                    m_bInit = true;
+                    shmInitiled = true;
                     // if (m_bAlreadyExist == true){
                     // int size = Marshal.SizeOf(typeof(byte));
                     ShmBuffer = (byte*)m_pwData.ToPointer();
@@ -216,14 +242,25 @@ if(sharedmm.CheckServerOnlineStatus()){
                     List<byte> nowServerStatus = ReadShmHead().ToList();
                     maxClientNum = nowServerStatus[1];
                     if(nowServerStatus[2] >= maxClientNum){
-                        throw new Exception($"{maxClientNum} clients on server");
+                        UnmapViewOfFile(m_pwData);
+                        CloseHandle(m_hSharedMemoryFile);
+                        shmCreated = false;
+
+                        if(maxClientNum == 0){throw new Exception("server offline");}
+                        else{throw new Exception($"already {maxClientNum} clients on server");}
                     }else{
-                        index = nowServerStatus.FindIndex(3, x => x == 0) - 2;
-                        if(index < 0 || index > maxClientNum){
+                        UID = nowServerStatus.FindIndex(3, x => x == 0) - 2;
+                        if(UID < 0 || UID > maxClientNum){
+                            UnmapViewOfFile(m_pwData);
+                            CloseHandle(m_hSharedMemoryFile);
+                            shmCreated = false;
+
                             throw new Exception("wrong status record, failed to get index");
                         }
                         WriteByte(2, (byte)(nowServerStatus[2]+1));
-                        WriteByte(3 + index - 1, 1);
+                        WriteByte(3 + UID - 1, 1);
+                        ApplyForCare();
+                        Debug.Log($"UID: {UID}");
                     }
 
                     for (int i = 32; i < 32 + (maxClientNum + 1) * writeBufferLength; i += writeBufferLength)
@@ -232,8 +269,8 @@ if(sharedmm.CheckServerOnlineStatus()){
                     }
                     
                     if(care == "server"){careIndex = 0;}
-                    writeBufferStartPos = writeBufferStartPosAll[index];
-                    newestStartPos = writeBufferStartPos  + 15;
+                    writeBufferStartPos = writeBufferStartPosAll[UID];
+                    newestStartPos = 15;
                     newestEndPos = newestStartPos;
                     WriteBytes(writeBufferStartPos, 0x00, 15);
                     writtenmark = 0;
@@ -252,15 +289,24 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// <summary>
         /// 关闭共享内存
         /// </summary>
-        public void Close()
-        {
-            if (m_bInit)
-            {
-                List<byte> nowServerStatus = ReadShmHead().ToList();
-                WriteByte(2, (byte)(nowServerStatus[2]-1));
-                WriteByte(2 + index, 0);
-                UnmapViewOfFile(m_pwData);
-                CloseHandle(m_hSharedMemoryFile);
+        public void CloseSharedmm(bool manually = false)
+        {   
+            if(!closed){
+                if(shmInitiled){
+                    if(manually && m_pwData != IntPtr.Zero && m_hSharedMemoryFile != IntPtr.Zero){
+                        List<byte> nowServerStatus = ReadShmHead().ToList();
+                        WriteByte(2, (byte)(nowServerStatus[2]-1));
+                        WriteByte(2 + UID, 0);
+                    }
+                    if(m_pwData != IntPtr.Zero){UnmapViewOfFile(m_pwData); m_pwData = IntPtr.Zero;}
+                    if(m_hSharedMemoryFile != IntPtr.Zero){CloseHandle(m_hSharedMemoryFile); m_hSharedMemoryFile = IntPtr.Zero;}
+                    shmInitiled = false;
+                }
+                else if (shmCreated){
+                    if(m_hSharedMemoryFile != null){CloseHandle(m_hSharedMemoryFile); m_hSharedMemoryFile = IntPtr.Zero;}
+                    shmCreated = false;
+                }
+                closed = true;
             }
         }
 
@@ -268,17 +314,22 @@ if(sharedmm.CheckServerOnlineStatus()){
             if (bytes.Length != 2){
                 throw new ArgumentException("");
             }
-            return bytes[0] * 255 + bytes[1];
+            return bytes[0] * 256 + bytes[1];
         }
 
         public byte[] IntToBytes(int i){
             if(i < 0 || i > 65535){return splitCondon;}
 
-            return new byte[]{(byte)(i / 255), (byte)(i % 255)};
+            return new byte[]{(byte)(i / 256), (byte)(i % 256)};
         }
         
+        /// <summary>
+        /// return 0~4(max player number)
+        /// </summary>
+        /// <param name="_id"></param>
+        /// <returns></returns>
         int GetProjectedWritePos(int _id){
-            return index > _id? index-1 : index;
+            return UID > _id? UID-1 : UID;
         }
 
         unsafe int WriteByte(int _ind, byte _val){
@@ -299,6 +350,17 @@ if(sharedmm.CheckServerOnlineStatus()){
             return 1;
         }
 
+        /// <summary>
+        /// _ind: start address to write
+        /// </summary>
+        /// <param name="_ind"></param>
+        /// <param name="bytes"></param>
+        /// <returns></returns> <summary>
+        /// 
+        /// </summary>
+        /// <param name="_ind"></param>
+        /// <param name="bytes"></param>
+        /// <returns></returns>
         unsafe int WriteBytes(int _ind, byte[] bytes){
             Marshal.Copy(bytes, 0, m_pwData+_ind, bytes.Length);
             return 1;
@@ -320,59 +382,78 @@ if(sharedmm.CheckServerOnlineStatus()){
             return WriteContent(Encoding.UTF8.GetBytes(message), clear);
         }
         
-        public int WriteContent(byte[] message, bool clear = false)
+        int WriteContent(byte[] message, bool clear = false)
         {
-            if (index == -1)
+            if (UID == -1)
             {
                 throw new InvalidOperationException("Index not set.");
             }
+            int[] status = ReadWriteBufferHead(UID);
+
+            int clearPos = -1;
             if (clear){
-                newestStartPos = 15;
-                messageStartPos.Clear();
+                WriteClear();
             }else if(careIndex != -1){
-                int[] status = ReadWriteBufferHead(index);
                 int readMark = status[1+GetProjectedWritePos(careIndex)];
-                if(readMark == writtenmark){
-                    newestStartPos = 15;
-                    messageStartPos.Clear();
+                if(readMark >= writtenmark){
+                    clearPos = writtenmark - 1;
+                    if(readMark - writtenmark >= 20){//起码20个消息后再看care id是否读完
+                        WriteClear();
+                        int writePos = writeBufferStartPosAll[UID] + 1 + GetProjectedWritePos(careIndex)*2;
+                        WriteBytes(writePos, IntToBytes(0));
+                    }
                 }
             }
 
             int startPos = writeBufferStartPos + newestStartPos;//0-15 contains read and write message
-            if(newestEndPos + message.Length + 4 >= writeBufferLength)
-            {
+            if(newestEndPos + message.Length + 4 >= writeBufferLength){
                 //后续再加对careindex的判断
-                WriteClear();
+                if(careIndex != -1){
+                    clearPos = status[1 + GetProjectedWritePos(careIndex)];
+                }
+                WriteClear(clearPos);
                 startPos = writeBufferStartPos + 15;
             }
 
-                WriteWritingStatus(writeBufferStartPos, true);
+            WriteWritingStatus(writeBufferStartPos, true);
 
-                message = IntToBytes(message.Length).Concat(message).ToArray();
-                // Array.Copy(message, 0, ShmBuffer, startPos, message.Length);
-                //11-14暂时不写
-                WriteBytes(startPos, message);
-                newestStartPos = startPos;
-                newestEndPos = newestStartPos + message.Length + 2;//+2:0xFF, 0xFF
-                messageStartPos.Add(newestStartPos);
-                writtenmark += 1;
-                WriteWriteMark(writtenmark);
-                WriteNewStartAndEndPos(newestEndPos, newestEndPos);
+            message = IntToBytes(message.Length).Concat(message).ToArray();
+            WriteBytes(startPos, message);
+            newestStartPos = newestStartPos + message.Length + 2;
+            newestEndPos = newestStartPos + message.Length + 2;//+2:split codon: 0xFF, 0xFF
+            messageStartPosLs.Add(newestStartPos);
+            messageLengthLs.Add(message.Length);
+            writtenmark += 1;
+            WriteWriteMark(writtenmark);
+            WriteNewStartAndEndPos(newestStartPos, newestEndPos);
 
-                WriteWritingStatus(writeBufferStartPos, false);
+            WriteWritingStatus(writeBufferStartPos, false);
 
-
-            return 1;
+            // Debug.Log($"writtenmark: {writtenmark}");
+            return clearPos;
         }
         
-        int WriteClear(int clearPos = 0){
-            writtenmark = 0;
-            newestStartPos = 0;
-            newestEndPos = 0;
-            messageStartPos.Clear();
+        int WriteClear(int clearPos = -1){
+            if (writtenmark == 0){return 0;}
+            if (clearPos <= 0 || clearPos > writtenmark){clearPos = writtenmark;}
+            
+            byte[] storedMsg = new byte[newestEndPos - messageStartPosLs[clearPos - 1]];
+            ReadByte(ref storedMsg, writeBufferStartPos + messageStartPosLs[clearPos - 1], newestEndPos - messageStartPosLs[clearPos - 1]);
+
+            // Debug.Log($"writtenmark: {writtenmark}, clearPos: {clearPos}");
+            messageStartPosLs.RemoveRange(0, clearPos);
+            messageLengthLs.RemoveRange(0, clearPos);
+            newestStartPos = messageStartPosLs.Count > 0? messageStartPosLs[messageLengthLs.Count-1] : 0;
+            newestEndPos = messageStartPosLs.Count > 0? newestStartPos + messageLengthLs[messageLengthLs.Count-1] : 0;
+            writtenmark = writtenmark - clearPos;
+
             byte[] bytes = new byte[writeBufferLength - 15];
             Array.Fill(bytes, (byte)0xFF);
             WriteBytes(writeBufferStartPos + 15, bytes);
+
+            if (messageStartPosLs.Count > 0){
+                WriteBytes(writeBufferStartPos + 15, storedMsg);
+            }
             // Array.Copy(bytes, 0, ShmBuffer, writeBufferStartPosAll[index] + 15, bytes.Length);
             return 1;
         }
@@ -401,16 +482,44 @@ if(sharedmm.CheckServerOnlineStatus()){
             return 1;
         }
 
-        public int ReadByte(ref byte[] bytData, int lngAddr, int lngSize)
+        int ReadInt(int lngAddr){
+            if (lngAddr + 1 > m_MemSize) return -2; //超出数据区
+            if (shmInitiled)
+            {   
+                byte[] bytData = new byte[2];
+                Marshal.Copy(m_pwData+lngAddr, bytData, 0, 2);
+                return BytesToInts(bytData);
+            }
+            else
+            {
+                return -1; //共享内存未初始化
+            }
+        }
+        
+        int ReadByte(int lngAddr){
+            if (lngAddr > m_MemSize) return -2; //超出数据区
+            if (shmInitiled)
+            {   
+                byte[] bytData = new byte[1];
+                Marshal.Copy(m_pwData+lngAddr, bytData, 0, 1);
+                return bytData[0];
+            }
+            else
+            {
+                return -1; //共享内存未初始化
+            }
+        }
+
+        int ReadByte(ref byte[] bytData, int lngAddr, int lngSize)
         {
-            if (lngAddr + lngSize > m_MemSize) return 2; //超出数据区
-            if (m_bInit)
+            if (lngAddr + lngSize > m_MemSize) return -2; //超出数据区
+            if (shmInitiled)
             {
                 Marshal.Copy(m_pwData+lngAddr, bytData, 0, lngSize);
             }
             else
             {
-                return 1; //共享内存未初始化
+                return -1; //共享内存未初始化
             }
             return 0;     //读成功
         }
@@ -430,8 +539,15 @@ if(sharedmm.CheckServerOnlineStatus()){
             return ReadShmHead()[0] == 1;
         }
 
+        public int ApplyForCare(){
+            WriteByte(7, (byte)UID);
+            WriteByte(8, (byte)name.Length);
+            WriteBytes(9, Encoding.UTF8.GetBytes(name));
+            return 1;
+        }
+
         /// <summary>
-        /// 0:writting, 1-4:readMark, 5:writtenmark, 6:newest startIndex, 7:newest endIndex
+        /// return: 0:writting, 1-4:readMark, 5:writtenmark, 6:newest start number, 7:newest end number
         /// </summary>
         /// <returns></returns>
         public int[] ReadWriteBufferHead(int _id){
@@ -447,7 +563,7 @@ if(sharedmm.CheckServerOnlineStatus()){
         }
         
         /// <summary>
-        /// 
+        /// mode: all, new, newone, newest
         /// </summary>
         /// <param name="_id"></param>
         /// <param name="mode"></param>
@@ -455,7 +571,7 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// <returns></returns>
         public List<byte[]> ReadContent(int _id, string mode = "new")
         {
-            if (_id < 0 || _id >= writeBufferStartPosAll.Count || _id == index)
+            if (_id < 0 || _id >= writeBufferStartPosAll.Count || _id == UID)
             {
                 throw new ArgumentOutOfRangeException(nameof(_id), "Invalid client ID.");
             }
@@ -480,9 +596,10 @@ if(sharedmm.CheckServerOnlineStatus()){
             List<byte[]> result = new List<byte[]>();
             for(int i = 0; i < (endPos-startPos); ){
                 int _length = BytesToInts(tempResult[i..(i+2)]);
-                if(_length != 65280){
+                if(_length != 65535 && tempResult.Length > (i+_length+2)){
                     result.Add(tempResult[(i+2)..(i+_length+2)]);
                     i += _length+4;
+                    if(mode == "newone"){break;}
                 }else{
                     break;
                 }
@@ -496,21 +613,22 @@ if(sharedmm.CheckServerOnlineStatus()){
                     // break;
                 }
                 case "new":{
-                    result =  result.GetRange(readMark, writeMark);
+                    int validReadMark = Math.Min(result.Count, readMark);
+                    result =  result.GetRange(validReadMark, Math.Min(result.Count - validReadMark, writeMark));
                     readMark = writeMark;
                     WriteReadMark(_id, readMark);
                     return result;
                     // break;
                 }
                 case "newone":{
-                    result =  result.GetRange(readMark, readMark);
+                    // result =  result.GetRange(readMark, 1);
                     readMark += 1;
                     WriteReadMark(_id, readMark);
                     return result;
                     // break;
                 }
-                case "newest":{
-                    readMark += 1;
+                case "newest":{//result根据被读对象最新的结果读取了最新的内容
+                    readMark = writeMark;
                     WriteReadMark(_id, readMark);
                     return result;
                     // break;
@@ -524,6 +642,12 @@ if(sharedmm.CheckServerOnlineStatus()){
             // return Encoding.UTF8.GetString(messageBytes);
         }
 
+        /// <summary>
+        /// mode: all, new, newone, newest
+        /// </summary>
+        /// <param name="_id"></param>
+        /// <param name="_mode"></param>
+        /// <returns></returns>
         public List<string> ReadMsg(int _id, string _mode){
             List<string> result = new List<string>();
             List<byte[]> msgs = ReadContent(_id, _mode);

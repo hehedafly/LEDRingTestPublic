@@ -51,7 +51,7 @@ public class Alarm
     }
 
     public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0){
-        Debug.Log($"{_alarmName} set for {frames} frames");
+        // Debug.Log($"{_alarmName} set for {frames} frames");
         if(!alarmName.Contains(_alarmName)){
             for(int i = 0; i < alarm.Count(); i++){
                 if(alarmName[i] == ""){
@@ -152,13 +152,18 @@ public class Alarm
         }
     }
 
-    public long GetAlarm(int ind){
+    long GetAlarm(int ind){
         if(ind < 0 || ind >= alarm.Count()){
             return -2;
         }
         return alarm[ind];
     }
 
+    /// <summary>
+    /// return -2 if invalid name
+    /// </summary>
+    /// <param name="indName"></param>
+    /// <returns></returns>
     public long GetAlarm(string indName){
         if(alarmNameIndDic.TryGetValue(indName, out int ind)){
             return alarm[ind];

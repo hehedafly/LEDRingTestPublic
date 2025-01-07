@@ -17,7 +17,7 @@ using UnityEngine.Experimental.GlobalIllumination;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, string _trackMark_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
         startMethod = _start_method;
         matStartMethod = _matStart_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
@@ -77,6 +77,21 @@ class ContextInfo{
             }else{
                 foreach(int _ in avaliablePosArray){
                     lickPosLs.Add(lickPosLs.Count());
+                }
+            }
+
+            errorMessage = "trackMarkLs";
+            trackMarkLs = new List<int>();
+            var _strtrackMark = _trackMark_array.Split(",");
+            if(_strtrackMark.Count() > 0 && _strtrackMark.Count() >= avaliablePosArray.Count()){
+                foreach(string pos in _strtrackMark){
+                    //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
+                        trackMarkLs.Add(Convert.ToInt16(pos));
+                    //}
+                }
+            }else{
+                foreach(int _ in avaliablePosArray){
+                    trackMarkLs.Add(trackMarkLs.Count());
                 }
             }
             
@@ -219,6 +234,7 @@ class ContextInfo{
     public List<string> matAvaliableArray {get;}
     public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
     public List<int>    pumpPosLs       {get;}
+    public List<int>    trackMarkLs       {get;}
     public int          maxTrial        {get;}
     public int          seed            {get;}
     public float        barDelayTime    {get;}//主动触发的trial间最短间隔
@@ -240,9 +256,9 @@ class ContextInfo{
     List<int>    barPosLs        {get;}
     List<string>    barmatLs        {get;}
     [JsonIgnore]
-    public float soundCueLeadTime   {get;set;}//仅在延时模式下trial开始时使用
+    public float soundCueLeadTime   {get;set;}//仅在延时模式下trial开始时使用，每次使用调用GetRandom(contextInfo.trialTriggerDelay)
     [JsonIgnore]
-    public float GoCueLeadTime   {get;set;}
+    public float GoCueLeadTime   {get;set;}//trial开始后随即一定时间给go cue，调用GetRandom(contextInfo.waitFromStart)
 
     void RandomParse<T>(string randomArg, List<T> ls){
         if(randomArg.StartsWith("random")){
@@ -380,6 +396,11 @@ class ContextInfo{
         return barPosLs[trial];
     }
 
+    public int GetTrackMarkInTrial(int trial){
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
+        return trackMarkLs[avaliablePosArray.IndexOf(barPosLs[trial])];
+    }
+
     public bool verify(int lickInd, int trial){//传入的lickInd为RawInd,需要经过LickPos转换
         if(lickInd < 0){
             return false;
@@ -434,15 +455,24 @@ public class Moving : MonoBehaviour
     bool waiting = true;
     bool forceWaiting = true;
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
+    /// <summary>
+    /// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间  |||  0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
+    /// </summary>
     int trialMode = 0x00;// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间
-                         // 0x0?, 0x1? : 0:trial开始就给水; 1:舔了才给水
+                         // 0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
                         public int TrialMode { get { return trialMode; } }
                                 List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11, 0x20, 0x21};
                         public  List<int> TrialModes { get { return trialModes; } }
 
-    int trialStartTriggerMode = 0;//0:定时, 1:红外, 2:压杆, 3：视频检测位置, 4: trial结束后便开始
+    /// <summary>
+    /// //0:定时, 1:红外, 2:压杆, 3：视频检测位置, 4: trial结束后便开始
+    /// </summary> <summary>
+    /// 
+    /// </summary>
+    int trialStartTriggerMode = 0;
+
     public int TrialStartTriggerMode {get{return trialStartTriggerMode;}}
-    List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆", "位置检测"};
+    List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆", "位置检测", "结束"};
     public List<int> TrialSoundPlayMode = new List<int>{};
     public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
 
@@ -468,7 +498,7 @@ public class Moving : MonoBehaviour
     bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
     float alarmLickDelaySec = 2;
     UIUpdate ui_update;
-    IPCClient ipcclient;
+    IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
 
     #region communicating
@@ -501,6 +531,7 @@ public class Moving : MonoBehaviour
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
     Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
+    // List<List<float>> selectRegions = new List<List<float>>();
 
     struct MaterialStruct{
         string name;            public string Name          { get { return name;}}
@@ -835,6 +866,7 @@ public class Moving : MonoBehaviour
     }
 
     int StopSound(int soundMode, bool all = true){
+        if(!audioPlayTimes.ContainsKey(soundMode)){return -2;}
         float[] tempTimes = audioPlayTimes[soundMode];
         if(tempTimes[2] > 0){
             audioPlayTimes[soundMode][1] = -1;
@@ -883,11 +915,41 @@ public class Moving : MonoBehaviour
         return 0;
     }
 
-    public int SetTrial(bool manual, bool waitSoundCue, float _waitSec = -1){//延时触发仅在最初调用，其他主动触发调用此方法进行startTrial
+    /// <summary>
+    /// 延时触发以及trial结束后触发仅在最初调用，其他主动触发调用此方法进行startTrial
+    /// </summary>
+    /// <param name="manual"></param>
+    /// <param name="waitSoundCue"></param>
+    /// <param name="_waitSec"></param>
+    /// <returns></returns>
+    public int SetTrial(bool manual, bool waitSoundCue, float _waitSec = -1){
         if(forceWaiting && !manual){return -2;}
         if(manual){
+            if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
+                if(ipcclient.Activated == false){
+                    ui_update.MessageUpdate("IPC not connected");
+                    return -3;
+                }
+                else{
+                    List<int[]> selectRegions = ipcclient.GetselectedArea();
+                    if(selectRegions.Count > 0){
+                        List<int> types = selectRegions.Select(x => x[0]).ToList();
+                        if(trialStartTriggerMode == 3 && types.Select(x => (x >= 0 && x < 32)).Count() > 0){
+
+                        }else if(trialMode >> 4 == 2 && types.Select(x => (x >= 32 && x < 64)).Count() > 0){
+                            //后续再加细致判断
+                        }else{
+                            return -4;
+                        }
+                    }else{
+                        return -4;
+                    }
+                    //检查选择区域
+                }
+            }
+
             forceWaiting = false;
-            if(trialStartTriggerMode != 0){
+            if(trialStartTriggerMode != 0 && trialStartTriggerMode != 4){
                 trialStartReady = true;
                 ui_update.MessageUpdate("Ready");
             }else{
@@ -896,7 +958,7 @@ public class Moving : MonoBehaviour
             InitTrial();
         }
         
-        if(trialStartTriggerMode == 0 && manual || (!manual && trialStartReady == true)){
+        if((trialStartTriggerMode == 0 || trialStartTriggerMode == 4) && manual || (!manual && trialStartReady == true)){//延时触发以及trial结束后触发仅在最初通过manual调用
             trialStartReady = false;//无论声音，无论mode，到这步直接设false
             if(waitSec < 0){
                 // contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
@@ -944,6 +1006,10 @@ public class Moving : MonoBehaviour
         return 0;
     }
 
+    int ServeWaterInTrial(){
+        return CommandVerify("p_trial_set", 2);
+    }
+
     int StartTrial(bool isInit = false){//根据soundCueLeadTime在alarm中设置waiting
  
         nowTrial++;
@@ -963,6 +1029,7 @@ public class Moving : MonoBehaviour
         alarm.TrySetAlarm("PlaySoundWhenSetWaitingToFalse", (int)(tempDelay/Time.fixedDeltaTime), out _);
         alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", 1, out _);
         alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlaySoundWhenSetWaitingToFalse");
+        alarm.DeleteAlarm("DeactivateBar", true);
         ActivateBar(trial: nowTrial);
 
         if(trialStartTriggerMode == 0){
@@ -991,10 +1058,18 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
+    /// <summary>
+    /// use trialSuccess for deactivate bar instantly and playsound
+    /// </summary>
+    /// <param name="isInit"></param>
+    /// <param name="trialSuccess"></param>
+    /// <param name="rightLickSpout"></param>
+    /// <param name="trialReadyWaitSec"></param>
+    /// <returns></returns>
     int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1){
         ContextEndSync();
         if(isInit || !trialSuccess){DeactivateBar();}
-        else{alarm.TrySetAlarm("DeactiveBar", contextInfo.barLastingTime, out _);}
+        else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
         
         if(!isInit && !trialSuccess){PlaySound(TrialSoundPlayModeCorresponding["AtFail"]);}
 
@@ -1023,7 +1098,7 @@ public class Moving : MonoBehaviour
 
                 if(_temp_waitSec > 0){
                     ui_update.MessageUpdate($"Interval: {_temp_waitSec}");
-                    Debug.Log($"Interval: {_temp_waitSec}");
+                    // Debug.Log($"Interval: {_temp_waitSec}");
                 }
                 waitSec = _temp_waitSec;
             }else{
@@ -1049,9 +1124,9 @@ public class Moving : MonoBehaviour
             }
 
             if(trialStartTriggerMode == 4){
-                alarm.TrySetAlarm("SetTrialAfterReady", 1, out _);
+                alarm.TrySetAlarm("StartTrialAfterReady", 1, out _);
                 if(alarm.GetAlarm("SetTrialReadyToTrue") > -1){
-                    alarm.StartAlarmAfter("SetTrialAfterReady", "SetTrialReadyToTrue");
+                    alarm.StartAlarmAfter("StartTrialAfterReady", "SetTrialReadyToTrue");
                 }
             }
         }
@@ -1074,7 +1149,7 @@ public class Moving : MonoBehaviour
         }
 
         if(Time.fixedUnscaledTime - waitSecRec >= waitSec){
-            Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+            // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
         else if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
@@ -1085,15 +1160,26 @@ public class Moving : MonoBehaviour
         }
     }
 
+    public bool IPCInNeed(){
+        bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3;
+        ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
+        return res;
+    }
     public int ChangeMode(int _mode){
         if(_mode == trialMode){
             return 0;
         }else{
-            if(_mode < 0x20){
+            if(_mode < 0x30){
                 trialResult.Clear();
                 trialResultPerLickSpout.Clear();
                 EndTrial(isInit: true);
                 trialMode = _mode;
+                if(IPCInNeed()){
+                    ipcclient.Silent = false;
+                }else{
+                    ipcclient.Silent = true;
+                    ipcclient.Activated = false;
+                }
                 nowTrial = -1;
                 forceWaiting = true;
                 int temp_sync_result = ContextInitSync();
@@ -1109,13 +1195,19 @@ public class Moving : MonoBehaviour
         if(_triggerMode == trialStartTriggerMode){
             return 0;
         }else{
-            if(_triggerMode == 3 && !ipcclient.Activated){return -2;}
+
             if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2){
                 trialStartTriggerMode = _triggerMode;
+                if(IPCInNeed()){
+                    ipcclient.Silent = false;
+                }else{
+                    ipcclient.Silent = true;
+                    ipcclient.Activated = false;
+                }
                 waitSec = -1;
                 waitSecRec = -1;
                 //不清理当前正在进行的trial
-
+                //此处需要修改，判断用trialinterval还是s/f waitsec
                 if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
                 else{                          ui_update.MessageUpdate($"interval: {contextInfo.trialTriggerDelay[0]} ~ {contextInfo.trialTriggerDelay[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
                 return 0;
@@ -1176,6 +1268,7 @@ public class Moving : MonoBehaviour
                 //Debug.Log(string.Join(",", lickCount[nowTrial]));
                 lickCount[nowTrial][lickInd]++;
             }
+            return 0;
         }else if(getOrSet == "get"){
             if(lickTrial >= lickCount.Count){
                 Debug.Log($"index out of lickCountLs range: lickInd {lickInd}, list length {lickCount.Count}");
@@ -1186,16 +1279,17 @@ public class Moving : MonoBehaviour
             Debug.Log("wrong command in lickCountGetSet");
             return -1;
         }
-        return 1;
+        return -1;
     }
 
-    int LickResultAdd(int result, int trial, int LickSpout, int rightLickSpout, bool force = false){
+    int LickResultAdd(int result, int trial, int LickSpout = -1, int rightLickSpout = -1, bool force = false){
         if(trialResult.Count() == trial){
             trialResult.Add(result);
             if(LickSpout >= 0){
                 trialResultPerLickSpout[LickSpout*2].Add(result);
                 if(result == 0){
                     trialResultPerLickSpout[rightLickSpout*2+1].Add(1);
+                    return 1;
                 }
             }
         }else{
@@ -1206,13 +1300,29 @@ public class Moving : MonoBehaviour
                 return -1;
             }
         }
-        return 1;
-    }
-    public int LickResultCheckPubic(int lickInd){
-        return LickResultCheck(lickInd, nowTrial);
+        return -1;
     }
 
-    int LickResultCheck(int lickInd, int lickTrial){//check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial
+    int TrialResultCheck(int trial){
+        if(trial >= 0 && trialResult.Count() > trial){
+            return trialResult[trial];
+        }else{
+            return -1;
+        }
+
+    }
+
+    public int LickingCheckPubic(int lickInd){
+        return LickingCheck(lickInd, nowTrial);
+    }
+
+    /// <summary>
+    /// check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial
+    /// </summary>
+    /// <param name="lickInd"></param>
+    /// <param name="lickTrial"></param>
+    /// <returns></returns>
+    int LickingCheck(int lickInd, int lickTrial){
         if(lickTrial != nowTrial){
             Debug.LogWarning("trial not sync");
             lickTrial = nowTrial;
@@ -1227,7 +1337,15 @@ public class Moving : MonoBehaviour
         lickCountGetSet("set", lickInd, lickTrial);
 
         if(!forceWaiting){
-            WriteInfo(_lickPos: lickInd);
+            if(lickInd <= -3){
+                if(TrialResultCheck(nowTrial) > 0){
+                    return -4;//位置检测模式已判定过
+                }else{
+                    WriteInfo(_lickPos: lickInd);
+                }
+            }else{
+                WriteInfo(_lickPos: lickInd);
+            }
         }
 
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
@@ -1243,7 +1361,7 @@ public class Moving : MonoBehaviour
                         if(lickInd >= 0){
                             LickResultAdd(1, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(1);
-                            if(trialMode == 0x01){CommandVerify("p_trial_set", 2);}
+                            if(trialMode == 0x01){ServeWaterInTrial();}
                             ui_update.MessageUpdate($"Trial completed at pos {lickInd}");
                         }else{//手动跳过或结束trial
                             LickResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
@@ -1251,7 +1369,7 @@ public class Moving : MonoBehaviour
                             if(lickInd == -1){
                                 ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
                             }else if(lickInd == -2){
-                                if(trialMode == 0x01){CommandVerify("p_trial_set", 2);}
+                                if(trialMode == 0x01){ServeWaterInTrial();}
                                 ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
@@ -1266,7 +1384,7 @@ public class Moving : MonoBehaviour
                     //只能舔对的
                     result = result || lickInd == -2;
                     LickResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
-                    if(result && trialMode == 0x11){CommandVerify("p_trial_set", 2);}
+                    if(result && trialMode == 0x11){ServeWaterInTrial();}
                     else{CommandVerify("p_trial_set", 0);}
                     if(lickInd < 0){
                         ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {lickInd}, right place: {rightLickInd}");
@@ -1275,13 +1393,28 @@ public class Moving : MonoBehaviour
                     }
                     EndTrial(trialSuccess: result, rightLickSpout: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
                 }else if(trialMode >> 4 == 2){//到特定地方
-                    if(lickInd == -3){
-                        CommandVerify("p_trial_set", 2);
-                        DeactivateBar();
-                        ui_update.MessageUpdate("Trial finished");
-                    }else if(lickInd == -4){
-                        EndTrial(trialSuccess: true);
-                        ui_update.MessageUpdate("Trial end");
+                    result = false;
+                    if(lickInd < 0){
+                        result = lickInd == -2 || lickInd == -3;
+                    }
+
+                    if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
+                        if(trialMode % 2 == 1){ServeWaterInTrial();}
+                        // else{
+                        //     // CommandVerify("p_trial_set", 0);
+                        // }//结束时已经给了水，只用结束trial
+                        EndTrial(trialSuccess:trialResult[nowTrial] == 1);
+                    }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
+                        if(result){
+                            if(trialMode % 2 == 0){ServeWaterInTrial();}
+                            DeactivateBar();
+                            ui_update.MessageUpdate("Trial finished");
+                            LickResultAdd(result? 1: 0, nowTrial);
+                        }else{//手动跳过
+                            EndTrial(trialSuccess: false);
+                            ui_update.MessageUpdate("Trial skipped");
+                        }
+                        LickResultAdd(result? 1: 0, nowTrial, lickInd, -1);
                     }
                 }
                 ui_update.MessageUpdate();
@@ -1320,7 +1453,7 @@ public class Moving : MonoBehaviour
             {"TrialSuccessNum"  , trialResult.FindAll(value => value == 1).Count},
             {"TrialFailNum"     , trialResult.FindAll(value => value <= 0).Count},
         };
-        if(lickCount.Count > 0){
+        if(lickCount.Count > 0 && nowTrial >= 0){
             if(lickCount.Count > nowTrial){
                 for(int i = 0; i < showLickSpoutNum; i++){
                     trialInfo.Add($"lickCount{i}", lickCount[nowTrial][lickPosLsCopy[i]]);
@@ -1385,10 +1518,14 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    bool CheckInRegion(int[] _pos, int[] selectedPos){
-        float tempx = (_pos[0] + _pos[2]) * 0.5f;
-        float tempy = (_pos[1] + _pos[3]) * 0.5f;
-        return (selectedPos[0] > tempx &&  tempx > selectedPos[2]) && (selectedPos[1] > tempy &&  tempy > selectedPos[3]);
+    bool CheckInRegion(int[] _pos, int[] selectedPos){//还没改好
+        if(selectedPos[1] == 0){//圆形
+            return Math.Sqrt(Math.Pow(Math.Abs(_pos[0] - selectedPos[2]), 2) + Math.Pow(Math.Abs(_pos[1] - selectedPos[3]), 2)) < selectedPos[4];
+        }else if(selectedPos[1] == 1){//矩形
+            return (selectedPos[2] > _pos[0] &&  _pos[0] > selectedPos[4]) && (selectedPos[3] > _pos[1] &&  _pos[1] > selectedPos[5]);
+        }else{
+            return false;
+        }
     }
 
     string CheckMouseStat(){//待加其他内容
@@ -1431,9 +1568,9 @@ public class Moving : MonoBehaviour
             case "stay":{
                 break ;
             }
-            case "sw":{
-                return;
-            }
+            // case "sw":{
+            //     return;
+            // }
             default:{
                 return;
             }
@@ -1457,7 +1594,7 @@ public class Moving : MonoBehaviour
                 float waitFromLastLick = Math.Max(soundCueLeadTime, contextInfo.waitFromLastLick);
 
                 // if(LickResultCheck(lickInd, lickTrialMark) == -3 && waitFromLastLick > 0){
-                if(LickResultCheck(lickInd, nowTrial) == -3){//仍在waiting
+                if(LickingCheck(lickInd, nowTrial) == -3){//仍在waiting
                     if(trialStartTime < 0){//trial开始前指定时间舔了应延迟
                         if(waitFromLastLick > 0){
                             float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
@@ -1487,26 +1624,6 @@ public class Moving : MonoBehaviour
                             PlaySound(TrialSoundPlayModeCorresponding["BeforeGoCue"]);
                         }
                     }
-                    // if(trialStartTriggerMode == 0){
-                    //     if(waitFromLastLick > 0){
-                    //         float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
-                    //         Debug.Log(_lasttime);
-                    //         if(waitSec != -1 && _lasttime <= waitFromLastLick){//延时触发模式，无论声音是否播放，trial将要开始前舔需要根据配置延迟bar出现时间。
-                    //             if(_lasttime > (cueSoundPlayTime[0] + soundCueLeadTime) || contextInfo.waitFromStart[0] > 0){//是否需考虑声音播放后绝对会按时开始？可能和waitFromStart联用
-                    //                 waitSecRec = Time.fixedUnscaledTime - waitSec + waitFromLastLick;//声音出现之前，trial开始前舔则延迟trial开始
-                    //                 if(trialStartTime < 0 && TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["NearStart"])){//trial开始前舔导致的延迟可能需要播放噪声
-                    //                     PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);
-                    //                 }
-                    //             }
-                    //         }
-                    //     }
-                    // }else{//主动触发时声音立即发生，延迟声音后的trial开始
-                    //     float _lasttime = alarm.GetAlarm("StartTrialWaitSoundCue") * Time.fixedUnscaledDeltaTime;
-                    //     if(_lasttime > 0){
-                    //         alarm.TrySetAlarm("StartTrialWaitSoundCue", Math.Max(_lasttime, contextInfo.waitFromLastLick), out _);
-                    //     }
-                    // }
-
 
                 }
                 break;
@@ -1557,8 +1674,8 @@ public class Moving : MonoBehaviour
                 int tempType = Convert.ToInt16(command.Split(":")[1]);
                 if(tempType == 0){
                     TriggerRespond(true, 9);
-                }else if(temp_type == 1){
-                    LickResultCheckPubic(-3);
+                }else if(tempType == 1){
+                    LickingCheckPubic(-3);
                 }
                 break;
             }
@@ -1741,6 +1858,12 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
+    /// <summary>
+    /// p_trial_set:0-end, 1-start, 2-serve water and end
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="value"></param>
+    /// <returns></returns>
     public int CommandVerify(string message, int value){
         List<string> variables = new List<string>(){message};
         List<int> values = new List<int>(){value};
@@ -1890,6 +2013,13 @@ public class Moving : MonoBehaviour
         return "";
     }
 
+    public string WriteInfo(List<float> sceneInfo){
+        string tempPosText = string.Join("\t", sceneInfo.Select(v => v.ToString("")).ToList());
+        posWriteQueue.Enqueue(tempPosText);
+        ProcessWriteQueue();
+        return "";
+    }
+
     #endregion methods of file write end
 
     void Awake(){
@@ -1959,6 +2089,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
+            iniReader.ReadIniContent(                   "settings", "Trial_pos"          ,  ""                      ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
@@ -2109,6 +2240,7 @@ public class Moving : MonoBehaviour
     void Start(){
         ui_update.ControlsParse("ModeSelect", trialMode, "passive");
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
+        IPCInNeed();
         foreach(int mode in TrialSoundPlayMode){
             ui_update.ControlsParse("sound", mode, "passive;add");
         }
@@ -2130,7 +2262,7 @@ public class Moving : MonoBehaviour
                     StartTrial(false);
                     break;
                 }
-                case "DeactiveBar":{
+                case "DeactivateBar":{
                     DeactivateBar();
                     Debug.Log("bar deactivited");
                     break ;
@@ -2169,6 +2301,10 @@ public class Moving : MonoBehaviour
                 case "SetAlarmReadyToTrueAfterTrianEnd":{
                     alarmPlayReady = true;
                     break ;
+                }
+                case "StartTrialAfterReady":{
+                    StartTrial();
+                    break;
                 }
                 default:{
                     break;
@@ -2209,41 +2345,61 @@ public class Moving : MonoBehaviour
         }
 
         if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
+            int markCountPerType = 32;
             int[] pos = ipcclient.GetPos();//x, y, frameInd
-            int[] selectedPos = ipcclient.GetselectedArea();
+            List<int[]> selectedAreas = ipcclient.GetselectedArea();
+            // Debug.Log(JsonConvert.SerializeObject(selectedAreas));
+            WriteInfo(pos[0], pos[1], pos[2]);
 
-            if(trialStartTriggerMode == 3){//可能还需要再加判定条件使得只响应一次
-                pos[0..2].CopyTo(standingPos, 0);
-                if(CheckInRegion(pos, selectedPos)){
+            if(!pos.SequenceEqual(new int[]{-1, -1, -1})){
+                List<int[]> TriggerAreas = selectedAreas.Where(area => area[0] / markCountPerType == 0).ToList();
+
+                // if(selectedArea[..(selectedArea.Length - 2)].Contains(-1)){break;}
+                if(trialStartTriggerMode == 3){//trigger，目前所有trigger区域合并处理
+                    pos[0..2].CopyTo(standingPos, 0);
+                    bool InTriggerArea = false;
+                    foreach (int[] selectedArea in selectedAreas){
+                        if(CheckInRegion(pos, selectedArea)){
+                            InTriggerArea = true;
+                        }
+                    }
+                    if(InTriggerArea){
                         PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
-                    standingSecNow = standingSecNow == -1? Time.fixedUnscaledDeltaTime: standingSecNow + Time.fixedUnscaledDeltaTime;
-                    if(standingSec > 0 && standingSecNow >= standingSec){
+                        standingSecNow = standingSecNow == -1? Time.fixedUnscaledDeltaTime: standingSecNow + Time.fixedUnscaledDeltaTime;
+                        if(standingSec > 0 && standingSecNow >= standingSec){
+                            standingSecNow = -1;
+                            WriteInfo(recType:8);
+                            CommandParsePublic("stay:0");
+                        }
+                    }else{
+                        StopSound(TrialSoundPlayModeCorresponding["InPos"]);
                         standingSecNow = -1;
-                        WriteInfo(recType:8);
-                        CommandParsePublic("stay:0");
                     }
-                }else{
-                    StopSound(TrialSoundPlayModeCorresponding["InPos"]);
-                    standingSecNow = -1;
                 }
-            }
-            if(trialMode >> 4 == 2){//可能还需要再加判定条件使得只响应一次
-                WriteInfo(pos[0], pos[1], pos[2]);
 
-                pos[0..2].CopyTo(standingPosInTrial, 0);
-                if(CheckInRegion(pos, selectedPos)){
-                    PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
-                    standingSecNowInTrial = standingSecNowInTrial == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrial + Time.fixedUnscaledDeltaTime;
-                    if(standingSecInTrial > 0 && standingSecNowInTrial >= standingSecInTrial){
-                        standingSecNowInTrial = -1;
-                        WriteInfo(recType:8);
-                        CommandParsePublic("stay:1");
-                        PlaySound(TrialSoundPlayModeCorresponding["EnableReward"]);
+                if(trialMode >> 4 == 2){//destination, 可能还需要再加判定条件使得只响应一次
+                    int rightMark = contextInfo.GetTrackMarkInTrial(nowTrial);
+                    if(rightMark >= 0){
+                        List<int[]>DestinationArea = selectedAreas.Where(area => area[0] / markCountPerType == 1).ToList();
+                        int[] CertainAreaNowTrial = DestinationArea.Find(area => area[0] - markCountPerType == rightMark);
+
+                        // Debug.Log($"pos: {pos[0]}, {pos[1]}, dest: {CertainAreaNowTrial[2]}, {CertainAreaNowTrial[3]}, radius: {CertainAreaNowTrial[4]}, distance: {Math.Sqrt(Math.Pow(Math.Abs(pos[0] - CertainAreaNowTrial[2]), 2) + Math.Pow(Math.Abs(pos[1] - CertainAreaNowTrial[3]), 2))}");
+
+                        if(CertainAreaNowTrial.Length == 6 && CheckInRegion(pos, CertainAreaNowTrial)){
+                            PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
+                            standingSecNowInTrial = standingSecNowInTrial == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrial + Time.fixedUnscaledDeltaTime;
+                            if(standingSecInTrial > 0 && standingSecNowInTrial >= standingSecInTrial){
+                                standingSecNowInTrial = -1;
+                                WriteInfo(recType:8);
+                                CommandParsePublic("stay:1");
+                                PlaySound(TrialSoundPlayModeCorresponding["EnableReward"]);
+                            }
+                        }
+                        else{
+                            StopSound(TrialSoundPlayModeCorresponding["InPos"]);
+                            standingSecNowInTrial = -1;
+                        }
                     }
-                }
-                else{
-                    StopSound(TrialSoundPlayModeCorresponding["InPos"]);
-                    standingSecNowInTrial = -1;
                 }
             }
         }
@@ -2282,8 +2438,8 @@ public class Moving : MonoBehaviour
                 forceWaiting = true;
                 return;
             }
-            if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime){//超时进入下一个trial
-                LickResultCheck(-1, nowTrial);
+            if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime && trialResult.Count <= nowTrial){//超时进入下一个trial，因track模式下小鼠完成任务和结束分离，加入result判断
+                LickingCheck(-1, nowTrial);
             }
 
         }
@@ -2298,6 +2454,10 @@ public class Moving : MonoBehaviour
             }
             ProcessWriteQueue(true);
             CleanupStreamWriter();
+            
+            if(ipcclient.Activated){
+                ipcclient.CloseSharedmm();
+            }
             if(sp!= null){
                 sp.Close();
                 Debug.Log("serial closed");

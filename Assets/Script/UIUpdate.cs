@@ -42,6 +42,15 @@ public class UIUpdate : MonoBehaviour
         return 1;
     }
 
+    public int SetButtonColor(string buttonName, Color color){
+        foreach(UnityEngine.UI.Button button in buttons){
+            if (button.name == buttonName){
+                button.GetComponent<ScrButton>().ChangeColor(color);
+                return 1;
+            }
+        }
+        return -1;
+    }
     void SetButtonColor(UnityEngine.UI.Button _button, Color color){
         _button.GetComponent<ScrButton>().ChangeColor(color);
     }
@@ -59,11 +68,11 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "FinishButton":{
-                moving.LickResultCheckPubic(lickInd: -2);
+                moving.LickingCheckPubic(lickInd: -2);
                 break;
             }
             case "SkipButton":{
-                moving.LickResultCheckPubic(lickInd: -1);
+                moving.LickingCheckPubic(lickInd: -1);
                 break;
             }
             case "ExitButton":{
@@ -152,6 +161,14 @@ public class UIUpdate : MonoBehaviour
                     if(button.name == "DebugButton"){
                         SetButtonColor(button, moving.DebugMode? Color.green: Color.grey);
                     }
+                }
+                break;
+            }
+            case "IPCRefreshButton":{
+                if(alarm.GetAlarm("ipcRefresh") < 0 && moving.IPCInNeed()){
+                    moving.Ipcclient.Silent = true;
+                    moving.Ipcclient.Activated = false;
+                    alarm.TrySetAlarm("ipcRefresh", 2.0f, out _);
                 }
                 break;
             }
@@ -371,14 +388,22 @@ public class UIUpdate : MonoBehaviour
     }
 
     void FixedUpdate() {
+        List<string> tempFInishedLs = alarm.GetAlarmFinish();
+        foreach (string alarmFinished in tempFInishedLs){
+            switch(alarmFinished){
+                case "ipcRefresh":{
+                    moving.Ipcclient.Silent = false;
+                    break;
+                }
+                
+                default:{
+                    break;
+                }
+            }
+
+        }
         alarm.AlarmFixUpdate();
-        // switch(alarm.GetAlarmFinish()){
-        //     case "setBarToZeroAfterSizeChange":{
-        //         ControlsParse("logScroll", 0, "passive");
-        //         break;
-        //     }
-        //     default:break;
-        // }
+
         if(alarm.GetAlarm("setBarToZeroAfterSizeChange") >= 0){
             logScrollBar.value = 0;
         }
