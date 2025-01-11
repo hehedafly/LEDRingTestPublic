@@ -1636,7 +1636,7 @@ public class Moving : MonoBehaviour
             }
             case 2:{//press
                 //Debug.Log("Lever Pressed");
-                TriggerRespond(false, 5);
+                TriggerRespond(true, 5);
                 break;
             }
             case 3:{//cotext_info
@@ -2041,7 +2041,20 @@ public class Moving : MonoBehaviour
         mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
         Screen.fullScreen = false;
 
-        if(InApp && Display.displays.Count() > 1){Display.displays[1].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});}
+        if(InApp){
+            // if(Display.displays.Count() == 2){Display.displays[1].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});}
+            // else if(Display.displays.Count() ==3){
+            //     Display.displays[1].Activate(1024, 768, new RefreshRate(){numerator = 60, denominator = 1});
+            //     Display.displays[2].Activate(1024, 768, new RefreshRate(){numerator = 60, denominator = 1});
+            // }
+            for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
+                Display.displays[i].Activate();
+                Screen.fullScreen = false;
+                Display.displays[i].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+            }
+        }
+        // MessageBoxForUnity.Ensure($"screen number: {Display.displays.Count()}", "display");
         Resolution[] resolutions= Screen.resolutions;
 
         time_rec_for_log[0] = Time.fixedUnscaledTime;
@@ -2061,14 +2074,6 @@ public class Moving : MonoBehaviour
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
         // audioSources.Add(GetComponent<AudioSource>());
-
-        foreach(string modeExplain in TrialSoundPlayModeExplain){
-            TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
-        }
-        foreach(AudioSource _audioSource in GetComponents<AudioSource>()){
-            audioSources.Add(_audioSource.clip.name, _audioSource);
-            audioSourceInds.Add(_audioSource.clip.name, audioSourceInds.Count);
-        }
         
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
@@ -2106,19 +2111,33 @@ public class Moving : MonoBehaviour
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
-        standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "5" ));
-        standingSecInTrial = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrial",   "5" ));
+        standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "0.5" ));
+        standingSecInTrial = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrial",   "0.5" ));
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
-        foreach(int mode in iniReader.ReadIniContent("settings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
+
+        if (float.TryParse(iniReader.ReadIniContent("soundSettings", "cueVolume", "0.5"), out float cueVolume)){cueVolume = Math.Clamp(cueVolume, 0, 1);}
+        else{cueVolume = 0.5f;}
+        foreach(string modeExplain in TrialSoundPlayModeExplain){
+            TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
+        }
+        foreach(AudioSource _audioSource in GetComponents<AudioSource>()){
+            if(_audioSource.clip.name != "alarm"){
+                _audioSource.loop = true;
+                _audioSource.volume = cueVolume;
+            }else{
+            }
+            audioSources.Add(_audioSource.clip.name, _audioSource);
+            audioSourceInds.Add(_audioSource.clip.name, audioSourceInds.Count);
+        }
+        foreach(int mode in iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
             if(contextInfo.soundLength < 0){TrialSoundPlayMode.Add(0); break;}
 
             TrialSoundPlayMode.Add(mode);
             audioPlayTimes.Add(mode, new float[]{contextInfo.soundLength, -1, -1});
         }//以后连着dropdown做成struct, json存储
-
-        alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("settings", "alarmPlayTimeInterval",  "1.5")) : 0;
+        alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
         MaterialStruct defaultMat = new MaterialStruct();
         MaterialDict.Add("default", defaultMat.Init("default", "", materialMissing));
@@ -2155,7 +2174,7 @@ public class Moving : MonoBehaviour
         }
         
         InitContext(
-            GetMaterialStruct("barMat"),
+            GetMaterialStruct("default"),
             GetMaterialStruct("centerShaftMat"),
             GetMaterialStruct("backgroundMat"),
             iniReader.ReadIniContent("matSettings", "centerShaft", "false") == "true",
@@ -2358,7 +2377,7 @@ public class Moving : MonoBehaviour
                 if(trialStartTriggerMode == 3){//trigger，目前所有trigger区域合并处理
                     pos[0..2].CopyTo(standingPos, 0);
                     bool InTriggerArea = false;
-                    foreach (int[] selectedArea in selectedAreas){
+                    foreach (int[] selectedArea in TriggerAreas){
                         if(CheckInRegion(pos, selectedArea)){
                             InTriggerArea = true;
                         }

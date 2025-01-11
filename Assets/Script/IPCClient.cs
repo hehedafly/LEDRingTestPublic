@@ -167,7 +167,7 @@ public class IPCClient : MonoBehaviour
                                 }
                                 // break;
                             }else if(msg.StartsWith("scene:")){
-                            Debug.Log("msg from pyhon: "+ msg);
+                            // Debug.Log("msg from pyhon: "+ msg);
                                 if(pythonTimeOffset != 0){
                                     sceneInfo = msg[6..].Split(";").ToList().Select(v => Convert.ToSingle(v)).ToList();
                                     activited = true;
