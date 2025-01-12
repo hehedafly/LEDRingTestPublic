@@ -10,7 +10,7 @@ public static class MessageBoxForUnity
     [DllImport("User32.dll", SetLastError = true, ThrowOnUnmappableChar = true, CharSet = CharSet.Auto)]
     public static extern int MessageBox(IntPtr handle, String message, String title, int type);//具体方法
 
-    public static int Ensure(string message, string title){
+    public static int Ensure(string message, string title = "DebugLog"){
         return MessageBox(IntPtr.Zero, message, title, 0);
         //确认：1
     }

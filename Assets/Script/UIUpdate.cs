@@ -175,8 +175,8 @@ public class UIUpdate : MonoBehaviour
             default:{
                 if(elementsName.StartsWith("sound")){
                     if(stringArg.StartsWith("passive")){//format: passive
-                        MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.TrialSoundPlayMode)}\n");
-                        foreach(int buttonInd in moving.TrialSoundPlayMode){
+                        MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.soundConfig.TrialSoundPlayMode)}\n");
+                        foreach(int buttonInd in moving.soundConfig.TrialSoundPlayMode){
                             soundOptionsDict[buttonInd].GetComponent<ScrButton>().pressCount ++;
                             SetButtonColor(soundOptionsDict[buttonInd], Color.green);
 
@@ -184,7 +184,7 @@ public class UIUpdate : MonoBehaviour
                         //triggerModeSelect.GetComponent<ScrDropDown>().isPassive = true;
                     }else{
                         string soundOptionSelected = elementsName.Substring(5);//0 无声音、1 trial开始前、2 开始后可以舔之前、3 trial中、4 可获取奖励、5 失败
-                        if(moving.TrialSoundPlayModeCorresponding.TryGetValue(soundOptionSelected, out int tempId)){//buttons
+                        if(moving.soundConfig.TrialSoundPlayModeCorresponding.TryGetValue(soundOptionSelected, out int tempId)){//buttons
                             if(tempId == 0){//"Off"
                                 moving.ChangeCueSoundPlayMode(0, false, "", true);
                                 foreach(UnityEngine.UI.Button button in soundOptionsDict.Values){
@@ -192,7 +192,7 @@ public class UIUpdate : MonoBehaviour
                                     button.GetComponent<ScrButton>().pressCount = 0;
                                 }
                             }else{//其他
-                                moving.TrialSoundPlayMode.Remove(0);
+                                moving.soundConfig.TrialSoundPlayMode.Remove(0);
                                 SetButtonColor(soundOptionsDict[0], Color.gray);
                                 soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
 
@@ -200,13 +200,13 @@ public class UIUpdate : MonoBehaviour
                                 int _result = moving.ChangeCueSoundPlayMode(tempId, selected, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
                                 SetButtonColor(soundOptionsDict[tempId], selected? Color.green: Color.gray);
                                 // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
-                                MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.TrialSoundPlayMode)}\n");
+                                MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.soundConfig.TrialSoundPlayMode)}\n");
                             }
                         }else if(soundOptionSelected.StartsWith("Dropdown")){//dropdowns
                             string parentNameAfter = soundOptionSelected.Substring(8);
-                            int _tempId = moving.TrialSoundPlayModeCorresponding[parentNameAfter];
-                            if(moving.TrialSoundPlayModeAudio.ContainsKey(_tempId)){
-                                moving.TrialSoundPlayModeAudio[_tempId] = stringArg;
+                            int _tempId = moving.soundConfig.TrialSoundPlayModeCorresponding[parentNameAfter];
+                            if(moving.soundConfig.TrialSoundPlayModeAudio.ContainsKey(_tempId)){
+                                moving.soundConfig.TrialSoundPlayModeAudio[_tempId] = stringArg;
                             }
                         }
                     }
@@ -323,15 +323,15 @@ public class UIUpdate : MonoBehaviour
         logScrollBar.GetComponent<ScrScrollBar>().ui_update = this;
 
         foreach(UnityEngine.UI.Button button in soundOptions.GetComponentsInChildren<UnityEngine.UI.Button>()){
-            if(moving.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))){
-                soundOptionsDict.Add(moving.TrialSoundPlayModeExplain.IndexOf(button.name.Substring(5)), button);
+            if(moving.soundConfig.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))){
+                soundOptionsDict.Add(moving.soundConfig.TrialSoundPlayModeExplain.IndexOf(button.name.Substring(5)), button);
                 button.GetComponent<ScrButton>().ui_update = this;
                 Dropdown _dropdown = button.GetComponentInChildren<Dropdown>();
                 if(_dropdown != null){
                     _dropdown.name = "soundDropdown" + button.name.Substring(5);
                     _dropdown.AddOptions(moving.audioSources.Keys.ToList());
                     _dropdown.GetComponentInChildren<Text>().fontSize = 10;
-                    moving.TrialSoundPlayModeAudio.Add(moving.TrialSoundPlayModeAudio.Count, _dropdown.captionText.text);
+                    moving.soundConfig.TrialSoundPlayModeAudio.Add(moving.soundConfig.TrialSoundPlayModeAudio.Count, _dropdown.captionText.text);
                     soundDropdowns.Add(_dropdown);
                 }
             }

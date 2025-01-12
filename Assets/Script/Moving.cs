@@ -37,12 +37,12 @@ class ContextInfo{
         string errorMessage = "";
         try{
             errorMessage = "avaliablePosArray";
-            avaliablePosArray = new List<int>();
+            avaliablePosDict = new Dictionary<int, int>();
             foreach(string availablePos in _available_pos_array.Split(',')){
                 int temp_pos = Convert.ToInt16(availablePos) % 360;
-                if(!avaliablePosArray.Contains(temp_pos)){avaliablePosArray.Add(temp_pos);}
+                // if(!avaliablePosDict.Contains(temp_pos)){avaliablePosDict.Add(temp_pos);}
+                avaliablePosDict.Add(avaliablePosDict.Count(), temp_pos);
             }
-            avaliablePosArray.Sort();
 
             errorMessage = "avaliableMatArray";
             matAvaliableArray = new List<string>();
@@ -53,14 +53,14 @@ class ContextInfo{
             errorMessage = "pumpPosLs";
             pumpPosLs = new List<int>();
             var _strPumpPos = _pump_pos_array.Split(",");
-            if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosArray.Count()){
+            if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosDict.Count()){
                 foreach(string pos in _strPumpPos){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
                         pumpPosLs.Add(Convert.ToInt16(pos));
                     //}
                 }
             }else{
-                foreach(int _ in avaliablePosArray){
+                foreach(int _ in avaliablePosDict.Keys){
                     pumpPosLs.Add(pumpPosLs.Count());
                 }
             }
@@ -68,14 +68,14 @@ class ContextInfo{
             errorMessage = "lickPosLs";
             lickPosLs = new List<int>();
             var _strLickPos = _lick_pos_array.Split(",");
-            if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosArray.Count()){
+            if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosDict.Count()){
                 foreach(string pos in _strLickPos){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
                         lickPosLs.Add(Convert.ToInt16(pos));
                     //}
                 }
             }else{
-                foreach(int _ in avaliablePosArray){
+                foreach(int _ in avaliablePosDict.Keys){
                     lickPosLs.Add(lickPosLs.Count());
                 }
             }
@@ -83,26 +83,29 @@ class ContextInfo{
             errorMessage = "trackMarkLs";
             trackMarkLs = new List<int>();
             var _strtrackMark = _trackMark_array.Split(",");
-            if(_strtrackMark.Count() > 0 && _strtrackMark.Count() >= avaliablePosArray.Count()){
+            if(_strtrackMark.Count() > 0 && _strtrackMark.Count() >= avaliablePosDict.Count()){
                 foreach(string pos in _strtrackMark){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
                         trackMarkLs.Add(Convert.ToInt16(pos));
                     //}
                 }
             }else{
-                foreach(int _ in avaliablePosArray){
+                foreach(int _ in avaliablePosDict.Keys){
                     trackMarkLs.Add(trackMarkLs.Count());
                 }
             }
             
             errorMessage = "assign or random port parse";
             List<int> posLs = new List<int>();
+            List<int> availablePosArray = avaliablePosDict.Keys.ToList();
+
             if(startMethod.StartsWith("random")){
                 string content = startMethod[6..].Replace(" ", "");
                 string[] temp = content.Length > 0? content.Split(",") : new string[]{};
                 Debug.Log(temp.Length > 0);
-                if(temp.Length > 0){posLs = temp.Select(str => Convert.ToInt32(str)).ToList();}
-                else{posLs = avaliablePosArray;}
+                if(temp.Length > 0){posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt32(str))? Convert.ToInt32(str): -1).ToList();}
+                else{posLs = availablePosArray;}
+                if(posLs.Contains(-1)){throw new Exception("");}
                 
                 List<int> ints = new List<int>();
                 for (int i = 0; i < posLs.Count * 3; i++){ints.Add(i % posLs.Count);}
@@ -113,9 +116,9 @@ class ContextInfo{
 
                 
             }else if(startMethod.StartsWith("assign")){
-                posLs = avaliablePosArray;
+                posLs = availablePosArray;
                 string lastUnit = "";
-                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
+                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*0,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
                     ProcessUnit(pos);
                     lastUnit = pos;
@@ -127,7 +130,7 @@ class ContextInfo{
                             ProcessUnit(lastUnit);
                         }
                     }else{
-                        barPosLs.Add(avaliablePosArray[UnityEngine.Random.Range(0, avaliablePosArray.Count)]);
+                        barPosLs.Add(avaliablePosDict[UnityEngine.Random.Range(0, avaliablePosDict.Count)]);
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
@@ -156,7 +159,7 @@ class ContextInfo{
                 if(posMatMatch && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                     errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
                     for (int i=0; i<_maxTrial; i++){
-                        barmatLs.Add(matAvaliableArray[avaliablePosArray.IndexOf(barPosLs[i])]);
+                        barmatLs.Add(matAvaliableArray[barPosLs[i]]);
                     }
                 }else{
 
@@ -174,7 +177,7 @@ class ContextInfo{
                 if(matAvaliableArray.Count > 1 && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                     errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
                     for (int i=0; i<_maxTrial; i++){
-                        barmatLs.Add(matAvaliableArray[avaliablePosArray.IndexOf(barPosLs[i])]);
+                        barmatLs.Add(matAvaliableArray[barPosLs[i]]);
                     }
                 }else{
                     string lastUnit = "";
@@ -229,7 +232,7 @@ class ContextInfo{
     }
     //public string start_method;
     public string       startMethod     {get;}
-    public List<int>    avaliablePosArray {get;}//最多8个，从角度0开始对位置顺时针编号0-7
+    public Dictionary<int, int>    avaliablePosDict {get;}//最多8个，从角度0开始对位置顺时针编号0-7
     public string       matStartMethod     {get;}
     public List<string> matAvaliableArray {get;}
     public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
@@ -310,7 +313,7 @@ class ContextInfo{
         
         for(int i = 0; i < multiple; i++){
             foreach(int posUnit in _pos){
-                if(avaliablePosArray.Contains(Convert.ToInt16(posUnit))){
+                if(avaliablePosDict.ContainsValue(Convert.ToInt16(posUnit))){
                     barPosLs.Add(posUnit % 360);
                 }
                 else{
@@ -373,32 +376,32 @@ class ContextInfo{
     }
 
     public float GetDeg(int pos){
-        if(pos < 0 || pos >= avaliablePosArray.Count){return -1;}
-        return avaliablePosArray[pos];
+        if(pos < 0 || pos >= avaliablePosDict.Count){return -1;}
+        return avaliablePosDict[pos];
     }
 
     public int GetBarPos(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return avaliablePosArray.IndexOf(barPosLs[trial]);
+        return avaliablePosDict[barPosLs[trial]];
     }
     public int GetRightLickPosIndInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return lickPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
+        return lickPosLs[barPosLs[trial]];
     }
 
     public int GetPumpPosInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return pumpPosLs[avaliablePosArray.IndexOf(barPosLs[trial])];
+        return pumpPosLs[barPosLs[trial]];
     }
 
     public float GetDegInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return barPosLs[trial];
+        return avaliablePosDict[barPosLs[trial]];
     }
 
     public int GetTrackMarkInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return trackMarkLs[avaliablePosArray.IndexOf(barPosLs[trial])];
+        return trackMarkLs[barPosLs[trial]];
     }
 
     public bool verify(int lickInd, int trial){//传入的lickInd为RawInd,需要经过LickPos转换
@@ -416,12 +419,12 @@ class ContextInfo{
         return barmatLs[trial];
     }
 }
-
 public class Moving : MonoBehaviour
 {
     public bool InApp = false;
     bool DebugWithoutArduino = false;
     public GameObject background;
+    public GameObject backgroundCover;
     public GameObject barPrefab;
     public GameObject circleBarPrefab;
     public GameObject centerShaftPrefab;
@@ -473,17 +476,17 @@ public class Moving : MonoBehaviour
 
     public int TrialStartTriggerMode {get{return trialStartTriggerMode;}}
     List<string> trialStartTriggerModeLs = new List<string>(){"延时", "红外", "压杆", "位置检测", "结束"};
-    public List<int> TrialSoundPlayMode = new List<int>{};
-    public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
+    // public List<int> TrialSoundPlayMode = new List<int>{};
+    // public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
 
-    /// <summary>
-    /// {"Off", 0}, {"BeforeTrial", 1}, {"NearStart", 2}, {"BeforeGoCue", 3}, {"BeforeLickCue", 4}, {"InPos", 5}, {"EnableReward", 6}, {"AtFail", 7}
-    /// </summary>
-    /// <typeparam name="string"></typeparam>
-    /// <typeparam name="int"></typeparam>
-    /// <returns></returns>
-    public Dictionary<string, int> TrialSoundPlayModeCorresponding = new Dictionary<string, int>(){};//0 无声音、1 trial开始前、2将要开始trial但延迟、3 可以舔之前、4 开始后可以舔时、5 trial中、6 可获取奖励、7 失败
-    public Dictionary<int, string> TrialSoundPlayModeAudio = new Dictionary<int, string>{};//int(key): TrialSoundPlayModeCorresponding.values; value: "6000hz", "alarm"
+    // /// <summary>
+    // /// {"Off", 0}, {"BeforeTrial", 1}, {"NearStart", 2}, {"BeforeGoCue", 3}, {"BeforeLickCue", 4}, {"InPos", 5}, {"EnableReward", 6}, {"AtFail", 7}
+    // /// </summary>
+    // /// <typeparam name="string"></typeparam>
+    // /// <typeparam name="int"></typeparam>
+    // /// <returns></returns>
+    // public Dictionary<string, int> TrialSoundPlayModeCorresponding = new Dictionary<string, int>(){};//0 无声音、1 trial开始前、2将要开始trial但延迟、3 可以舔之前、4 开始后可以舔时、5 trial中、6 可获取奖励、7 失败
+    // public Dictionary<int, string> TrialSoundPlayModeAudio = new Dictionary<int, string>{};//int(key): TrialSoundPlayModeCorresponding.values; value: "6000hz", "alarm"
     bool trialStartReady = false;
     List<int> trialResult = new List<int>();//1:success 0:fail -1:manully skip -2:manually successful skip -3:unimportant fail(in mode 0x00 and 0x01)
     List<List<int>> trialResultPerLickSpout = new List<List<int>>();//0, 2, 4, 6,...success/fail, 1, 3, 5, 7,...:miss
@@ -500,6 +503,7 @@ public class Moving : MonoBehaviour
     UIUpdate ui_update;
     IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
+    public SoundConfig soundConfig;
 
     #region communicating
     List<string> portBlackList = new List<string>();
@@ -517,7 +521,10 @@ public class Moving : MonoBehaviour
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
-    bool debugMode = false; public bool DebugMode { get { return debugMode;} set { debugMode = value; } }
+    bool debugMode = false; public bool DebugMode { get { return debugMode;} set{
+                                                                                    debugMode = value;
+                                                                                    //backgroundCover.SetActive(debugMode);
+                                                                                }}
     #endregion communicating end
 
     #region  context generate
@@ -532,6 +539,121 @@ public class Moving : MonoBehaviour
     ContextInfo contextInfo;
     Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
     // List<List<float>> selectRegions = new List<List<float>>();
+
+    
+    public class SoundConfig{
+        public SoundConfig(float cueVolume, string strTrialSoundPlayMode, float soundLength, Dictionary<int, float[]> audioPlayTimes){
+            foreach(string modeExplain in TrialSoundPlayModeExplain){
+                TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
+            }
+            
+            foreach(int mode in strTrialSoundPlayMode.Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
+                if(soundLength < 0){TrialSoundPlayMode.Add(0); break;}
+
+                TrialSoundPlayMode.Add(mode);
+                audioPlayTimes.Add(mode, new float[]{soundLength, -1, -1});
+            }//以后连着dropdown做成struct, json存储
+            foreach(string modeExplain in TrialSoundPlayModeExplain){
+                TrialSoundPlayModeCorresponding.TryAdd(modeExplain, TrialSoundPlayModeCorresponding.Count);
+            }
+        }
+
+        public List<int> GetTrialSoundPlayMode(){
+            return TrialSoundPlayMode;
+        }
+
+        public List<string> GetTrialSoundPlayModeExplain(){
+            return TrialSoundPlayModeExplain;
+        }
+
+        public int GetTrialSoundPlayModeCorresponding(string soundModeName){
+            if(TrialSoundPlayModeCorresponding.ContainsKey(soundModeName)){
+                return TrialSoundPlayModeCorresponding[soundModeName];
+            }else{
+                return -1;
+            }
+        }
+
+        public bool GetTrialSoundPlayModeContains(int soundMode){
+            return TrialSoundPlayMode.Contains(soundMode);
+        }
+
+        public bool GetTrialSoundPlayModeContains(string soundName){
+            if(TrialSoundPlayModeCorresponding.ContainsKey(soundName)){
+                return true;
+            }else{
+                return false;
+            }
+        }
+
+        public bool TryGetAudioName(int soundMode, out string name){
+            if(GetTrialSoundPlayModeContains(soundMode)){
+                name = TrialSoundPlayModeAudio[soundMode];
+                return true;
+            }
+            name = "";
+            return false;
+        }
+
+        public string GetAudioName(int soundMode){
+            if(TryGetAudioName(soundMode, out string soundName)){
+                return soundName;
+            }else{
+                return "\\";
+            }
+        }
+
+        public int AddTrialSoundPlayModeAudio(int soundMode, string soundName){
+            TrialSoundPlayModeAudio.Add(soundMode, soundName);
+            return 1;
+        }
+
+        public int ChangeCueSoundPlayMode(int _playMode, bool addOrRemove, string soundName, Dictionary<int, float[]> audioPlayTimes, float soundLength, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
+            // if(audioSources[0].isPlaying){return -1;}
+            // else{
+                if(GetTrialSoundPlayModeContains(0)){
+
+                }else{
+                    if(soundLength > 0){
+
+                    }else{
+                        return -2;
+                    }
+                }
+
+                if(addOrRemove){//add
+                    if(GetTrialSoundPlayModeContains(_playMode)){return 0;}
+                    TrialSoundPlayMode.Add(_playMode);
+                    TrialSoundPlayModeAudio[_playMode] = soundName;
+                    audioPlayTimes.Add(_playMode, new float[]{soundLength, -1, -1});
+                }
+                else{//remove
+                    if(clearAll || clearOtherAll){
+                        TrialSoundPlayMode.Clear();
+                        TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
+                    }
+                    if(!GetTrialSoundPlayModeContains(_playMode)){return 0;}
+                    TrialSoundPlayMode.Remove(_playMode);
+                    audioPlayTimes.Remove(_playMode);
+                }
+            // }
+            return 1;
+        }
+
+
+        public List<int> TrialSoundPlayMode = new List<int>{};
+        public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
+
+        /// <summary>
+        /// {"Off", 0}, {"BeforeTrial", 1}, {"NearStart", 2}, {"BeforeGoCue", 3}, {"BeforeLickCue", 4}, {"InPos", 5}, {"EnableReward", 6}, {"AtFail", 7}
+        /// </summary>
+        /// <typeparam name="string"></typeparam>
+        /// <typeparam name="int"></typeparam>
+        /// <returns></returns>
+        public Dictionary<string, int> TrialSoundPlayModeCorresponding = new Dictionary<string, int>(){};//0 无声音、1 trial开始前、2将要开始trial但延迟、3 可以舔之前、4 开始后可以舔时、5 trial中、6 可获取奖励、7 失败
+        public Dictionary<int, string> TrialSoundPlayModeAudio = new Dictionary<int, string>{};//int(key): TrialSoundPlayModeCorresponding.values; value: "6000hz", "alarm"
+
+    }
 
     struct MaterialStruct{
         string name;            public string Name          { get { return name;}}
@@ -657,6 +779,7 @@ public class Moving : MonoBehaviour
 
     public void SetBarPos(float actual_pos){//0-1，角度输入时需要配合DegToPos
         bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
+        // ui_update.MessageUpdate($"bar Pos in float: {actual_pos}");
     }
 
     // void SetMaterial(List<GameObject> goList, string _mat){
@@ -807,16 +930,16 @@ public class Moving : MonoBehaviour
     /// <param name="soundName"></param>
     /// <param name="isAlarm"></param>
     /// <returns></returns>
-    int PlaySound(string soundName = "6000hz", string addInfo = ""){
-        if(!audioSources.ContainsKey(soundName)){ return -1;}
-        if(audioSources[soundName].isPlaying){return 0;}
+    int PlaySound(AudioSource audioSource, string addInfo = ""){
+        if(!audioSources.ContainsValue(audioSource)){ return -1;}
+        // if(audioSources[soundName].isPlaying){return 0;}
 
 
-        if(soundName == "alarm"){
+        if(audioSource.clip.name == "alarm"){
             if(alarmPlayReady){
-                Debug.Log("sound played: " + soundName);
-                audioSources[soundName].Play();
-                WriteInfo(recType:9, _lickPos:audioSourceInds[soundName], addInfo:addInfo);
+                Debug.Log("sound played: " + audioSource.clip.name);
+                audioSources[audioSource.clip.name].Play();
+                WriteInfo(recType:9, _lickPos:audioSourceInds[audioSource.clip.name], addInfo:addInfo);
                 alarmPlayReady = false;
                 alarm.TrySetAlarm("SetAlarmReadyToTrue", alarmPlayTimeInterval, out _);
             }
@@ -824,9 +947,9 @@ public class Moving : MonoBehaviour
                 return 0;
             }
         }else{
-            Debug.Log("sound played: " + soundName);
-            audioSources[soundName].Play();
-            WriteInfo(recType:9, _lickPos:audioSourceInds[soundName], addInfo:addInfo);
+            Debug.Log("sound played: " + audioSource.clip.name);
+            audioSources[audioSource.clip.name].Play();
+            WriteInfo(recType:9, _lickPos:audioSourceInds[audioSource.clip.name], addInfo:addInfo);
         }
         return 1;
     }
@@ -837,24 +960,35 @@ public class Moving : MonoBehaviour
     /// <param name="soundMode"></param>
     /// <param name="isAlarm"></param>
     /// <returns></returns>
+    int PlaySound(string soundModeName, string addInfo = ""){
+        int tempSoundMode = soundConfig.GetTrialSoundPlayModeCorresponding(soundModeName);
+        if(tempSoundMode >= 0){
+            return PlaySound(tempSoundMode, addInfo);
+        }else{
+            return -1;
+        }
+    }
     int PlaySound(int soundMode, string addInfo = ""){
-        if(TrialSoundPlayMode.Contains(soundMode)){
-            int playResult = PlaySound(TrialSoundPlayModeAudio[soundMode], addInfo:addInfo);
-            Debug.Log("playResult"+playResult);
-            if(playResult == 1){
-                float[] _audioPlayTime = audioPlayTimes[soundMode];
-                _audioPlayTime[1] = Time.fixedUnscaledTime;
-                _audioPlayTime[2] = Time.fixedUnscaledTime + (TrialSoundPlayModeAudio[soundMode] == "alarm"? alarmPlayTimeInterval:  _audioPlayTime[0]);
-                // Debug.Log(string.Join(", ", _audioPlayTime));
+        if(soundConfig.TryGetAudioName(soundMode, out string audioName)){
+            if(audioSources.ContainsKey(audioName)){
+                int playResult = PlaySound(audioSources[audioName], addInfo:addInfo);
+                Debug.Log("playResult"+playResult);
+                if(playResult == 1){
+                    float[] _audioPlayTime = audioPlayTimes[soundMode];
+                    _audioPlayTime[1] = Time.fixedUnscaledTime;
+                    _audioPlayTime[2] = Time.fixedUnscaledTime + (audioName == "alarm"? alarmPlayTimeInterval:  _audioPlayTime[0]);
+                    // Debug.Log(string.Join(", ", _audioPlayTime));
+                }
+                return playResult;
             }
-
-            return playResult;
+            return -2;
         }else{
             return -1;
         }
     }
 
     int StopSound(string audioName = "", bool all = true){
+        if(audioName == "\\"){return -2;}
         if(audioName != ""){all = false;}
         foreach(string _soundName in audioSources.Keys){
             if(audioSources[_soundName].isPlaying && ((audioName != "" && _soundName == audioName) || all)){
@@ -871,14 +1005,14 @@ public class Moving : MonoBehaviour
         if(tempTimes[2] > 0){
             audioPlayTimes[soundMode][1] = -1;
             audioPlayTimes[soundMode][2] = -1;
-            return StopSound(TrialSoundPlayModeAudio[soundMode], all:all);
+            return StopSound(soundConfig.GetAudioName(soundMode), all:all);
         }else{
             return -1;
         }
     }
 
     void TryStopSound(){
-        foreach(int soundMode in TrialSoundPlayMode){
+        foreach(int soundMode in soundConfig.GetTrialSoundPlayMode()){
             float[] tempTimes = audioPlayTimes[soundMode];
             if(tempTimes[0] > 0 && tempTimes[2] > 0){
                 if(Time.fixedUnscaledTime >= tempTimes[2]){
@@ -965,8 +1099,8 @@ public class Moving : MonoBehaviour
                 contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
             }
 
-            if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && waitSoundCue){//需要根据是否有声音决定trial开始方式，不能省略contains
-                PlaySound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+            if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && waitSoundCue){//需要根据是否有声音决定trial开始方式，不能省略contains
+                PlaySound("BeforeTrial");
                 waiting = true;
                 alarm.TrySetAlarm("StartTrialWaitSoundCue", _waitSec < 0? contextInfo.soundLength + contextInfo.soundCueLeadTime: _waitSec, out _);
                 WriteInfo(recType: 7);
@@ -1026,9 +1160,9 @@ public class Moving : MonoBehaviour
         // float tempDelay = contextInfo.waitFromStart[0] > 0 ? UnityEngine.Random.Range(contextInfo.waitFromStart[0], contextInfo.waitFromStart[1]): 0;
         float tempDelay = contextInfo.waitFromStart[0] > 0 ? GetRandom(contextInfo.waitFromStart): 0;
         contextInfo.GoCueLeadTime = tempDelay;
-        alarm.TrySetAlarm("PlaySoundWhenSetWaitingToFalse", (int)(tempDelay/Time.fixedDeltaTime), out _);
+        alarm.TrySetAlarm("PlayGoCueWhenSetWaitingToFalse", (int)(tempDelay/Time.fixedDeltaTime), out _);
         alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", 1, out _);
-        alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlaySoundWhenSetWaitingToFalse");
+        alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlayGoCueWhenSetWaitingToFalse");
         alarm.DeleteAlarm("DeactivateBar", true);
         ActivateBar(trial: nowTrial);
 
@@ -1071,7 +1205,7 @@ public class Moving : MonoBehaviour
         if(isInit || !trialSuccess){DeactivateBar();}
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
         
-        if(!isInit && !trialSuccess){PlaySound(TrialSoundPlayModeCorresponding["AtFail"]);}
+        if(!isInit && !trialSuccess){PlaySound("AtFail");}
 
         waiting = true;
         alarmPlayReady = false;
@@ -1152,7 +1286,7 @@ public class Moving : MonoBehaviour
             // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
-        else if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
+        else if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
             return soundCueLeadTime > 0? 1: -1;
         }
         else{
@@ -1196,7 +1330,7 @@ public class Moving : MonoBehaviour
             return 0;
         }else{
 
-            if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2){
+            if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2 || trialStartTriggerMode == 4){
                 trialStartTriggerMode = _triggerMode;
                 if(IPCInNeed()){
                     ipcclient.Silent = false;
@@ -1218,37 +1352,39 @@ public class Moving : MonoBehaviour
     }
 
     public int ChangeCueSoundPlayMode(int _playMode, bool addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
-        // if(audioSources[0].isPlaying){return -1;}
-        // else{
-            if(TrialSoundPlayMode.Contains(0)){
-
-            }else{
-                if(contextInfo.soundLength > 0){
-
-                }else{
-                    ui_update.MessageUpdate("Invlid sound length!");
-                    return -2;
-                }
-            }
-
-            if(addOrRemove){//add
-                if(TrialSoundPlayMode.Contains(_playMode)){return 0;}
-                TrialSoundPlayMode.Add(_playMode);
-                TrialSoundPlayModeAudio[_playMode] = soundName;
-                audioPlayTimes.Add(_playMode, new float[]{contextInfo.soundLength, -1, -1});
-            }
-            else{//remove
-                if(clearAll || clearOtherAll){
-                    TrialSoundPlayMode.Clear();
-                    TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
-                }
-                if(!TrialSoundPlayMode.Contains(_playMode)){return 0;}
-                TrialSoundPlayMode.Remove(_playMode);
-                audioPlayTimes.Remove(_playMode);
-            }
-        // }
-        return 1;
+        return soundConfig.ChangeCueSoundPlayMode(_playMode, addOrRemove, soundName, audioPlayTimes, contextInfo.soundLength, clearAll, clearOtherAll);
     }
+    //     // if(audioSources[0].isPlaying){return -1;}
+    //     // else{
+    //         if(soundConfig.GetTrialSoundPlayModeContains(0)){
+
+    //         }else{
+    //             if(contextInfo.soundLength > 0){
+
+    //             }else{
+    //                 ui_update.MessageUpdate("Invlid sound length!");
+    //                 return -2;
+    //             }
+    //         }
+
+    //         if(addOrRemove){//add
+    //             if(soundConfig.GetTrialSoundPlayModeContains(_playMode)){return 0;}
+    //             TrialSoundPlayMode.Add(_playMode);
+    //             TrialSoundPlayModeAudio[_playMode] = soundName;
+    //             audioPlayTimes.Add(_playMode, new float[]{contextInfo.soundLength, -1, -1});
+    //         }
+    //         else{//remove
+    //             if(clearAll || clearOtherAll){
+    //                 TrialSoundPlayMode.Clear();
+    //                 TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
+    //             }
+    //             if(!soundConfig.GetTrialSoundPlayModeContains(_playMode)){return 0;}
+    //             TrialSoundPlayMode.Remove(_playMode);
+    //             audioPlayTimes.Remove(_playMode);
+    //         }
+    //     // }
+    //     return 1;
+    // }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
         if(lickInd < 0 || lickTrial < 1){return -1;}
@@ -1430,7 +1566,7 @@ public class Moving : MonoBehaviour
     }
 
     public Dictionary<string, int> GetTrialInfo(){
-        int showLickSpoutNum = contextInfo.avaliablePosArray.Count;
+        int showLickSpoutNum = contextInfo.avaliablePosDict.Count;
         /*
         "NowTrial"    
         "IsPausing"   
@@ -1505,7 +1641,7 @@ public class Moving : MonoBehaviour
     int TriggerRespond(bool inOrLeave, int _recType){
         if(trialStartTriggerMode > 0){
             if(inOrLeave){
-                if(TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"]) && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
+                if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
                     //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
                     SetTrial(manual:false, waitSoundCue: true);
                 }else{
@@ -1606,22 +1742,22 @@ public class Moving : MonoBehaviour
                                 Debug.Log($"after lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
 
                                 // Debug.Log("waitSecRec" + waitSecRec);
-                                // PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);
+                                // PlaySound("NearStart");
                             }
                         }
                         Debug.Log("alarm of SetAlarmReadyToTrueAfterTrianEnd: " + alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd"));
                         if(alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd") < 0){
-                            PlaySound(TrialSoundPlayModeCorresponding["NearStart"]);//无论等待时间，间隔舔了都播放警报
+                            PlaySound("NearStart");//无论等待时间，间隔舔了都播放警报
                         }else{
                             alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
                         }
                     }else{//trial开始后在Go Cue之前舔了应延迟
-                        float _lasttime = alarm.GetAlarm("PlaySoundWhenSetWaitingToFalse") * Time.fixedUnscaledDeltaTime;//waitFromStart无设置时此alarm一直为-1
+                        float _lasttime = alarm.GetAlarm("PlayGoCueWhenSetWaitingToFalse") * Time.fixedUnscaledDeltaTime;//waitFromStart无设置时此alarm一直为-1
                         if(_lasttime > 0){//仍在等待Go Cue
                         
                             // alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", contextInfo.GoCueLeadTime, out _);//SetWaitingToFalseAtTrialStart将在playSound后开始，不必要延迟这个
-                            alarm.TrySetAlarm("PlaySoundWhenSetWaitingToFalse", contextInfo.GoCueLeadTime, out _);
-                            PlaySound(TrialSoundPlayModeCorresponding["BeforeGoCue"]);
+                            alarm.TrySetAlarm("PlayGoCueWhenSetWaitingToFalse", contextInfo.GoCueLeadTime, out _);
+                            PlaySound("BeforeGoCue");
                         }
                     }
 
@@ -2036,26 +2172,6 @@ public class Moving : MonoBehaviour
             config_path=Application.dataPath+"/Resources/config.ini";
             // if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
         #endif
-        
-        Display mainScreen = Display.displays[0];
-        mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
-        Screen.fullScreen = false;
-
-        if(InApp){
-            // if(Display.displays.Count() == 2){Display.displays[1].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});}
-            // else if(Display.displays.Count() ==3){
-            //     Display.displays[1].Activate(1024, 768, new RefreshRate(){numerator = 60, denominator = 1});
-            //     Display.displays[2].Activate(1024, 768, new RefreshRate(){numerator = 60, denominator = 1});
-            // }
-            for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
-                Display.displays[i].Activate();
-                Screen.fullScreen = false;
-                Display.displays[i].Activate(1920, 1080, new RefreshRate(){numerator = 60, denominator = 1});
-                //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
-            }
-        }
-        // MessageBoxForUnity.Ensure($"screen number: {Display.displays.Count()}", "display");
-        Resolution[] resolutions= Screen.resolutions;
 
         time_rec_for_log[0] = Time.fixedUnscaledTime;
         commandConverter = new CommandConverter(ls_types);
@@ -2073,8 +2189,7 @@ public class Moving : MonoBehaviour
         }
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
-        // audioSources.Add(GetComponent<AudioSource>());
-        
+
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
         barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barWidth", "100"));
@@ -2084,6 +2199,19 @@ public class Moving : MonoBehaviour
         displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
         isRing = iniReader.ReadIniContent(  "displaySettings", "isRing", "false") == "true";
         displayVerticalPos = Math.Clamp(displayVerticalPos, -1, 2);
+
+        Display mainScreen = Display.displays[0];
+        mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
+        Screen.fullScreen = false;
+
+        if(InApp){
+            for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
+                Display.displays[i].Activate();
+                Screen.fullScreen = false;
+                Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+            }
+        }
 
         contextInfo = new ContextInfo(
             iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
@@ -2102,7 +2230,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "waitFromStart"      ,  "random2~5"             ),                // float go cue
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "soundLength"       ,   "0.2"                   )),                // float 
+            Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings", "soundLength"       ,   "0.2"                   )),                // float 
             iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
             iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
             iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
@@ -2119,9 +2247,13 @@ public class Moving : MonoBehaviour
 
         if (float.TryParse(iniReader.ReadIniContent("soundSettings", "cueVolume", "0.5"), out float cueVolume)){cueVolume = Math.Clamp(cueVolume, 0, 1);}
         else{cueVolume = 0.5f;}
-        foreach(string modeExplain in TrialSoundPlayModeExplain){
-            TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
-        }
+        soundConfig = new SoundConfig(cueVolume, 
+            iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0"),
+            contextInfo.soundLength,
+            audioPlayTimes
+        );
+
+        
         foreach(AudioSource _audioSource in GetComponents<AudioSource>()){
             if(_audioSource.clip.name != "alarm"){
                 _audioSource.loop = true;
@@ -2131,12 +2263,12 @@ public class Moving : MonoBehaviour
             audioSources.Add(_audioSource.clip.name, _audioSource);
             audioSourceInds.Add(_audioSource.clip.name, audioSourceInds.Count);
         }
-        foreach(int mode in iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
-            if(contextInfo.soundLength < 0){TrialSoundPlayMode.Add(0); break;}
+        // foreach(int mode in iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
+        //     if(contextInfo.soundLength < 0){TrialSoundPlayMode.Add(0); break;}
 
-            TrialSoundPlayMode.Add(mode);
-            audioPlayTimes.Add(mode, new float[]{contextInfo.soundLength, -1, -1});
-        }//以后连着dropdown做成struct, json存储
+        //     TrialSoundPlayMode.Add(mode);
+        //     audioPlayTimes.Add(mode, new float[]{contextInfo.soundLength, -1, -1});
+        // }//以后连着dropdown做成struct, json存储
         alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
         MaterialStruct defaultMat = new MaterialStruct();
@@ -2260,7 +2392,7 @@ public class Moving : MonoBehaviour
         ui_update.ControlsParse("ModeSelect", trialMode, "passive");
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
         IPCInNeed();
-        foreach(int mode in TrialSoundPlayMode){
+        foreach(int mode in soundConfig.GetTrialSoundPlayMode()){
             ui_update.ControlsParse("sound", mode, "passive;add");
         }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
@@ -2309,8 +2441,8 @@ public class Moving : MonoBehaviour
                     trialStartReady = true;
                     break;
                 }
-                case "PlaySoundWhenSetWaitingToFalse":{
-                    PlaySound(TrialSoundPlayModeCorresponding["BeforeLickCue"], addInfo:"go cue");
+                case "PlayGoCueWhenSetWaitingToFalse":{
+                    PlaySound("BeforeLickCue", addInfo:"go cue");
                     break;
                 }
                 case "SetAlarmReadyToTrue":{
@@ -2335,14 +2467,14 @@ public class Moving : MonoBehaviour
         }
         alarm.AlarmFixUpdate();
 
-        if(waitSec != -1 && trialStartTriggerMode == 0 && TrialSoundPlayMode.Contains(TrialSoundPlayModeCorresponding["BeforeTrial"])){//延时模式到时间播放声音，但trial开始还要看小鼠是否继续舔
+        if(waitSec != -1 && trialStartTriggerMode == 0 && soundConfig.GetTrialSoundPlayModeContains("BeforeTrial")){//延时模式到时间播放声音，但trial开始还要看小鼠是否继续舔
             if(IntervalCheck() == 1){
-                PlaySound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+                PlaySound("BeforeTrial");
             }
         }
 
         // if(cueSoundPlayTime[1] > 0 && Time.fixedUnscaledTime >= cueSoundPlayTime[2]){
-        //     StopSound(TrialSoundPlayModeCorresponding["BeforeTrial"]);
+        //     StopSound(TrialSoundPlayModeCorresponding["BeforeTrial");
         // }
         TryStopSound();
 
@@ -2383,7 +2515,7 @@ public class Moving : MonoBehaviour
                         }
                     }
                     if(InTriggerArea){
-                        PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
+                        PlaySound("InPos");
                         standingSecNow = standingSecNow == -1? Time.fixedUnscaledDeltaTime: standingSecNow + Time.fixedUnscaledDeltaTime;
                         if(standingSec > 0 && standingSecNow >= standingSec){
                             standingSecNow = -1;
@@ -2391,7 +2523,7 @@ public class Moving : MonoBehaviour
                             CommandParsePublic("stay:0");
                         }
                     }else{
-                        StopSound(TrialSoundPlayModeCorresponding["InPos"]);
+                        StopSound("InPos");
                         standingSecNow = -1;
                     }
                 }
@@ -2405,17 +2537,17 @@ public class Moving : MonoBehaviour
                         // Debug.Log($"pos: {pos[0]}, {pos[1]}, dest: {CertainAreaNowTrial[2]}, {CertainAreaNowTrial[3]}, radius: {CertainAreaNowTrial[4]}, distance: {Math.Sqrt(Math.Pow(Math.Abs(pos[0] - CertainAreaNowTrial[2]), 2) + Math.Pow(Math.Abs(pos[1] - CertainAreaNowTrial[3]), 2))}");
 
                         if(CertainAreaNowTrial.Length == 6 && CheckInRegion(pos, CertainAreaNowTrial)){
-                            PlaySound(TrialSoundPlayModeCorresponding["InPos"]);
+                            PlaySound("InPos");
                             standingSecNowInTrial = standingSecNowInTrial == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrial + Time.fixedUnscaledDeltaTime;
                             if(standingSecInTrial > 0 && standingSecNowInTrial >= standingSecInTrial){
                                 standingSecNowInTrial = -1;
                                 WriteInfo(recType:8);
                                 CommandParsePublic("stay:1");
-                                PlaySound(TrialSoundPlayModeCorresponding["EnableReward"]);
+                                PlaySound("EnableReward");
                             }
                         }
                         else{
-                            StopSound(TrialSoundPlayModeCorresponding["InPos"]);
+                            StopSound("InPos");
                             standingSecNowInTrial = -1;
                         }
                     }
@@ -2467,6 +2599,7 @@ public class Moving : MonoBehaviour
     public void Exit(){
         try{
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(soundConfig));
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);
