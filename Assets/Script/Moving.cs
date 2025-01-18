@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using System.Runtime.Remoting;
 using TMPro;
 using UnityEngine.Experimental.GlobalIllumination;
+using MatrixClaculator;
 
 [System.Serializable]
 class ContextInfo{
@@ -102,7 +103,7 @@ class ContextInfo{
             if(startMethod.StartsWith("random")){
                 string content = startMethod[6..].Replace(" ", "");
                 string[] temp = content.Length > 0? content.Split(",") : new string[]{};
-                Debug.Log(temp.Length > 0);
+                // Debug.Log(temp.Length > 0);
                 if(temp.Length > 0){posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt32(str))? Convert.ToInt32(str): -1).ToList();}
                 else{posLs = availablePosArray;}
                 if(posLs.Contains(-1)){throw new Exception("");}
@@ -380,6 +381,11 @@ class ContextInfo{
         return avaliablePosDict[pos];
     }
 
+    public int GetBarInd(int trial){
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
+        return barPosLs[trial];
+    }
+
     public int GetBarPos(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return avaliablePosDict[barPosLs[trial]];
@@ -450,13 +456,17 @@ public class Moving : MonoBehaviour
     float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value;}}
     float waitSec = -1;
     float[] standingPos = new float[2];
-    float standingSec = -1;
-    float standingSecNow = -1;
-    float[] standingPosInTrial = new float[2];
-    float standingSecInTrial = -1;
-    float standingSecNowInTrial = -1;
+    float standingSecInTrigger = -1;
+    float standingSecNowInTrigger = -1;
+    // float[] standingPosInTrial = new float[2];
+    float standingSecInDest = -1;
+    float standingSecNowInDest = -1;
     bool waiting = true;
     bool forceWaiting = true;
+    /// <summary>
+    /// -1：初始未开始，-2：forcewaiting，0：waiting， 1：started，2：finished but not end
+    /// </summary>
+    int trialStatus = -1;
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
     /// <summary>
     /// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间  |||  0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
@@ -464,7 +474,7 @@ public class Moving : MonoBehaviour
     int trialMode = 0x00;// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间
                          // 0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
                         public int TrialMode { get { return trialMode; } }
-                                List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11, 0x20, 0x21};
+                                List<int> trialModes = new List<int>(){0x00, 0x01, 0x10, 0x11, 0x21, 0x22};
                         public  List<int> TrialModes { get { return trialModes; } }
 
     /// <summary>
@@ -493,19 +503,27 @@ public class Moving : MonoBehaviour
     List<int> lickPosLsCopy;
     
     List<List<int>> lickCount = new List<List<int>>();
-    public Dictionary<string, AudioSource> audioSources = new Dictionary<string, AudioSource>{};
-    public Dictionary<string, int> audioSourceInds = new Dictionary<string, int>();
+    public GameObject audioSourceSketchObject;
+    public Dictionary<int, AudioSource> audioSources = new Dictionary<int, AudioSource>{};
+    public List<int> audioPlayModeNow = new List<int>();
+    // AudioSource audioSourceCueSketch;
+    // AudioSource audioSourceAlarmSketch;
+    public Dictionary<string, AudioClip> audioClips = new Dictionary<string, AudioClip>();
+    // public Dictionary<string, int> audioSourceInds = new Dictionary<string, int>();
     Dictionary<int, float[]> audioPlayTimes = new Dictionary<int, float[]>{};
+    public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
+    float cueVolume;
+
     // float[] cueSoundPlayTime    {get{return audioPlayTimes.Count > 0? audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]]: new float[3];} set{if(audioPlayTimes.Count > 0){audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]] = value;}}}
     float alarmPlayTimeInterval;
     bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
     float alarmLickDelaySec = 2;
     UIUpdate ui_update;
-    IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
-    public SoundConfig soundConfig;
+    // public SoundConfig soundConfig;
 
     #region communicating
+    IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
@@ -529,131 +547,19 @@ public class Moving : MonoBehaviour
 
     #region  context generate
     #if UNITY_EDITOR
-        private string config_path="Assets/Resources/config.ini";
+        string config_path="Assets/Resources/config.ini";
+        // string loadPath = $"Assets/Resources/";
     #else
-        private string config_path;
+        string config_path;
+        // string loadPath = Application.dataPath + "/";
     #endif
     IniReader iniReader;
 
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
     Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
+    // KalmanFilter kalmanFilter = null;
     // List<List<float>> selectRegions = new List<List<float>>();
-
-    
-    public class SoundConfig{
-        public SoundConfig(float cueVolume, string strTrialSoundPlayMode, float soundLength, Dictionary<int, float[]> audioPlayTimes){
-            foreach(string modeExplain in TrialSoundPlayModeExplain){
-                TrialSoundPlayModeCorresponding.Add(modeExplain, TrialSoundPlayModeCorresponding.Count);
-            }
-            
-            foreach(int mode in strTrialSoundPlayMode.Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
-                if(soundLength < 0){TrialSoundPlayMode.Add(0); break;}
-
-                TrialSoundPlayMode.Add(mode);
-                audioPlayTimes.Add(mode, new float[]{soundLength, -1, -1});
-            }//以后连着dropdown做成struct, json存储
-            foreach(string modeExplain in TrialSoundPlayModeExplain){
-                TrialSoundPlayModeCorresponding.TryAdd(modeExplain, TrialSoundPlayModeCorresponding.Count);
-            }
-        }
-
-        public List<int> GetTrialSoundPlayMode(){
-            return TrialSoundPlayMode;
-        }
-
-        public List<string> GetTrialSoundPlayModeExplain(){
-            return TrialSoundPlayModeExplain;
-        }
-
-        public int GetTrialSoundPlayModeCorresponding(string soundModeName){
-            if(TrialSoundPlayModeCorresponding.ContainsKey(soundModeName)){
-                return TrialSoundPlayModeCorresponding[soundModeName];
-            }else{
-                return -1;
-            }
-        }
-
-        public bool GetTrialSoundPlayModeContains(int soundMode){
-            return TrialSoundPlayMode.Contains(soundMode);
-        }
-
-        public bool GetTrialSoundPlayModeContains(string soundName){
-            if(TrialSoundPlayModeCorresponding.ContainsKey(soundName)){
-                return true;
-            }else{
-                return false;
-            }
-        }
-
-        public bool TryGetAudioName(int soundMode, out string name){
-            if(GetTrialSoundPlayModeContains(soundMode)){
-                name = TrialSoundPlayModeAudio[soundMode];
-                return true;
-            }
-            name = "";
-            return false;
-        }
-
-        public string GetAudioName(int soundMode){
-            if(TryGetAudioName(soundMode, out string soundName)){
-                return soundName;
-            }else{
-                return "\\";
-            }
-        }
-
-        public int AddTrialSoundPlayModeAudio(int soundMode, string soundName){
-            TrialSoundPlayModeAudio.Add(soundMode, soundName);
-            return 1;
-        }
-
-        public int ChangeCueSoundPlayMode(int _playMode, bool addOrRemove, string soundName, Dictionary<int, float[]> audioPlayTimes, float soundLength, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
-            // if(audioSources[0].isPlaying){return -1;}
-            // else{
-                if(GetTrialSoundPlayModeContains(0)){
-
-                }else{
-                    if(soundLength > 0){
-
-                    }else{
-                        return -2;
-                    }
-                }
-
-                if(addOrRemove){//add
-                    if(GetTrialSoundPlayModeContains(_playMode)){return 0;}
-                    TrialSoundPlayMode.Add(_playMode);
-                    TrialSoundPlayModeAudio[_playMode] = soundName;
-                    audioPlayTimes.Add(_playMode, new float[]{soundLength, -1, -1});
-                }
-                else{//remove
-                    if(clearAll || clearOtherAll){
-                        TrialSoundPlayMode.Clear();
-                        TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
-                    }
-                    if(!GetTrialSoundPlayModeContains(_playMode)){return 0;}
-                    TrialSoundPlayMode.Remove(_playMode);
-                    audioPlayTimes.Remove(_playMode);
-                }
-            // }
-            return 1;
-        }
-
-
-        public List<int> TrialSoundPlayMode = new List<int>{};
-        public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
-
-        /// <summary>
-        /// {"Off", 0}, {"BeforeTrial", 1}, {"NearStart", 2}, {"BeforeGoCue", 3}, {"BeforeLickCue", 4}, {"InPos", 5}, {"EnableReward", 6}, {"AtFail", 7}
-        /// </summary>
-        /// <typeparam name="string"></typeparam>
-        /// <typeparam name="int"></typeparam>
-        /// <returns></returns>
-        public Dictionary<string, int> TrialSoundPlayModeCorresponding = new Dictionary<string, int>(){};//0 无声音、1 trial开始前、2将要开始trial但延迟、3 可以舔之前、4 开始后可以舔时、5 trial中、6 可获取奖励、7 失败
-        public Dictionary<int, string> TrialSoundPlayModeAudio = new Dictionary<int, string>{};//int(key): TrialSoundPlayModeCorresponding.values; value: "6000hz", "alarm"
-
-    }
 
     struct MaterialStruct{
         string name;            public string Name          { get { return name;}}
@@ -919,6 +825,64 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
+    // AudioClip GetAudioClip(string name){
+        
+    // }
+    public int ChangeSoundPlayMode(int _playMode, int addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
+        if(addOrRemove > 0){
+            if(addOrRemove == 1 && !audioPlayModeNow.Contains(_playMode) && audioClips.ContainsKey(soundName)){
+                audioPlayModeNow.Add(_playMode);
+                audioSources[_playMode].clip = audioClips[soundName];
+                if(soundName == "alarm"){
+                    audioSources[_playMode].loop = false;
+                    audioSources[_playMode].volume = 1;
+                }else{
+                    audioSources[_playMode].loop = true;
+                    audioSources[_playMode].volume = cueVolume;
+                }
+                return 0;
+            }else{//仅改变，不添加
+                if(audioClips.ContainsKey(soundName)){
+                    audioSources[_playMode].clip = audioClips[soundName];
+                    if(soundName == "alarm"){
+                        audioSources[_playMode].loop = false;
+                        audioSources[_playMode].volume = 1;
+                    }else{
+                        audioSources[_playMode].loop = true;
+                        audioSources[_playMode].volume = cueVolume;
+                    }
+                    return 0;
+                }
+                return -1;
+            }
+        }else if(addOrRemove == 0){
+            if(clearAll){
+                audioPlayModeNow.Clear();
+                return 1;
+            }else if(clearOtherAll){
+                audioPlayModeNow.Clear();
+                audioPlayModeNow.Add(_playMode);
+                return 1;
+            }
+            else if(audioPlayModeNow.Contains(_playMode)){
+                audioPlayModeNow.Remove(_playMode);
+                return 1;
+            }else{
+                return -2;
+            }
+        }else{
+            return -3;
+        }
+    }
+
+    public bool AudioPlayModeNowContains(string soundModeName){
+        if(TrialSoundPlayModeExplain.Contains(soundModeName)){
+            return audioPlayModeNow.Contains(TrialSoundPlayModeExplain.IndexOf(soundModeName));
+        }else{
+            return false;
+        }
+    }
+
     /// <summary>
     /// audioSources.ContainsKey(soundName) -> audioSources[soundName].Play(), return 1: played, 0: alarm not ready
     /// </summary>
@@ -930,7 +894,7 @@ public class Moving : MonoBehaviour
     /// <param name="soundName"></param>
     /// <param name="isAlarm"></param>
     /// <returns></returns>
-    int PlaySound(AudioSource audioSource, string addInfo = ""){
+    int PlaySound(AudioSource audioSource, int trackBackMode = -1, string addInfo = ""){
         if(!audioSources.ContainsValue(audioSource)){ return -1;}
         // if(audioSources[soundName].isPlaying){return 0;}
 
@@ -938,8 +902,8 @@ public class Moving : MonoBehaviour
         if(audioSource.clip.name == "alarm"){
             if(alarmPlayReady){
                 Debug.Log("sound played: " + audioSource.clip.name);
-                audioSources[audioSource.clip.name].Play();
-                WriteInfo(recType:9, _lickPos:audioSourceInds[audioSource.clip.name], addInfo:addInfo);
+                audioSource.Play();
+                WriteInfo(recType:9, _lickPos:trackBackMode, addInfo:addInfo);
                 alarmPlayReady = false;
                 alarm.TrySetAlarm("SetAlarmReadyToTrue", alarmPlayTimeInterval, out _);
             }
@@ -947,9 +911,21 @@ public class Moving : MonoBehaviour
                 return 0;
             }
         }else{
-            Debug.Log("sound played: " + audioSource.clip.name);
-            audioSources[audioSource.clip.name].Play();
-            WriteInfo(recType:9, _lickPos:audioSourceInds[audioSource.clip.name], addInfo:addInfo);
+            if(!audioSource.isPlaying || addInfo.StartsWith("pitch:")){
+                if(addInfo.StartsWith("pitch:")){
+                    addInfo = addInfo.Substring(6);
+                    if(float.TryParse(addInfo, out float _pitch)){
+                        audioSource.pitch = _pitch;
+                    }
+                }
+                if(!audioSource.isPlaying){
+                    audioSource.Play();
+                    Debug.Log("sound played: " + audioSource.clip.name + "add Info: " + addInfo);
+                }
+                WriteInfo(recType:9, _lickPos:trackBackMode, addInfo:addInfo);
+            }else{
+                return -1;
+            }
         }
         return 1;
     }
@@ -961,58 +937,73 @@ public class Moving : MonoBehaviour
     /// <param name="isAlarm"></param>
     /// <returns></returns>
     int PlaySound(string soundModeName, string addInfo = ""){
-        int tempSoundMode = soundConfig.GetTrialSoundPlayModeCorresponding(soundModeName);
-        if(tempSoundMode >= 0){
-            return PlaySound(tempSoundMode, addInfo);
+        Debug.Log($"Try play sound at condition: {soundModeName}, addInfo: {addInfo}");
+        int soundMode = TrialSoundPlayModeExplain.IndexOf(soundModeName);
+        if(soundMode >= 0 && audioPlayModeNow.Contains(soundMode)){
+            return PlaySound(soundMode, addInfo);
         }else{
             return -1;
         }
     }
     int PlaySound(int soundMode, string addInfo = ""){
-        if(soundConfig.TryGetAudioName(soundMode, out string audioName)){
-            if(audioSources.ContainsKey(audioName)){
-                int playResult = PlaySound(audioSources[audioName], addInfo:addInfo);
-                Debug.Log("playResult"+playResult);
-                if(playResult == 1){
-                    float[] _audioPlayTime = audioPlayTimes[soundMode];
-                    _audioPlayTime[1] = Time.fixedUnscaledTime;
-                    _audioPlayTime[2] = Time.fixedUnscaledTime + (audioName == "alarm"? alarmPlayTimeInterval:  _audioPlayTime[0]);
-                    // Debug.Log(string.Join(", ", _audioPlayTime));
-                }
-                return playResult;
+        if(audioSources.ContainsKey(soundMode)){
+            int playResult = PlaySound(audioSources[soundMode], soundMode, addInfo:addInfo);
+            Debug.Log($"playResult"+playResult);
+            if(playResult == 1){
+                float[] _audioPlayTime = audioPlayTimes[soundMode];
+                _audioPlayTime[1] = Time.fixedUnscaledTime;
+                _audioPlayTime[2] = Time.fixedUnscaledTime + (audioSources[soundMode].clip.name == "alarm"? alarmPlayTimeInterval:  _audioPlayTime[0]);
+                // Debug.Log(string.Join(", ", _audioPlayTime));
             }
-            return -2;
-        }else{
-            return -1;
+            return playResult;
         }
+        return -2;
+
     }
 
-    int StopSound(string audioName = "", bool all = true){
-        if(audioName == "\\"){return -2;}
-        if(audioName != ""){all = false;}
-        foreach(string _soundName in audioSources.Keys){
-            if(audioSources[_soundName].isPlaying && ((audioName != "" && _soundName == audioName) || all)){
-                audioSources[_soundName].Stop();
-                // Debug.Log("sond stopped: "+ _soundName);
+    int StopSound(string soundModeName = "", bool all = true){
+        if(soundModeName == "\\"){return -2;}
+        if(soundModeName != ""){all = false;}
+        if(!TrialSoundPlayModeExplain.Contains(soundModeName)){return -1;}
+        int soundMode = TrialSoundPlayModeExplain.IndexOf(soundModeName);
+
+        foreach(int _soundMode in audioSources.Keys){
+            if((_soundMode == soundMode || all) && audioSources[_soundMode].isPlaying){
+                StopSound(audioSources[_soundMode]);
+                audioSources[_soundMode].pitch = 1;
+                Debug.Log("sound stopped in mode "+ _soundMode);
             }
         }
+        
         return 1;
     }
 
-    int StopSound(int soundMode, bool all = true){
+    int StopSound(int soundMode){
         if(!audioPlayTimes.ContainsKey(soundMode)){return -2;}
         float[] tempTimes = audioPlayTimes[soundMode];
         if(tempTimes[2] > 0){
             audioPlayTimes[soundMode][1] = -1;
             audioPlayTimes[soundMode][2] = -1;
-            return StopSound(soundConfig.GetAudioName(soundMode), all:all);
+            return StopSound(audioSources[soundMode]);
+        }else{
+            return -1;
+        }
+    }
+
+    int StopSound(AudioSource audioSource){
+        if(audioSource.isPlaying){
+            audioSource.Stop();
+            return 0;
         }else{
             return -1;
         }
     }
 
     void TryStopSound(){
-        foreach(int soundMode in soundConfig.GetTrialSoundPlayMode()){
+        foreach(int soundMode in audioPlayModeNow){
+            if(TrialSoundPlayModeExplain[soundMode] == "InPos"){//InPos不用TryStop
+                return;
+            }
             float[] tempTimes = audioPlayTimes[soundMode];
             if(tempTimes[0] > 0 && tempTimes[2] > 0){
                 if(Time.fixedUnscaledTime >= tempTimes[2]){
@@ -1099,7 +1090,7 @@ public class Moving : MonoBehaviour
                 contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
             }
 
-            if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && waitSoundCue){//需要根据是否有声音决定trial开始方式，不能省略contains
+            if(AudioPlayModeNowContains("BeforeTrial") && waitSoundCue){//需要根据是否有声音决定trial开始方式，不能省略contains
                 PlaySound("BeforeTrial");
                 waiting = true;
                 alarm.TrySetAlarm("StartTrialWaitSoundCue", _waitSec < 0? contextInfo.soundLength + contextInfo.soundCueLeadTime: _waitSec, out _);
@@ -1116,6 +1107,7 @@ public class Moving : MonoBehaviour
 
     int InitTrial(){
         nowTrial = -1;
+        trialStatus = -1;
         ContextInitSync();
         forceWaiting = false;
         waiting = true;
@@ -1147,6 +1139,7 @@ public class Moving : MonoBehaviour
     int StartTrial(bool isInit = false){//根据soundCueLeadTime在alarm中设置waiting
  
         nowTrial++;
+        trialStatus = 1;
         trialStartTime = Time.fixedUnscaledTime;
         ContextStartSync();
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
@@ -1171,7 +1164,7 @@ public class Moving : MonoBehaviour
             contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
         }
 
-        string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarPos(nowTrial)},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
+        string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarInd(nowTrial)}, pos {contextInfo.GetBarPos(nowTrial)},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
         if(nowTrial > 0){
             string strLickCount = "";
             foreach(int count in lickCount[nowTrial-1]){
@@ -1202,6 +1195,7 @@ public class Moving : MonoBehaviour
     /// <returns></returns>
     int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1){
         ContextEndSync();
+        trialStatus = 0;
         if(isInit || !trialSuccess){DeactivateBar();}
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
         
@@ -1286,7 +1280,7 @@ public class Moving : MonoBehaviour
             // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
-        else if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
+        else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
             return soundCueLeadTime > 0? 1: -1;
         }
         else{
@@ -1299,6 +1293,17 @@ public class Moving : MonoBehaviour
         ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
         return res;
     }
+
+    public bool SetIPCAvtive(bool value){
+        if(value){
+            ipcclient.Silent = false;
+
+        }else{
+            ipcclient.Silent = true;
+            ipcclient.Activated = false;
+        }
+        return true;
+    }
     public int ChangeMode(int _mode){
         if(_mode == trialMode){
             return 0;
@@ -1308,12 +1313,14 @@ public class Moving : MonoBehaviour
                 trialResultPerLickSpout.Clear();
                 EndTrial(isInit: true);
                 trialMode = _mode;
-                if(IPCInNeed()){
-                    ipcclient.Silent = false;
-                }else{
-                    ipcclient.Silent = true;
-                    ipcclient.Activated = false;
-                }
+
+                SetIPCAvtive(IPCInNeed());
+                // if(IPCInNeed()){
+                //     ipcclient.Silent = false;
+                // }else{
+                //     ipcclient.Silent = true;
+                //     ipcclient.Activated = false;
+                // }
                 nowTrial = -1;
                 forceWaiting = true;
                 int temp_sync_result = ContextInitSync();
@@ -1332,12 +1339,14 @@ public class Moving : MonoBehaviour
 
             if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2 || trialStartTriggerMode == 4){
                 trialStartTriggerMode = _triggerMode;
-                if(IPCInNeed()){
-                    ipcclient.Silent = false;
-                }else{
-                    ipcclient.Silent = true;
-                    ipcclient.Activated = false;
-                }
+
+                SetIPCAvtive(IPCInNeed());
+                // if(IPCInNeed()){
+                //     ipcclient.Silent = false;
+                // }else{
+                //     ipcclient.Silent = true;
+                //     ipcclient.Activated = false;
+                // }
                 waitSec = -1;
                 waitSecRec = -1;
                 //不清理当前正在进行的trial
@@ -1350,41 +1359,6 @@ public class Moving : MonoBehaviour
             }
         }
     }
-
-    public int ChangeCueSoundPlayMode(int _playMode, bool addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
-        return soundConfig.ChangeCueSoundPlayMode(_playMode, addOrRemove, soundName, audioPlayTimes, contextInfo.soundLength, clearAll, clearOtherAll);
-    }
-    //     // if(audioSources[0].isPlaying){return -1;}
-    //     // else{
-    //         if(soundConfig.GetTrialSoundPlayModeContains(0)){
-
-    //         }else{
-    //             if(contextInfo.soundLength > 0){
-
-    //             }else{
-    //                 ui_update.MessageUpdate("Invlid sound length!");
-    //                 return -2;
-    //             }
-    //         }
-
-    //         if(addOrRemove){//add
-    //             if(soundConfig.GetTrialSoundPlayModeContains(_playMode)){return 0;}
-    //             TrialSoundPlayMode.Add(_playMode);
-    //             TrialSoundPlayModeAudio[_playMode] = soundName;
-    //             audioPlayTimes.Add(_playMode, new float[]{contextInfo.soundLength, -1, -1});
-    //         }
-    //         else{//remove
-    //             if(clearAll || clearOtherAll){
-    //                 TrialSoundPlayMode.Clear();
-    //                 TrialSoundPlayMode.Add(clearOtherAll? _playMode: 0);
-    //             }
-    //             if(!soundConfig.GetTrialSoundPlayModeContains(_playMode)){return 0;}
-    //             TrialSoundPlayMode.Remove(_playMode);
-    //             audioPlayTimes.Remove(_playMode);
-    //         }
-    //     // }
-    //     return 1;
-    // }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
         if(lickInd < 0 || lickTrial < 1){return -1;}
@@ -1418,7 +1392,7 @@ public class Moving : MonoBehaviour
         return -1;
     }
 
-    int LickResultAdd(int result, int trial, int LickSpout = -1, int rightLickSpout = -1, bool force = false){
+    int TrialResultAdd(int result, int trial, int LickSpout = -1, int rightLickSpout = -1, bool force = false){
         if(trialResult.Count() == trial){
             trialResult.Add(result);
             if(LickSpout >= 0){
@@ -1443,7 +1417,7 @@ public class Moving : MonoBehaviour
         if(trial >= 0 && trialResult.Count() > trial){
             return trialResult[trial];
         }else{
-            return -1;
+            return -4;
         }
 
     }
@@ -1474,8 +1448,8 @@ public class Moving : MonoBehaviour
 
         if(!forceWaiting){
             if(lickInd <= -3){
-                if(TrialResultCheck(nowTrial) > 0){
-                    return -4;//位置检测模式已判定过
+                if(TrialResultCheck(nowTrial) > 0){//位置检测模式已判定过，
+                    return -4;
                 }else{
                     WriteInfo(_lickPos: lickInd);
                 }
@@ -1495,12 +1469,12 @@ public class Moving : MonoBehaviour
                     //只要舔到对的就进入下一个，不管错没错，待endtrial结束进入下一个trial
                     if(result || lickInd == -2){
                         if(lickInd >= 0){
-                            LickResultAdd(1, nowTrial, lickInd, rightLickInd);
+                            TrialResultAdd(1, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(1);
                             if(trialMode == 0x01){ServeWaterInTrial();}
                             ui_update.MessageUpdate($"Trial completed at pos {lickInd}");
                         }else{//手动跳过或结束trial
-                            LickResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
+                            TrialResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
                             //trialResult.Add(lickInd == -2? 1 : 0);
                             if(lickInd == -1){
                                 ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
@@ -1511,7 +1485,7 @@ public class Moving : MonoBehaviour
                         }
                         EndTrial(trialSuccess: true, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                     }else{
-                        LickResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd, rightLickInd);
+                        TrialResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd, rightLickInd);
                         if(lickInd == -1){
                             EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                         }
@@ -1519,7 +1493,7 @@ public class Moving : MonoBehaviour
                 }else if(trialMode >> 4 == 1){
                     //只能舔对的
                     result = result || lickInd == -2;
-                    LickResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
+                    TrialResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
                     if(result && trialMode == 0x11){ServeWaterInTrial();}
                     else{CommandVerify("p_trial_set", 0);}
                     if(lickInd < 0){
@@ -1535,22 +1509,25 @@ public class Moving : MonoBehaviour
                     }
 
                     if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
-                        if(trialMode % 2 == 1){ServeWaterInTrial();}
+                        if(trialMode % 0x10 == 2){ServeWaterInTrial();}
                         // else{
                         //     // CommandVerify("p_trial_set", 0);
                         // }//结束时已经给了水，只用结束trial
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
                         if(result){
-                            if(trialMode % 2 == 0){ServeWaterInTrial();}
+                            if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             DeactivateBar();
                             ui_update.MessageUpdate("Trial finished");
-                            LickResultAdd(result? 1: 0, nowTrial);
+                            TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial);
+                            PlaySound("EnableReward");
+
+                            trialStatus = 2;
                         }else{//手动跳过
                             EndTrial(trialSuccess: false);
                             ui_update.MessageUpdate("Trial skipped");
                         }
-                        LickResultAdd(result? 1: 0, nowTrial, lickInd, -1);
+                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd, -1);
                     }
                 }
                 ui_update.MessageUpdate();
@@ -1641,7 +1618,7 @@ public class Moving : MonoBehaviour
     int TriggerRespond(bool inOrLeave, int _recType){
         if(trialStartTriggerMode > 0){
             if(inOrLeave){
-                if(soundConfig.GetTrialSoundPlayModeContains("BeforeTrial") && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
+                if(AudioPlayModeNowContains("BeforeTrial") && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
                     //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
                     SetTrial(manual:false, waitSoundCue: true);
                 }else{
@@ -1689,7 +1666,7 @@ public class Moving : MonoBehaviour
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand){//仅接收舔、红外、压杆信号模拟，外加视频检测移动到特定位置
+    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，外加视频检测移动到特定位置
         string tempHead = limitedCommand.Split(":")[0];
         switch(tempHead){
             case "lick":{
@@ -1711,7 +1688,11 @@ public class Moving : MonoBehaviour
                 return;
             }
         }
-        commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        if(urgent){
+            CommandParse(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        }else{
+            commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        }
     }
     void CommandParse(byte[] _command){//在主线程调用时内容不能有锁,目前全部在主线程调用
         //看注释！
@@ -2028,6 +2009,7 @@ public class Moving : MonoBehaviour
             logStreamWriter = new StreamWriter(logfileStream);
             FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             posStreamWriter = new StreamWriter(posfileStream);
+            posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "frameInd", "TimeInUnitySecFromTrialStart"}));
             
         }
         catch (Exception e){
@@ -2142,8 +2124,11 @@ public class Moving : MonoBehaviour
         return "type\tdelta time\tmode\ttrial\tlickPos\tresult";
     }
 
-    public string WriteInfo(int posx, int posy, int ind){
+    public string WriteInfo(int posx, int posy, int ind, string addInfo = ""){
         string tempPosText = string.Join("\t", new int[]{ posx, posy, ind }.Select(v => v.ToString("")).ToList());
+        if(addInfo != "" && addInfo != null){
+            tempPosText += "\t"+addInfo;
+        }
         posWriteQueue.Enqueue(tempPosText);
         ProcessWriteQueue();
         return "";
@@ -2222,7 +2207,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
-            iniReader.ReadIniContent(                   "settings", "Trial_pos"          ,  ""                      ),                 // string _lick_pos_array
+            iniReader.ReadIniContent(                   "settings", "TrackPosMark"          ,  ""                      ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
@@ -2239,36 +2224,33 @@ public class Moving : MonoBehaviour
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
         );                
-        standingSec = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSec",   "0.5" ));
-        standingSecInTrial = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrial",   "0.5" ));
+        standingSecInTrigger = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrigger",   "0.5" ));
+        standingSecInDest = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrialInDest",   "0.5" ));
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
-
-        if (float.TryParse(iniReader.ReadIniContent("soundSettings", "cueVolume", "0.5"), out float cueVolume)){cueVolume = Math.Clamp(cueVolume, 0, 1);}
-        else{cueVolume = 0.5f;}
-        soundConfig = new SoundConfig(cueVolume, 
-            iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0"),
-            contextInfo.soundLength,
-            audioPlayTimes
-        );
-
-        
-        foreach(AudioSource _audioSource in GetComponents<AudioSource>()){
-            if(_audioSource.clip.name != "alarm"){
-                _audioSource.loop = true;
-                _audioSource.volume = cueVolume;
-            }else{
-            }
-            audioSources.Add(_audioSource.clip.name, _audioSource);
-            audioSourceInds.Add(_audioSource.clip.name, audioSourceInds.Count);
+        foreach(var _ in TrialSoundPlayModeExplain){
+            audioPlayTimes.Add(audioPlayTimes.Count, new float[]{
+                contextInfo.soundLength,
+                -1,
+                -1
+            });
         }
-        // foreach(int mode in iniReader.ReadIniContent("soundSettings", "TrialSoundPlayMode",  "0").Split(",").Select(str => Convert.ToInt32(str)).ToList()){     
-        //     if(contextInfo.soundLength < 0){TrialSoundPlayMode.Add(0); break;}
+        if (float.TryParse(iniReader.ReadIniContent("soundSettings", "cueVolume", "0.5"), out cueVolume)){
+            cueVolume = Math.Clamp(cueVolume, 0, 1);
+        }else{cueVolume = 0.5f;}
 
-        //     TrialSoundPlayMode.Add(mode);
-        //     audioPlayTimes.Add(mode, new float[]{contextInfo.soundLength, -1, -1});
-        // }//以后连着dropdown做成struct, json存储
+        while(audioSources.Count < TrialSoundPlayModeExplain.Count){
+            GameObject gameObject = Instantiate(audioSourceSketchObject);
+            audioSources.Add(audioSources.Count + 1, gameObject.GetComponent<AudioSource>());
+        }
+
+        foreach(AudioClip _clip in Resources.LoadAll("Audios", typeof(AudioClip))){
+            if(!audioClips.ContainsKey(_clip.name)){
+                audioClips.Add(_clip.name, _clip);
+            }
+        }
+
         alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
         MaterialStruct defaultMat = new MaterialStruct();
@@ -2323,6 +2305,23 @@ public class Moving : MonoBehaviour
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
+        
+        List<string> tempIniReadContent = iniReader.GetReadContent();
+        string tempIniReadContentStr = "";
+        for(int i = 0; i < tempIniReadContent.Count; i+=2){
+            if(i < tempIniReadContent.Count){
+                tempIniReadContentStr += tempIniReadContent[i] + "\t";
+            }
+            if(i+1 < tempIniReadContent.Count){
+                tempIniReadContentStr += tempIniReadContent[i+1] + "\n";
+            }
+        }
+        if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + tempIniReadContentStr, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+
+        }else{
+            Quit();
+        }
+
         string[] portLs = ScanPorts_API();
         foreach(string port in portLs){
             if(port.Contains("COM") && !portBlackList.Contains(port)){
@@ -2381,10 +2380,16 @@ public class Moving : MonoBehaviour
             MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
             if(MessageBoxForUnity.YesOrNo("Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
+                InitializeStreamWriter();
+                string data_write = WriteInfo(returnTypeHead: true);
+                logWriteQueue.Enqueue(data_write);
             }else{
                 Quit();
             }
         }
+        
+ 
+
 
     }
 
@@ -2392,7 +2397,7 @@ public class Moving : MonoBehaviour
         ui_update.ControlsParse("ModeSelect", trialMode, "passive");
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
         IPCInNeed();
-        foreach(int mode in soundConfig.GetTrialSoundPlayMode()){
+        foreach(int mode in audioPlayModeNow){
             ui_update.ControlsParse("sound", mode, "passive;add");
         }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
@@ -2467,7 +2472,7 @@ public class Moving : MonoBehaviour
         }
         alarm.AlarmFixUpdate();
 
-        if(waitSec != -1 && trialStartTriggerMode == 0 && soundConfig.GetTrialSoundPlayModeContains("BeforeTrial")){//延时模式到时间播放声音，但trial开始还要看小鼠是否继续舔
+        if(waitSec != -1 && trialStartTriggerMode == 0 && AudioPlayModeNowContains("BeforeTrial")){//延时模式到时间播放声音，但trial开始还要看小鼠是否继续舔
             if(IntervalCheck() == 1){
                 PlaySound("BeforeTrial");
             }
@@ -2500,9 +2505,16 @@ public class Moving : MonoBehaviour
             int[] pos = ipcclient.GetPos();//x, y, frameInd
             List<int[]> selectedAreas = ipcclient.GetselectedArea();
             // Debug.Log(JsonConvert.SerializeObject(selectedAreas));
-            WriteInfo(pos[0], pos[1], pos[2]);
+            // if(kalmanFilter != null){
+                
+            // }
 
-            if(!pos.SequenceEqual(new int[]{-1, -1, -1})){
+            if(trialStatus != -1 && !pos.SequenceEqual(new int[]{-1, -1, -1})){
+                WriteInfo(pos[0], pos[1], pos[2], $"{Time.fixedUnscaledTime - time_rec_for_log[0]}");
+                // if(kalmanFilter == null){
+                //     kalmanFilter = new KalmanFilter(pos[0], pos[1]);
+                // }
+                
                 List<int[]> TriggerAreas = selectedAreas.Where(area => area[0] / markCountPerType == 0).ToList();
 
                 // if(selectedArea[..(selectedArea.Length - 2)].Contains(-1)){break;}
@@ -2515,16 +2527,17 @@ public class Moving : MonoBehaviour
                         }
                     }
                     if(InTriggerArea){
-                        PlaySound("InPos");
-                        standingSecNow = standingSecNow == -1? Time.fixedUnscaledDeltaTime: standingSecNow + Time.fixedUnscaledDeltaTime;
-                        if(standingSec > 0 && standingSecNow >= standingSec){
-                            standingSecNow = -1;
+                        standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
+                        float speedUpScale = Math.Max(1, Math.Min(10, standingSecInTrigger/(standingSecInTrigger - standingSecNowInTrigger)));
+                        PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
+                        if(standingSecInTrigger > 0 && standingSecNowInTrigger >= standingSecInTrigger){
+                            standingSecNowInTrigger = -1;
                             WriteInfo(recType:8);
-                            CommandParsePublic("stay:0");
+                            CommandParsePublic("stay:0", urgent:true);
                         }
                     }else{
                         StopSound("InPos");
-                        standingSecNow = -1;
+                        standingSecNowInTrigger = -1;
                     }
                 }
 
@@ -2536,19 +2549,21 @@ public class Moving : MonoBehaviour
 
                         // Debug.Log($"pos: {pos[0]}, {pos[1]}, dest: {CertainAreaNowTrial[2]}, {CertainAreaNowTrial[3]}, radius: {CertainAreaNowTrial[4]}, distance: {Math.Sqrt(Math.Pow(Math.Abs(pos[0] - CertainAreaNowTrial[2]), 2) + Math.Pow(Math.Abs(pos[1] - CertainAreaNowTrial[3]), 2))}");
 
-                        if(CertainAreaNowTrial.Length == 6 && CheckInRegion(pos, CertainAreaNowTrial)){
-                            PlaySound("InPos");
-                            standingSecNowInTrial = standingSecNowInTrial == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrial + Time.fixedUnscaledDeltaTime;
-                            if(standingSecInTrial > 0 && standingSecNowInTrial >= standingSecInTrial){
-                                standingSecNowInTrial = -1;
+                        if(TrialResultCheck(nowTrial) == -4 && CertainAreaNowTrial.Length == 6 && CheckInRegion(pos, CertainAreaNowTrial)){
+                            // PlaySound("InPos");
+                            standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
+                            float speedUpScale = Math.Max(1, Math.Min(10, standingSecInDest/(standingSecInDest - standingSecNowInDest)));
+                            PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
+                            if(standingSecInDest > 0 && standingSecNowInDest >= standingSecInDest){
+                                standingSecNowInDest = -1;
                                 WriteInfo(recType:8);
-                                CommandParsePublic("stay:1");
-                                PlaySound("EnableReward");
+                                CommandParsePublic("stay:1", urgent:true);
+                                // PlaySound("EnableReward");//已挪至lickingCheck
                             }
                         }
                         else{
                             StopSound("InPos");
-                            standingSecNowInTrial = -1;
+                            standingSecNowInDest = -1;
                         }
                     }
                 }
@@ -2599,7 +2614,10 @@ public class Moving : MonoBehaviour
     public void Exit(){
         try{
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
-            logWriteQueue.Enqueue(JsonConvert.SerializeObject(soundConfig));
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioPlayModeNow));
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioSources.Select(
+                                                                                kvp => new { kvp.Key, kvp.Value.clip.name })
+                                                                                ));
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);

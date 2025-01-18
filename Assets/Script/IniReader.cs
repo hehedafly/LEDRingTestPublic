@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 public class IniReader
 {
   public string path;//ini文件的路径
+  List<string> readContents = new List<string>();
   public IniReader(string path)
   {
     this.path=path;
@@ -29,11 +30,17 @@ public string ReadIniContent(string section,string key, string value_in_default,
   int i=GetPrivateProfileString(section,key,"",temp,255,this.path);
   if(temp.Length == 0 && Confirm){return "";}
   if(temp.Length==0){
+    readContents.Add($"section: {section}, key: {key}, default value:{value_in_default}");
     return value_in_default;
   }
   else{
+    readContents.Add($"section: {section}, key: {key}, value:{temp.ToString()}");
     return temp.ToString();
   }
+}
+
+public List<string> GetReadContent(){
+  return readContents;
 }
 
 //判断路径是否正确

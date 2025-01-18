@@ -10830,7 +10830,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1407331290}
   m_HandleRect: {fileID: 1407331287}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -17544,6 +17544,17 @@ MonoBehaviour:
   slider: {fileID: 1218840785}
   materialMissing: {fileID: 2100000, guid: 7f0772f51e5ba4a4fa0125331549a56a, type: 2}
   driftGratingBase: {fileID: 2100000, guid: 1e8e59512131e2744a44ea72d738e546, type: 2}
+  audioSourceSketchObject: {fileID: 7130182045408806918, guid: 041d83ba357df3f468190a678fb9f929, type: 3}
+  audioPlayModeNow: 
+  TrialSoundPlayModeExplain:
+  - Off
+  - BeforeTrial
+  - NearStart
+  - BeforeGoCue
+  - BeforeLickCue
+  - InPos
+  - EnableReward
+  - AtFail
 --- !u!114 &1571000272
 MonoBehaviour:
   m_ObjectHideFlags: 0
