@@ -22,7 +22,7 @@ public class UIUpdate : MonoBehaviour
     public Text TexContextInfo;
     public Text logMessage;
     public Scrollbar logScrollBar;
-    List<InputField> inputFields = new List<InputField>();
+    public List<InputField> inputFields = new List<InputField>();
     List<Dropdown> dropdowns = new List<Dropdown>();
     List<Dropdown> soundDropdowns = new List<Dropdown>();
     public List<UnityEngine.UI.Button> buttons = new List<UnityEngine.UI.Button>();
@@ -55,6 +55,12 @@ public class UIUpdate : MonoBehaviour
         _button.GetComponent<ScrButton>().ChangeColor(color);
     }
     
+    /// <summary>
+    /// for inputfield, stringArg is the content of IF, value is 0 if failed to parse to float
+    /// </summary>
+    /// <param name="elementsName"></param>
+    /// <param name="value"></param>
+    /// <param name="stringArg"></param>
     public void ControlsParse(string elementsName,float value, string stringArg=""){
         //if(string_arg==""){return;}
         switch (elementsName){
@@ -165,7 +171,7 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "IPCRefreshButton":{
-                if(alarm.GetAlarm("ipcRefresh") < 0 && moving.IPCInNeed()){
+                if(alarm.GetAlarm("ipcRefresh") < 0 && moving.IsIPCInNeed()){
                     moving.Ipcclient.Silent = true;
                     moving.Ipcclient.Activated = false;
                     alarm.TrySetAlarm("ipcRefresh", 2.0f, out _);
@@ -211,6 +217,18 @@ public class UIUpdate : MonoBehaviour
                         }
                     }
                     break;
+                }
+                else if(elementsName.StartsWith("MouseInfo")){
+                    string head = elementsName.Substring(9);
+                    Dictionary<string, string> headCorrespond = new Dictionary<string, string>{{"Name", "userName"}, {"Index", "mouseInd"}};
+                    if(stringArg.StartsWith("passive")){//format: passive
+
+                    }
+                    else{
+                        if(headCorrespond.TryGetValue(head, out string _info)){
+                            moving.SetMouseInfo(_info + ":" + stringArg);
+                        }
+                    }
                 }
                 break;
             }

@@ -18,7 +18,7 @@ using MatrixClaculator;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, string _trackMark_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, float _trialExpireTime, int _trialStartType, int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, string _trackMark_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, string _barShiftLs, float _trialExpireTime, int _trialStartType, int _seed = -1){
         startMethod = _start_method;
         matStartMethod = _matStart_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
@@ -151,7 +151,7 @@ class ContextInfo{
 
                 bool posMatMatch = true;
                 if(matLs.Count != posLs.Count){
-                    if(MessageBoxForUnity.YesOrNo("materials random setting does not match the pos settings, are you want to quit and edit?", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                    if(MessageBoxForUnity.YesOrNo("materials random setting does not match the pos settings, ignore?", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
                         Quit();
                     }
                     posMatMatch = false;
@@ -222,6 +222,15 @@ class ContextInfo{
             errorMessage = "waitFromStart";
             waitFromStart = new List<float>();
             RandomParse(_waitFromStart, waitFromStart);
+
+            errorMessage = "barShiftLs";
+            barShiftLs = new List<int>();
+            barShiftedLs = new List<int>{};
+            RandomParse(_barShiftLs, barShiftLs);
+            
+            foreach( var _ in barPosLs){
+                barShiftedLs.Add(GetRandom(barShiftLs));
+            }
             
         }
         catch{
@@ -238,7 +247,8 @@ class ContextInfo{
     public List<string> matAvaliableArray {get;}
     public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
     public List<int>    pumpPosLs       {get;}
-    public List<int>    trackMarkLs       {get;}
+    public List<int>    trackMarkLs     {get;}
+    public List<int>    barShiftLs      {get;}
     public int          maxTrial        {get;}
     public int          seed            {get;}
     public float        barDelayTime    {get;}//主动触发的trial间最短间隔
@@ -255,10 +265,17 @@ class ContextInfo{
     public List<float>  trialTriggerDelay{get;}
     public float        trialExpireTime {get;}
     public List<string> materialsInfo   {get;set;}
+    
+    //addon info:
+    public string userName;
+    public string mouseInd;
 
     [JsonIgnore]
     List<int>    barPosLs        {get;}
-    List<string>    barmatLs        {get;}
+    [JsonIgnore]
+    List<int>    barShiftedLs    {get;}
+    [JsonIgnore]
+    List<string> barmatLs        {get;}
     [JsonIgnore]
     public float soundCueLeadTime   {get;set;}//仅在延时模式下trial开始时使用，每次使用调用GetRandom(contextInfo.trialTriggerDelay)
     [JsonIgnore]
@@ -286,6 +303,10 @@ class ContextInfo{
             ls.Add((T)Convert.ChangeType(randomArg, typeof(T)));
             ls.Add((T)Convert.ChangeType(randomArg, typeof(T)));
         }
+    }
+
+    T GetRandom<T>(List<T> _range){
+        return (T)Convert.ChangeType(UnityEngine.Random.Range(Convert.ToSingle(_range[0]), Convert.ToSingle(_range[1])), typeof(T));
     }
 
     void ProcessUnit(string pos){
@@ -390,6 +411,12 @@ class ContextInfo{
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return avaliablePosDict[barPosLs[trial]];
     }
+
+    public int GetBarShift(int trial){
+        if(trial < 0 || trial >= barPosLs.Count){return -1;}
+        return barShiftedLs[trial];
+    }
+
     public int GetRightLickPosIndInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return lickPosLs[barPosLs[trial]];
@@ -400,9 +427,9 @@ class ContextInfo{
         return pumpPosLs[barPosLs[trial]];
     }
 
-    public float GetDegInTrial(int trial){
+    public float GetDegInTrial(int trial, bool raw = false){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return avaliablePosDict[barPosLs[trial]];
+        return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial])) % 360;
     }
 
     public int GetTrackMarkInTrial(int trial){
@@ -609,7 +636,10 @@ public class Moving : MonoBehaviour
             bool BackgroundLightRedMode  = backgroundLightRedModeValue > 0;
             
             material = new Material(materialMissing);
-            if(_mat.StartsWith("#")){
+            if(_mat == ""){
+                
+            }
+            else if(_mat.StartsWith("#")){
                 Color color;
                 if(!ColorUtility.TryParseHtmlString(_mat, out color)){
                     return this;
@@ -688,6 +718,16 @@ public class Moving : MonoBehaviour
         // ui_update.MessageUpdate($"bar Pos in float: {actual_pos}");
     }
 
+    public List<int> GetAvaiableBarPos(){
+        List<int> keys = contextInfo.avaliablePosDict.Keys.ToList();
+        keys.Sort();
+        List<int> values = new List<int>();
+        foreach(int key in keys){
+            values.Add(contextInfo.avaliablePosDict[key]);
+        }
+        return values;
+    }
+
     // void SetMaterial(List<GameObject> goList, string _mat){
     // void SetMaterial(List<GameObject> goList, MaterialStruct _mat){
         
@@ -724,20 +764,25 @@ public class Moving : MonoBehaviour
 
     }
 
-    void ActivateBar(int pos = -1, int trial = -1){
+    int ActivateBar(int pos = -1, int trial = -1){
         Debug.Log("bar activited");
+        float tempPos = -1;
         if(pos != -1){
-            SetBarPos(DegToPos(contextInfo.GetDeg(pos)));
+            tempPos = contextInfo.GetDeg(pos);
+            SetBarPos(DegToPos(tempPos));
         }else if(trial != -1){
-            SetBarPos(DegToPos(contextInfo.GetDegInTrial(trial)));
+            tempPos = contextInfo.GetDegInTrial(trial);
+            SetBarPos(DegToPos(tempPos));
         }else{
-            return;
+            return (int)tempPos;
         }
+
         bar.SetActive(true);
         if(barChild != null && barChild2 != null){
             barChild.SetActive(true);
             barChild2.SetActive(true);
         }
+        return (int)tempPos;
     }
 
     void DeactivateBar(){//后续和endtrial分离?
@@ -825,9 +870,9 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    // AudioClip GetAudioClip(string name){
-        
-    // }
+    float GetSoundPitch(float _lastTime, float _totalTime){//后续改
+        return Math.Max(1, Math.Min(5, 0.5f + 0.5f * _totalTime/_lastTime));
+    }
     public int ChangeSoundPlayMode(int _playMode, int addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
         if(addOrRemove > 0){
             if(addOrRemove == 1 && !audioPlayModeNow.Contains(_playMode) && audioClips.ContainsKey(soundName)){
@@ -937,7 +982,7 @@ public class Moving : MonoBehaviour
     /// <param name="isAlarm"></param>
     /// <returns></returns>
     int PlaySound(string soundModeName, string addInfo = ""){
-        Debug.Log($"Try play sound at condition: {soundModeName}, addInfo: {addInfo}");
+        // Debug.Log($"Try play sound at condition: {soundModeName}, addInfo: {addInfo}");
         int soundMode = TrialSoundPlayModeExplain.IndexOf(soundModeName);
         if(soundMode >= 0 && audioPlayModeNow.Contains(soundMode)){
             return PlaySound(soundMode, addInfo);
@@ -1147,6 +1192,20 @@ public class Moving : MonoBehaviour
         // Debug.Log(tempMs.PrintArgs());
         SetBarMaterial(tempMs);
         alarmPlayReady = true;//为waiting的delay允许alarm
+        if(ipcclient.Activated){
+            int markCountPerType = 32;
+            int rightMark = contextInfo.GetTrackMarkInTrial(nowTrial);
+            if(rightMark >= 0){
+                List<int[]>DestinationArea = ipcclient.GetselectedArea().Where(area => area[0] / markCountPerType == 1).ToList();
+                int[] CertainAreaNowTrial = DestinationArea.Find(area => area[0] % markCountPerType == rightMark);
+                if(CertainAreaNowTrial != null){//ipcclient绘制部分
+                    ipcclient.SetCurrentSelectArea(new List<int[]>{CertainAreaNowTrial}, contextInfo.GetBarShift(nowTrial), contextInfo.GetBarPos(nowTrial));
+                    ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea(), new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetBarShift(nowTrial) + contextInfo.GetBarPos(nowTrial))});
+                }else{
+                    Debug.Log("No selected area match the pos now");
+                }
+            }
+        }
 
         //waiting = false;
 
@@ -1157,14 +1216,14 @@ public class Moving : MonoBehaviour
         alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", 1, out _);
         alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlayGoCueWhenSetWaitingToFalse");
         alarm.DeleteAlarm("DeactivateBar", true);
-        ActivateBar(trial: nowTrial);
+        int activitedPos = ActivateBar(trial: nowTrial);
 
         if(trialStartTriggerMode == 0){
             // contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
             contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
         }
 
-        string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarInd(nowTrial)}, pos {contextInfo.GetBarPos(nowTrial)},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
+        string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarInd(nowTrial)}, pos {activitedPos},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
         if(nowTrial > 0){
             string strLickCount = "";
             foreach(int count in lickCount[nowTrial-1]){
@@ -1205,6 +1264,9 @@ public class Moving : MonoBehaviour
         alarmPlayReady = false;
         alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);
         alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
+        if(ipcclient.Activated){
+            ipcclient.MDClearTemp();
+        }
 
         
         WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
@@ -1288,7 +1350,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    public bool IPCInNeed(){
+    public bool IsIPCInNeed(){
         bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3;
         ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
         return res;
@@ -1314,7 +1376,7 @@ public class Moving : MonoBehaviour
                 EndTrial(isInit: true);
                 trialMode = _mode;
 
-                SetIPCAvtive(IPCInNeed());
+                SetIPCAvtive(IsIPCInNeed());
                 // if(IPCInNeed()){
                 //     ipcclient.Silent = false;
                 // }else{
@@ -1340,7 +1402,7 @@ public class Moving : MonoBehaviour
             if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2 || trialStartTriggerMode == 4){
                 trialStartTriggerMode = _triggerMode;
 
-                SetIPCAvtive(IPCInNeed());
+                SetIPCAvtive(IsIPCInNeed());
                 // if(IPCInNeed()){
                 //     ipcclient.Silent = false;
                 // }else{
@@ -1358,6 +1420,15 @@ public class Moving : MonoBehaviour
                 return -1;
             }
         }
+    }
+
+    /// <summary>
+    /// "userName:xx"， "mouseInd:xx"
+    /// </summary>
+    /// <param name="info"></param>
+    public void SetMouseInfo(string info){
+        contextInfo.userName = info.StartsWith("userName:")?   info.Split(":")[1] : contextInfo.userName;
+        contextInfo.mouseInd = info.StartsWith("mouseInd:")?   info.Split(":")[1] : contextInfo.mouseInd;
     }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
@@ -1631,9 +1702,25 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    bool CheckInRegion(int[] _pos, int[] selectedPos){//还没改好
+    // int[] GetShiftedSelectedCircle(int[] selectedPos, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
+    //     float[] sceneInfo = ipcclient.GetSceneInfo();
+    //     return GetShiftedSelectedCircle(selectedPos, new int[]{(int)sceneInfo[0], (int)sceneInfo[1]}, (int)sceneInfo[2], shiftAngle);
+    // }
+
+    // int[] GetShiftedSelectedCircle(int[] selectedPos, int[] center, float radius, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
+    //     if(selectedPos.Length != 6 || selectedPos[1] != 1){Debug.Log("wrong arg of selectedPos"); return selectedPos;}
+    //     int[] selectedCircle = new int[selectedPos.Length];
+    //     selectedPos.CopyTo(selectedCircle, 0);
+    //     double tempangle = Math.Atan2(selectedPos[2]-center[0], selectedPos[3]-center[1]);
+    //     selectedCircle[2] = center[0] + (int)(radius * Math.Sin(shiftAngle * Math.PI / 180 + tempangle));
+    //     selectedCircle[3] = center[1] + (int)(radius * Math.Cos(shiftAngle * Math.PI / 180 + tempangle));
+    //     return selectedCircle;
+    // }
+
+    bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
         if(selectedPos[1] == 0){//圆形
-            return Math.Sqrt(Math.Pow(Math.Abs(_pos[0] - selectedPos[2]), 2) + Math.Pow(Math.Abs(_pos[1] - selectedPos[3]), 2)) < selectedPos[4];
+            bool incircle = Math.Sqrt(Math.Pow(Math.Abs(_pos[0] - selectedPos[2]), 2) + Math.Pow(Math.Abs(_pos[1] - selectedPos[3]), 2)) < selectedPos[4];
+            return incircle == (Math.Abs(selectedPos[5]) == 1);
         }else if(selectedPos[1] == 1){//矩形
             return (selectedPos[2] > _pos[0] &&  _pos[0] > selectedPos[4]) && (selectedPos[3] > _pos[1] &&  _pos[1] > selectedPos[5]);
         }else{
@@ -2124,8 +2211,9 @@ public class Moving : MonoBehaviour
         return "type\tdelta time\tmode\ttrial\tlickPos\tresult";
     }
 
-    public string WriteInfo(int posx, int posy, int ind, string addInfo = ""){
-        string tempPosText = string.Join("\t", new int[]{ posx, posy, ind }.Select(v => v.ToString("")).ToList());
+    // public string WriteInfo(int posx, int posy, int ind, string addInfo = ""){
+    public string WriteInfo(long[] posInfo, string addInfo = ""){
+        string tempPosText = string.Join("\t", posInfo.Select(v => v.ToString("")).ToList());
         if(addInfo != "" && addInfo != null){
             tempPosText += "\t"+addInfo;
         }
@@ -2190,7 +2278,7 @@ public class Moving : MonoBehaviour
         Screen.fullScreen = false;
 
         if(InApp){
-            for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
+            for (int i = 1; i < Math.Min(4, Display.displays.Length); i++){
                 Display.displays[i].Activate();
                 Screen.fullScreen = false;
                 Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
@@ -2220,6 +2308,7 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
             iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
             iniReader.ReadIniContent(                   "settings", "fail_wait_sec"     ,   "6"                     ),                // string _f_wait_sec
+            iniReader.ReadIniContent(                   "settings", "barShiftLs"        ,   "0"                     ),                // string _f_wait_sec
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
@@ -2306,15 +2395,16 @@ public class Moving : MonoBehaviour
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
         
-        List<string> tempIniReadContent = iniReader.GetReadContent();
-        string tempIniReadContentStr = "";
-        for(int i = 0; i < tempIniReadContent.Count; i+=2){
-            if(i < tempIniReadContent.Count){
-                tempIniReadContentStr += tempIniReadContent[i] + "\t";
-            }
-            if(i+1 < tempIniReadContent.Count){
-                tempIniReadContentStr += tempIniReadContent[i+1] + "\n";
-            }
+        List<List<string>> tempIniReadContent = iniReader.GetReadContent();
+        string tempIniReadContentStr = "default:\t\t\t\tothers:\n";
+        for(int i = 0; i < Math.Max(tempIniReadContent[0].Count, tempIniReadContent[1].Count); i++){
+            if(i < tempIniReadContent[0].Count){
+                tempIniReadContentStr += tempIniReadContent[0][i] + "\t\t\t";
+            }else{tempIniReadContentStr += "\t\t\t\t\t\t\t";}
+
+            if(i < tempIniReadContent[1].Count){
+                tempIniReadContentStr += tempIniReadContent[1][i] + "\n";
+            }else{tempIniReadContentStr += "\n";}
         }
         if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + tempIniReadContentStr, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
 
@@ -2387,16 +2477,13 @@ public class Moving : MonoBehaviour
                 Quit();
             }
         }
-        
- 
-
 
     }
 
     void Start(){
         ui_update.ControlsParse("ModeSelect", trialMode, "passive");
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
-        IPCInNeed();
+        IsIPCInNeed();
         foreach(int mode in audioPlayModeNow){
             ui_update.ControlsParse("sound", mode, "passive;add");
         }
@@ -2502,15 +2589,15 @@ public class Moving : MonoBehaviour
 
         if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
             int markCountPerType = 32;
-            int[] pos = ipcclient.GetPos();//x, y, frameInd
+            long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
             List<int[]> selectedAreas = ipcclient.GetselectedArea();
             // Debug.Log(JsonConvert.SerializeObject(selectedAreas));
             // if(kalmanFilter != null){
                 
             // }
 
-            if(trialStatus != -1 && !pos.SequenceEqual(new int[]{-1, -1, -1})){
-                WriteInfo(pos[0], pos[1], pos[2], $"{Time.fixedUnscaledTime - time_rec_for_log[0]}");
+            if(trialStatus != -1 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
+                WriteInfo(pos, $"{Time.fixedUnscaledTime - time_rec_for_log[0]}");
                 // if(kalmanFilter == null){
                 //     kalmanFilter = new KalmanFilter(pos[0], pos[1]);
                 // }
@@ -2528,7 +2615,7 @@ public class Moving : MonoBehaviour
                     }
                     if(InTriggerArea){
                         standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
-                        float speedUpScale = Math.Max(1, Math.Min(10, standingSecInTrigger/(standingSecInTrigger - standingSecNowInTrigger)));
+                        float speedUpScale = GetSoundPitch(standingSecInTrigger - standingSecNowInTrigger, standingSecInTrigger);
                         PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                         if(standingSecInTrigger > 0 && standingSecNowInTrigger >= standingSecInTrigger){
                             standingSecNowInTrigger = -1;
@@ -2541,18 +2628,14 @@ public class Moving : MonoBehaviour
                     }
                 }
 
-                if(trialMode >> 4 == 2){//destination, 可能还需要再加判定条件使得只响应一次
-                    int rightMark = contextInfo.GetTrackMarkInTrial(nowTrial);
-                    if(rightMark >= 0){
-                        List<int[]>DestinationArea = selectedAreas.Where(area => area[0] / markCountPerType == 1).ToList();
-                        int[] CertainAreaNowTrial = DestinationArea.Find(area => area[0] - markCountPerType == rightMark);
-
-                        // Debug.Log($"pos: {pos[0]}, {pos[1]}, dest: {CertainAreaNowTrial[2]}, {CertainAreaNowTrial[3]}, radius: {CertainAreaNowTrial[4]}, distance: {Math.Sqrt(Math.Pow(Math.Abs(pos[0] - CertainAreaNowTrial[2]), 2) + Math.Pow(Math.Abs(pos[1] - CertainAreaNowTrial[3]), 2))}");
-
-                        if(TrialResultCheck(nowTrial) == -4 && CertainAreaNowTrial.Length == 6 && CheckInRegion(pos, CertainAreaNowTrial)){
+                if(trialMode >> 4 == 2){//destination
+                    List<int[]> ShiftedCertainAreasNowTrial = ipcclient.GetCurrentSelectArea();
+                    if(ShiftedCertainAreasNowTrial.Count() > 0){
+                        int[] ShiftedCertainAreaNowTrial = ShiftedCertainAreasNowTrial[0];
+                        if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial.Length == 6 && CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
                             // PlaySound("InPos");
                             standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
-                            float speedUpScale = Math.Max(1, Math.Min(10, standingSecInDest/(standingSecInDest - standingSecNowInDest)));
+                            float speedUpScale = GetSoundPitch(standingSecInDest - standingSecNowInDest, standingSecInDest);
                             PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                             if(standingSecInDest > 0 && standingSecNowInDest >= standingSecInDest){
                                 standingSecNowInDest = -1;
@@ -2565,7 +2648,7 @@ public class Moving : MonoBehaviour
                             StopSound("InPos");
                             standingSecNowInDest = -1;
                         }
-                    }
+                    } 
                 }
             }
         }
