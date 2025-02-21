@@ -2,6 +2,7 @@ Shader "Unlit/ShaMousePos"
 {
     Properties
     {
+        _MainTex ("Base (RGB)", 2D) = "white" {}
         _Layer1("Layer 1", 2D) = "white" {}
         _Layer2("Layer 2", 2D) = "white" {}
         _Layer3("Layer 3", 2D) = "white" {}

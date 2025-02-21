@@ -24,6 +24,13 @@ public class IPCClient : MonoBehaviour
     bool activited = false;      
     public bool Activated{get {return activited;} set{activited = value;} }
     public bool Silent = true;
+    
+    /// <summary>
+    /// -1: not init, 0~max: inited and connected -2:inited max:0.5s*50fps = 25
+    /// </summary> <summary>
+    /// 
+    /// </summary>
+    int EnableInitAfterConnection = -1;
     // int frameInd = -1;
 
     /// <summary>
@@ -39,7 +46,7 @@ public class IPCClient : MonoBehaviour
     /// <value></value>
     long[] pos = new long[]{-1, -1, -1, -1, -1};
     Dictionary<int, int[]> circledAreas = new Dictionary<int, int[]>();//key: 0~359, value:pos array
-    List<int[]> currentArea = new List<int[]>();
+    List<int[]> currentArea = new List<int[]>();//0:destarea, 1:triggerarea
     
     /// <summary>    selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; x/centerx ; y/centery ; w/rad ; h/inner
     /// 
@@ -49,6 +56,13 @@ public class IPCClient : MonoBehaviour
     /// <typeparam name="int[]"></typeparam>
     /// <returns></returns>
     List<int[]> selectedAreas = new List<int[]>();
+
+    /// <summary>
+    /// 0-markType(0:dest, 1:trigger); 1-radius; 2-distance to center
+    /// </summary>
+    /// <typeparam name="float[]"></typeparam>
+    /// <returns></returns>
+    List<float[]> meanSelectArea = new List<float[]>();
     double pythonTimeOffset = 0;//差值不可能为0
 
     #region mouse pos and selectarea related
@@ -83,10 +97,12 @@ public class IPCClient : MonoBehaviour
         return sceneInfo.ToArray();
     }
 
-    int UpdateCircledAreas(){
+    int UpdateDestCircledAreas(){
+        if(moving.GetContextInfDdestAreaFollow()){return 0;}
+        
         int[] tempPos = moving.GetAvaiableBarPos().ToArray();
         for(int i = 0; i < tempPos.Count(); i++){
-            List<int[]> rightArea = selectedAreas.Where(arr => arr[0] % 32 == i).ToList();
+            List<int[]> rightArea = selectedAreas.Where(arr => arr[0] - 32 == i).ToList();
             if(rightArea.Count() > 0){
                 if(circledAreas.TryGetValue(tempPos[i], out _)){circledAreas.Remove(tempPos[i]);}
                 circledAreas.Add(tempPos[i], rightArea[0]);
@@ -103,13 +119,14 @@ public class IPCClient : MonoBehaviour
         }
     }
 
-    public int[] CreateShiftedSelectedCircle(int[] _selectedPos, int shiftAngle, int oAngle){
+    public int[] CreateShiftedSelectedCircle(int[] _selectedPos, int shiftAngle){
         if(_selectedPos.Count() == 0){return new int[]{};}
         if(_selectedPos[1] != 0){Debug.Log("wrong arg of selectedPos"); return new int[]{};}
-        if(shiftAngle == 0){
-            circledAreas.TryAdd(oAngle, _selectedPos);
-        }
-        int tempangle = (shiftAngle + oAngle) % 360;
+        // int oAngle = (int)sceneInfo[3];
+        // if(shiftAngle == 0){
+        //     circledAreas.TryAdd(oAngle, _selectedPos);
+        // }
+        int tempangle = shiftAngle % 360;
         circledAreas.TryAdd(tempangle, GetShiftedSelectedCircle(_selectedPos, shiftAngle));
         return circledAreas[tempangle];
     }
@@ -124,40 +141,112 @@ public class IPCClient : MonoBehaviour
         _selectedPos.CopyTo(selectedCircle, 0);
         double tempangle = Math.Atan2(_selectedPos[2]-center[0], _selectedPos[3]-center[1]);
         selectedCircle[2] = center[0] + (int)(radius * Math.Sin(shiftAngle * Math.PI / 180 + tempangle));
-        selectedCircle[3] = center[1] + (int)(radius * Math.Cos(shiftAngle * Math.PI / 180 + tempangle));
+        selectedCircle[3] = center[1] - (int)(radius * Math.Cos(shiftAngle * Math.PI / 180 + tempangle));
         return selectedCircle;
     }
 
+    /// <summary>
+    /// angle: without sceneInfo added
+    /// </summary>
+    /// <param name="angle"></param>
+    /// <returns></returns> <summary>
+    /// 
+    /// </summary>
+    /// <param name="angle"></param>
+    /// <returns></returns>
     public Vector2Int[] GetCircledRotatedRectange(float angle){
+        Debug.Log($"draw rotated rect at angle{angle} + {sceneInfo[3]}");
+        angle += sceneInfo[3];
+
         float radians = (float)(angle * Math.PI / 180);
         Vector2Int[] rectVertices = new Vector2Int[4];
         int _w = 12;
         int _h = 25;
         int offset = 10;
         Vector2Int rectCenter = new Vector2Int(
-            (int)(sceneInfo[0] + (sceneInfo[2] + offset) * (float)Math.Cos(radians)),
-            (int)(sceneInfo[1] + (sceneInfo[2] + offset) * (float)Math.Sin(radians))
+            (int)(sceneInfo[0] + (sceneInfo[2] + offset) * (float)Math.Sin(radians)),
+            (int)(sceneInfo[1] - (sceneInfo[2] + offset) * (float)Math.Cos(radians))
         );
+ 
+        float cos = Mathf.Cos(radians + 90 * Mathf.Deg2Rad);
+        float sin = Mathf.Sin(radians + 90 * Mathf.Deg2Rad);
+
         for (int i = 0; i < 4; i++)
         {
-            float x = (i < 2 ? -_w : _w);
-            float y = ((i % 3 == 0) ? -_h : _h);
+
+            float x = i < 2 ? _w : -_w;
+            float y = (i % 3 == 0) ? _h : -_h;
+            
+            // 应用旋转矩阵（绕原点逆时针旋转）
             rectVertices[i] = new Vector2Int(
-                (int)(rectCenter[0] + x * (float)Math.Cos(radians) - y * (float)Math.Sin(radians)),
-                (int)(rectCenter[1] + x * (float)Math.Sin(radians) + y * (float)Math.Cos(radians))
+            (int)(rectCenter.x + x * cos - y * sin),
+            (int)(rectCenter.y + x * sin + y * cos)
             );
+            
         }
         return rectVertices;
     }
 
+    /// <summary>
+    /// currentArea[0]:current dest area, [1]:trigger area
+    /// </summary>
+    /// <returns></returns>
     public List<int[]> GetCurrentSelectArea(){
         return currentArea;
     }
 
-    public int SetCurrentSelectArea(List<int[]> _selectedPoses, int shiftAngle, int oAngle){
-        currentArea.Clear();
-        foreach(int[] _selectedPos in _selectedPoses){
-        currentArea.Add(CreateShiftedSelectedCircle(_selectedPos, shiftAngle, oAngle));
+    public int SetCurrentDestArea(int mark){
+        if(currentArea.Count == 0){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
+
+        if(selectedAreas.Any(area => area[0] == mark)){
+            currentArea[0] = selectedAreas.Find(area => area[0] == mark);
+        }
+        return 0;
+    }
+
+    public int SetCurrentDestArea(int shiftAngle, bool circle, List<int[]> _selectedPoses = null){
+        if(!circle){return -1;}
+        if(currentArea.Count == 0){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
+        if(circledAreas.ContainsKey(shiftAngle)){
+            currentArea[0] = circledAreas[shiftAngle];
+            return 1;
+        }
+        
+        if(_selectedPoses == null){
+            int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            int[] tempArea = new int[]{64, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
+            circledAreas.TryAdd(shiftAngle, tempArea);
+            currentArea[0] = tempArea;
+        }else{
+            foreach(int[] _selectedPos in _selectedPoses){
+                currentArea[0] = CreateShiftedSelectedCircle(_selectedPos, shiftAngle);
+            }
+        }
+        return 1;
+    }
+
+    public int SetCurrentTriggerArea(int mark){
+        while(currentArea.Count < 2){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
+    
+        if(selectedAreas.Any(area => area[0] == mark)){
+            currentArea[1] = selectedAreas.Find(area => area[0] == mark);
+        }
+        return 0;
+    }
+
+    public int SetCurrentTriggerArea(int shiftAngle, bool circle, List<int[]> _selectedPoses = null){
+        if(!circle){return -1;}
+        while(currentArea.Count < 2){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
+
+        
+        if(_selectedPoses == null){
+            int[] tempArea = meanSelectArea.Find(area => area[0] == 0).Select(x => (int)x).ToArray();
+            currentArea[1] = CreateShiftedSelectedCircle(tempArea, shiftAngle);
+        }else{
+            foreach(int[] _selectedPos in _selectedPoses){
+                currentArea[1] = CreateShiftedSelectedCircle(_selectedPos, shiftAngle);
+            }
         }
         return 1;
     }
@@ -190,12 +279,11 @@ public class IPCClient : MonoBehaviour
         mouseDrawer.Init();
         return 1;
     }
-    public int MDDrawInit(List<int[]> areas){
-        if(mouseDrawer == null){return -1;}
-        
-        mouseDrawer.DrawInitialShapes(areas);
-        
 
+    public int MDDrawInit(List<int[]> areas = null, float[] sceneInfo = null){
+        if(mouseDrawer == null){return -1;}
+
+        mouseDrawer.DrawInitialShapes(areas, sceneInfo);
         return 1;
     }
     
@@ -231,6 +319,50 @@ public class IPCClient : MonoBehaviour
 
     #endregion
 
+    void InitAfterConnection(){
+        mouseDrawer = new MouseDrawer(image, mouseDrawerTrailShader, 0.002f, 30);
+        MDDrawInit(sceneInfo:sceneInfo.ToArray());
+        
+        if(selectedAreas.Count() == 0){
+            MessageBoxForUnity.Ensure("No selectarea loaded, check the python server", "load error");
+        }else{
+            List<int[]>DestinationAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
+            int tempradius = 0;
+            double tempdisttocenter = 0;
+            foreach(int[] area in DestinationAreas){
+                if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
+                else{tempradius = -1;}
+
+                double tempDistance = Math.Sqrt(Math.Pow(area[2] - sceneInfo[0], 2) + Math.Pow(area[3] - sceneInfo[1], 2));
+                if(tempdisttocenter == 0 || Math.Abs(1 - tempdisttocenter/tempDistance) <= 0.1){tempdisttocenter = tempDistance;}
+                else{tempdisttocenter = -1;}
+            }
+
+            if(tempradius != -1 && tempdisttocenter != -1){
+                meanSelectArea.Clear();
+                meanSelectArea.Add(new float[]{0, tempradius, (float)tempdisttocenter});
+            }else{
+                meanSelectArea.Add(new float[]{0, 60, sceneInfo[2]});
+            }
+
+            List<int[]>TriggerinationAreas = GetselectedArea().Where(area => area[0] / 32 == 0 && area[1] == 0).ToList();
+            tempradius = 0;
+            tempdisttocenter = 0;
+            foreach(int[] area in TriggerinationAreas){
+                if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
+                else{tempradius = -1;}
+
+                double tempDistance = Math.Sqrt(Math.Pow(area[2] - sceneInfo[0], 2) + Math.Pow(area[2] - sceneInfo[0], 2));
+                if(tempdisttocenter == 0 || Math.Abs(1 - tempdisttocenter/tempDistance) <= 0.1){tempdisttocenter = tempDistance;}
+                else{tempdisttocenter = -1;}
+            }
+            if(tempradius != -1 && tempdisttocenter != -1){
+                meanSelectArea.Add(new float[]{1, tempradius, (float)tempdisttocenter});
+            }
+
+        }
+    }
+
     void Awake()
     {
         uiUpdate = GetComponent<UIUpdate>();
@@ -256,8 +388,14 @@ public class IPCClient : MonoBehaviour
     void FixedUpdate()
     {   
         if(activited){MDUpdate();}
-        else{MDInit(); mouseDrawer = null;}
+        else{MDInit(); mouseDrawer = null;EnableInitAfterConnection = -1;}
 
+        if(EnableInitAfterConnection >= 25){
+            InitAfterConnection();
+            EnableInitAfterConnection = -2;
+        }else if(EnableInitAfterConnection >= 0){
+            EnableInitAfterConnection ++;
+        }
         // if(mouseDrawerThread != null && mouseDrawerThread.IsAlive){
         //     // mouseDrawer.UpdateTrail();
         // }
@@ -329,7 +467,7 @@ public class IPCClient : MonoBehaviour
                                         selectedAreas.Add(tempselectedArea);
                                     }
 
-                                    UpdateCircledAreas();
+                                    UpdateDestCircledAreas();
                                 }
                                 break;
                             }
@@ -368,12 +506,7 @@ public class IPCClient : MonoBehaviour
                                     uiUpdate.MessageUpdate($"time synchronized: offset: {pythonTimeOffset}");
                                     uiUpdate.MessageUpdate("scene info:" + string.Join(";", sceneInfo));
 
-                                    mouseDrawer = new MouseDrawer(image, mouseDrawerTrailShader, 0.002f, 30);
-                                    MDDrawInit(new List<int[]>{new int[] {-1, 0, (int)sceneInfo[0], (int)sceneInfo[1], (int)sceneInfo[2], -1}});
-                                    // threadRunning = true;
-                                    // mouseDrawerThread = new Thread(mouseDrawerThreadFunc);
-                                    // mouseDrawerThread.IsBackground = true;
-                                    // mouseDrawerThread.Start();
+                                    EnableInitAfterConnection = 0;
                                     break;
                                 }
                             }

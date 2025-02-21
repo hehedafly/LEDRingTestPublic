@@ -127,12 +127,19 @@ public class MouseDrawer
         }
     }
 
-    public void DrawInitialShapes(List<int[]> areas)
+    public void DrawInitialShapes(List<int[]> areas, float[] sceneInfo)
     {
     //selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
         Color[] pixels = baseLayer.GetPixels();
-        foreach(int[] area in areas){
-            DrawArea(pixels, area);
+        if(areas != null){
+            foreach(int[] area in areas){
+                DrawArea(pixels, area);
+            }
+        }
+        if(sceneInfo != null){
+            float angle = sceneInfo[3] * Mathf.Deg2Rad;
+            DrawArea(pixels, new int[]{-1, 0, (int)sceneInfo[0], (int)sceneInfo[1], (int)sceneInfo[2], -1});
+            DrawLine(pixels, new Vector2(sceneInfo[0], sceneInfo[1]), new Vector2(sceneInfo[0] + sceneInfo[2] * (float)Math.Sin(angle), sceneInfo[1] - sceneInfo[2] * (float)Math.Cos(angle)), Color.green, 2);
         }
         baseLayer.SetPixels(pixels);
         baseLayer.Apply();

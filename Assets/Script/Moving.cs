@@ -131,7 +131,7 @@ class ContextInfo{
                             ProcessUnit(lastUnit);
                         }
                     }else{
-                        barPosLs.Add(avaliablePosDict[UnityEngine.Random.Range(0, avaliablePosDict.Count)]);
+                        barPosLs.Add(UnityEngine.Random.Range(0, avaliablePosDict.Count));
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
@@ -240,6 +240,13 @@ class ContextInfo{
         finally{}
 
     }
+
+    public void ContextInfoAdd(int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest){
+        barOffset = _barOffset;      
+        destAreaFollow = _destAreaFollow;
+        standingSecInTrigger = _standingSecInTrigger;
+        standingSecInDest = _standingSecInDest;
+    }
     //public string start_method;
     public string       startMethod     {get;}
     public Dictionary<int, int>    avaliablePosDict {get;}//最多8个，从角度0开始对位置顺时针编号0-7
@@ -249,6 +256,10 @@ class ContextInfo{
     public List<int>    pumpPosLs       {get;}
     public List<int>    trackMarkLs     {get;}
     public List<int>    barShiftLs      {get;}
+    public int          barOffset       {get;set;}
+    public bool         destAreaFollow  {get;set;}
+    public float        standingSecInTrigger    {get;set;}
+    public float        standingSecInDest       {get;set;}
     public int          maxTrial        {get;}
     public int          seed            {get;}
     public float        barDelayTime    {get;}//主动触发的trial间最短间隔
@@ -335,8 +346,8 @@ class ContextInfo{
         
         for(int i = 0; i < multiple; i++){
             foreach(int posUnit in _pos){
-                if(avaliablePosDict.ContainsValue(Convert.ToInt16(posUnit))){
-                    barPosLs.Add(posUnit % 360);
+                if(posUnit < avaliablePosDict.Count()){
+                    barPosLs.Add(posUnit);
                 }
                 else{
                     throw new Exception("");
@@ -417,6 +428,14 @@ class ContextInfo{
         return barShiftedLs[trial];
     }
 
+    public int GetBarOffset(){
+        return barOffset;
+    }
+
+    public int GetFinalBarPos(int trial){
+        return (GetBarPos(trial) + GetBarShift(trial) + GetBarOffset()) % 360;
+    }
+
     public int GetRightLickPosIndInTrial(int trial){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return lickPosLs[barPosLs[trial]];
@@ -429,7 +448,7 @@ class ContextInfo{
 
     public float GetDegInTrial(int trial, bool raw = false){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial])) % 360;
+        return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial]) + barOffset) % 360;
     }
 
     public int GetTrackMarkInTrial(int trial){
@@ -464,6 +483,9 @@ public class Moving : MonoBehaviour
     public UnityEngine.UI.Slider slider;
     public Material materialMissing;
     public Material driftGratingBase;
+    public Camera CameraMonitor;
+    public Camera MainCamera;
+    public Camera SecondCamera;
     int barWidth;
     int barHeight;
     int displayPixelsLength;
@@ -483,10 +505,8 @@ public class Moving : MonoBehaviour
     float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value;}}
     float waitSec = -1;
     float[] standingPos = new float[2];
-    float standingSecInTrigger = -1;
     float standingSecNowInTrigger = -1;
     // float[] standingPosInTrial = new float[2];
-    float standingSecInDest = -1;
     float standingSecNowInDest = -1;
     bool waiting = true;
     bool forceWaiting = true;
@@ -562,7 +582,7 @@ public class Moving : MonoBehaviour
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE".Replace(" ", "").Split(',').ToList();
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE, p_OGActiveMills".Replace(" ", "").Split(',').ToList();
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
@@ -1195,12 +1215,30 @@ public class Moving : MonoBehaviour
         if(ipcclient.Activated){
             int markCountPerType = 32;
             int rightMark = contextInfo.GetTrackMarkInTrial(nowTrial);
-            if(rightMark >= 0){
-                List<int[]>DestinationArea = ipcclient.GetselectedArea().Where(area => area[0] / markCountPerType == 1).ToList();
-                int[] CertainAreaNowTrial = DestinationArea.Find(area => area[0] % markCountPerType == rightMark);
+            List<int[]>DestinationAreas = ipcclient.GetselectedArea().Where(area => area[0] / markCountPerType == 1).ToList();
+            List<int[]>TriggerAreas = ipcclient.GetselectedArea().Where(area => area[0] / markCountPerType == 0).ToList();
+
+            if(rightMark >= 0 && contextInfo.destAreaFollow){
+                int[] CertainAreaNowTrial = DestinationAreas.Find(area => area[0] % markCountPerType == rightMark);
                 if(CertainAreaNowTrial != null){//ipcclient绘制部分
-                    ipcclient.SetCurrentSelectArea(new List<int[]>{CertainAreaNowTrial}, contextInfo.GetBarShift(nowTrial), contextInfo.GetBarPos(nowTrial));
-                    ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea(), new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetBarShift(nowTrial) + contextInfo.GetBarPos(nowTrial))});
+                    ipcclient.SetCurrentDestArea(contextInfo.GetBarShift(nowTrial)+ contextInfo.GetBarPos(nowTrial), circle:true);
+                    List<int[]> areas = ipcclient.GetCurrentSelectArea();
+                    if(trialStartTriggerMode == 3){
+                        foreach(int[] tarea in TriggerAreas){areas.Add(tarea);}
+                    }
+                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});
+                }else{
+                    Debug.Log("No selected area match the pos now");
+                }
+            }else if(!contextInfo.destAreaFollow){
+                int[] CertainAreaNowTrial = DestinationAreas.Find(area => area[0] % markCountPerType == rightMark);
+                if(CertainAreaNowTrial != null){//ipcclient绘制部分
+                    ipcclient.SetCurrentDestArea(rightMark + 32);
+                    List<int[]> areas = ipcclient.GetCurrentSelectArea();
+                    if(trialStartTriggerMode == 3){
+                        foreach(int[] tarea in TriggerAreas){areas.Add(tarea);}
+                    }
+                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});
                 }else{
                     Debug.Log("No selected area match the pos now");
                 }
@@ -1586,6 +1624,7 @@ public class Moving : MonoBehaviour
                         // }//结束时已经给了水，只用结束trial
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
+                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd, -1);
                         if(result){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             DeactivateBar();
@@ -1598,7 +1637,6 @@ public class Moving : MonoBehaviour
                             EndTrial(trialSuccess: false);
                             ui_update.MessageUpdate("Trial skipped");
                         }
-                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd, -1);
                     }
                 }
                 ui_update.MessageUpdate();
@@ -1702,20 +1740,11 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    // int[] GetShiftedSelectedCircle(int[] selectedPos, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
-    //     float[] sceneInfo = ipcclient.GetSceneInfo();
-    //     return GetShiftedSelectedCircle(selectedPos, new int[]{(int)sceneInfo[0], (int)sceneInfo[1]}, (int)sceneInfo[2], shiftAngle);
-    // }
-
-    // int[] GetShiftedSelectedCircle(int[] selectedPos, int[] center, float radius, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
-    //     if(selectedPos.Length != 6 || selectedPos[1] != 1){Debug.Log("wrong arg of selectedPos"); return selectedPos;}
-    //     int[] selectedCircle = new int[selectedPos.Length];
-    //     selectedPos.CopyTo(selectedCircle, 0);
-    //     double tempangle = Math.Atan2(selectedPos[2]-center[0], selectedPos[3]-center[1]);
-    //     selectedCircle[2] = center[0] + (int)(radius * Math.Sin(shiftAngle * Math.PI / 180 + tempangle));
-    //     selectedCircle[3] = center[1] + (int)(radius * Math.Cos(shiftAngle * Math.PI / 180 + tempangle));
-    //     return selectedCircle;
-    // }
+    public int OGSet(int _mills){
+        int res = CommandVerify("p_OGActiveMills", _mills);
+        if(res == 1){WriteInfo(recType: 10, _lickPos: _mills);}
+        return res;
+    }
 
     bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
         if(selectedPos[1] == 0){//圆形
@@ -1730,6 +1759,10 @@ public class Moving : MonoBehaviour
 
     string CheckMouseStat(){//待加其他内容
         return "";
+    }
+
+    public bool GetContextInfDdestAreaFollow(){
+        return contextInfo.destAreaFollow;
     }
 
     #endregion context generate end
@@ -2063,7 +2096,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// p_trial_set:0-end, 1-start, 2-serve water and end
+    /// return:         p_trial_set:0-end, 1-start, 2-serve water and end
     /// </summary>
     /// <param name="message"></param>
     /// <param name="value"></param>
@@ -2147,7 +2180,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// rectype: 
+    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate
     /// </summary>
     /// <param name="returnTypeHead"></param>
     /// <param name="recType"></param>
@@ -2158,8 +2191,8 @@ public class Moving : MonoBehaviour
         if(! returnTypeHead && nowTrial == -1){return "";}
 
         List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7        8          9
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay"
+            // 0        1       2     3         4          5           6           7        8          9            10
+            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate"
         };
         if(enqueueMsg != ""){
             logWriteQueue.Enqueue(enqueueMsg);
@@ -2271,6 +2304,7 @@ public class Moving : MonoBehaviour
         displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
         displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
         isRing = iniReader.ReadIniContent(  "displaySettings", "isRing", "false") == "true";
+        bool separate = iniReader.ReadIniContent(  "displaySettings", "separate", "false") == "true";//仅支持分离为双屏1920
         displayVerticalPos = Math.Clamp(displayVerticalPos, -1, 2);
 
         Display mainScreen = Display.displays[0];
@@ -2278,11 +2312,36 @@ public class Moving : MonoBehaviour
         Screen.fullScreen = false;
 
         if(InApp){
-            for (int i = 1; i < Math.Min(4, Display.displays.Length); i++){
-                Display.displays[i].Activate();
-                Screen.fullScreen = false;
-                Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
-                //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+            if(separate){
+                try{
+                    for (int i = 2; i < Math.Min(4, Display.displays.Length); i++){
+                        Display.displays[i].Activate();
+                        Screen.fullScreen = false;
+                        Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                        //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+                    }
+                    SecondCamera.enabled = true;
+                    CameraMonitor.targetDisplay = 1;
+                    Display.displays[1].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                    tempChildTs.targetDisplay = 1;
+
+                    MainCamera.targetDisplay = 2;
+                    MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
+                    SecondCamera.targetDisplay = 3;
+                    SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
+                }
+                catch(Exception e){
+                    Debug.LogError(e.Message);
+                }
+            }else{
+                for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
+                    Display.displays[i].Activate();
+                    Screen.fullScreen = false;
+                    Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                    //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
+                }
+                SecondCamera.enabled = false;
             }
         }
 
@@ -2295,15 +2354,15 @@ public class Moving : MonoBehaviour
             iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
             iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
             iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
-            iniReader.ReadIniContent(                   "settings", "TrackPosMark"          ,  ""                      ),                 // string _lick_pos_array
+            iniReader.ReadIniContent(                   "settings", "TrackPosMark"      ,  ""                      ),                 // string _lick_pos_array
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
-            iniReader.ReadIniContent(                   "settings", "waitFromStart"      ,  "random2~5"             ),                // float go cue
+            iniReader.ReadIniContent(                   "settings", "waitFromStart"     ,  "random2~5"             ),                // float go cue
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
-            Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings", "soundLength"       ,   "0.2"                   )),                // float 
+            Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings", "soundLength"  ,   "0.2"                   )),                // float 
             iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
             iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
             iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
@@ -2312,9 +2371,13 @@ public class Moving : MonoBehaviour
             Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
             Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
-        );                
-        standingSecInTrigger = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrigger",   "0.5" ));
-        standingSecInDest = Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrialInDest",   "0.5" ));
+        );
+        contextInfo.ContextInfoAdd(
+            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "barOffset"         ,   "0"                     )),
+            iniReader.ReadIniContent(                   "settings", "destAreaFollow"    ,   "true"                  ) == "true",
+            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "contextInfo.standingSecInTrigger",   "0.5" )),
+            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrialInDest",   "0.5" ))
+        );
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
@@ -2615,9 +2678,9 @@ public class Moving : MonoBehaviour
                     }
                     if(InTriggerArea){
                         standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
-                        float speedUpScale = GetSoundPitch(standingSecInTrigger - standingSecNowInTrigger, standingSecInTrigger);
+                        float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
                         PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
-                        if(standingSecInTrigger > 0 && standingSecNowInTrigger >= standingSecInTrigger){
+                        if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
                             standingSecNowInTrigger = -1;
                             WriteInfo(recType:8);
                             CommandParsePublic("stay:0", urgent:true);
@@ -2632,21 +2695,23 @@ public class Moving : MonoBehaviour
                     List<int[]> ShiftedCertainAreasNowTrial = ipcclient.GetCurrentSelectArea();
                     if(ShiftedCertainAreasNowTrial.Count() > 0){
                         int[] ShiftedCertainAreaNowTrial = ShiftedCertainAreasNowTrial[0];
-                        if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial.Length == 6 && CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
-                            // PlaySound("InPos");
-                            standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
-                            float speedUpScale = GetSoundPitch(standingSecInDest - standingSecNowInDest, standingSecInDest);
-                            PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
-                            if(standingSecInDest > 0 && standingSecNowInDest >= standingSecInDest){
-                                standingSecNowInDest = -1;
-                                WriteInfo(recType:8);
-                                CommandParsePublic("stay:1", urgent:true);
-                                // PlaySound("EnableReward");//已挪至lickingCheck
+                        if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial[0] >= markCountPerType){
+                            if(CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
+                                // PlaySound("InPos");
+                                standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
+                                float speedUpScale = GetSoundPitch(contextInfo.standingSecInDest - standingSecNowInDest, contextInfo.standingSecInDest);
+                                PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
+                                if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){
+                                    standingSecNowInDest = -1;
+                                    WriteInfo(recType:8);
+                                    CommandParsePublic("stay:1", urgent:true);
+                                    // PlaySound("EnableReward");//已挪至lickingCheck
+                                }
                             }
-                        }
-                        else{
-                            StopSound("InPos");
-                            standingSecNowInDest = -1;
+                            else{
+                                StopSound("InPos");
+                                standingSecNowInDest = -1;
+                            }
                         }
                     } 
                 }

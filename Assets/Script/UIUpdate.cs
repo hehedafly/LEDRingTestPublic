@@ -23,6 +23,7 @@ public class UIUpdate : MonoBehaviour
     public Text logMessage;
     public Scrollbar logScrollBar;
     public List<InputField> inputFields = new List<InputField>();
+    Dictionary<string, string> inputFieldContent = new Dictionary<string, string>();
     List<Dropdown> dropdowns = new List<Dropdown>();
     List<Dropdown> soundDropdowns = new List<Dropdown>();
     public List<UnityEngine.UI.Button> buttons = new List<UnityEngine.UI.Button>();
@@ -52,6 +53,7 @@ public class UIUpdate : MonoBehaviour
         return -1;
     }
     void SetButtonColor(UnityEngine.UI.Button _button, Color color){
+        if(_button == null){return;}
         _button.GetComponent<ScrButton>().ChangeColor(color);
     }
     
@@ -219,14 +221,28 @@ public class UIUpdate : MonoBehaviour
                     break;
                 }
                 else if(elementsName.StartsWith("MouseInfo")){
-                    string head = elementsName.Substring(9);
+                    string _content = elementsName.Substring(9);
                     Dictionary<string, string> headCorrespond = new Dictionary<string, string>{{"Name", "userName"}, {"Index", "mouseInd"}};
                     if(stringArg.StartsWith("passive")){//format: passive
 
                     }
                     else{
-                        if(headCorrespond.TryGetValue(head, out string _info)){
+                        if(headCorrespond.TryGetValue(_content, out string _info)){
                             moving.SetMouseInfo(_info + ":" + stringArg);
+                        }
+                    }
+                }
+                else if(elementsName.StartsWith("OG")){
+                    string _content = elementsName.Substring(2);
+                    if(_content == "Start"){
+                        if(!int.TryParse(inputFieldContent["OGTime"], out int _mills)){_mills = 1000;}
+                        if(moving.OGSet(_mills) == 1){
+                            SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.green);
+                            alarm.TrySetAlarm("OGStartToGrey", 0.5f, out _);
+                        }
+                    }else if(_content == "End"){
+                        if(moving.OGSet(0) == 1){
+                            SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.grey);
                         }
                     }
                 }
@@ -387,6 +403,12 @@ public class UIUpdate : MonoBehaviour
         //         mode1ConfigInputs.placeholder.GetComponent<Text>().text = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1].ToString();
         //     }
         // }
+        foreach(InputField inputField in inputFields){
+            if(!inputFieldContent.TryAdd(inputField.name, "null")){
+                inputFieldContent[inputField.name] = "null";
+            }
+        }
+
     }
 
     // Update is called once per frame
@@ -399,7 +421,10 @@ public class UIUpdate : MonoBehaviour
         }
 
         if(focus_input_field!=null && Input.GetKeyDown(KeyCode.Return)){
-            ControlsParse(focus_input_field.name, float.TryParse(focus_input_field.text, out float temp_value) ? temp_value : 0, focus_input_field.text);
+            if(!inputFieldContent.TryAdd(focus_input_field.name, focus_input_field.text)){
+                inputFieldContent[focus_input_field.name] = focus_input_field.text;
+            }
+            ControlsParse(focus_input_field.name, float.TryParse(inputFieldContent[focus_input_field.name], out float temp_value) ? temp_value : 0, inputFieldContent[focus_input_field.name]);
             if (focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue"){focus_input_field.text="";}
         }
         // MessageUpdate();
@@ -413,6 +438,9 @@ public class UIUpdate : MonoBehaviour
                     moving.Ipcclient.Silent = false;
                     break;
                 }
+                case "OGStartToGrey":
+                    SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.white);
+                    break;
                 
                 default:{
                     break;
