@@ -18,8 +18,9 @@ using MatrixClaculator;
 [System.Serializable]
 class ContextInfo{
 
-    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, string _trackMark_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, float _soundLength, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, string _barShiftLs, float _trialExpireTime, int _trialStartType, int _seed = -1){
+    public ContextInfo(string _start_method, string _available_pos_array, string _assigned_pos,string _matStart_method, string _matAvailable_array, string _matAssigned, string _pump_pos_array, string _lick_pos_array, string _trackMark_array, int _maxTrial, int _backgroundLight, int _backgroundRedMode, float _barDelayTime, string _waitFromStart, float _barLastingTime, float _waitFromLastLick, string _trialTriggerDelay, string _trialInterval, string _s_wait_sec, string _f_wait_sec, string _barShiftLs, float _trialExpireTime, int _trialStartType, int _seed = -1){
         startMethod = _start_method;
+        startMethodStr = _assigned_pos;
         matStartMethod = _matStart_method;
         seed = _seed == -1? (int)DateTime.Now.ToBinary(): _seed;
         maxTrial = Math.Max(1, _maxTrial);
@@ -28,7 +29,6 @@ class ContextInfo{
         barDelayTime = _barDelayTime;
         barLastingTime = _barLastingTime;
         waitFromLastLick = _waitFromLastLick;
-        soundLength = _soundLength;
         trialExpireTime = _trialExpireTime;
         trialTriggerMode = _trialStartType;
         barPosLs = new List<int>();
@@ -241,7 +241,9 @@ class ContextInfo{
 
     }
 
-    public void ContextInfoAdd(int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest){
+        soundLength = _soundLength;
+        cueVolume = _cueVolume;
         barOffset = _barOffset;      
         destAreaFollow = _destAreaFollow;
         standingSecInTrigger = _standingSecInTrigger;
@@ -249,6 +251,7 @@ class ContextInfo{
     }
     //public string start_method;
     public string       startMethod     {get;}
+    public string       startMethodStr     {get;}
     public Dictionary<int, int>    avaliablePosDict {get;}//最多8个，从角度0开始对位置顺时针编号0-7
     public string       matStartMethod     {get;}
     public List<string> matAvaliableArray {get;}
@@ -266,7 +269,6 @@ class ContextInfo{
     public float        barLastingTime  {get;}
     public List<float>  waitFromStart   {get;}
     public float        waitFromLastLick{get;}
-    public float        soundLength     {get;}
     public int          backgroundLight {get;}
     public int          backgroundRedMode{get;}
     public List<float>  trialInterval   {get;}
@@ -276,6 +278,8 @@ class ContextInfo{
     public List<float>  trialTriggerDelay{get;}
     public float        trialExpireTime {get;}
     public List<string> materialsInfo   {get;set;}
+    public float        soundLength     {get; set;}
+    public float        cueVolume {get; set;}
     
     //addon info:
     public string userName;
@@ -557,6 +561,10 @@ public class Moving : MonoBehaviour
     // AudioSource audioSourceAlarmSketch;
     public Dictionary<string, AudioClip> audioClips = new Dictionary<string, AudioClip>();
     // public Dictionary<string, int> audioSourceInds = new Dictionary<string, int>();
+
+    /// <summary>
+    /// key: soundMode
+    /// </summary>
     Dictionary<int, float[]> audioPlayTimes = new Dictionary<int, float[]>{};
     public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
     float cueVolume;
@@ -574,7 +582,7 @@ public class Moving : MonoBehaviour
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
-    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay"};//stay为虚拟command，从另一脚本实现
+    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay", "syncInfo", "miniscopeRecord"};//stay为虚拟command，从另一脚本实现
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
@@ -582,7 +590,7 @@ public class Moving : MonoBehaviour
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE, p_OGActiveMills".Replace(" ", "").Split(',').ToList();
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord".Replace(" ", "").Split(',').ToList();
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
@@ -590,6 +598,7 @@ public class Moving : MonoBehaviour
                                                                                     debugMode = value;
                                                                                     //backgroundCover.SetActive(debugMode);
                                                                                 }}
+    List<string> serialSyncInfo = new List<string>();//留给串口线程记录同步信息
     #endregion communicating end
 
     #region  context generate
@@ -893,11 +902,22 @@ public class Moving : MonoBehaviour
     float GetSoundPitch(float _lastTime, float _totalTime){//后续改
         return Math.Max(1, Math.Min(5, 0.5f + 0.5f * _totalTime/_lastTime));
     }
+    
+    /// <summary>
+    /// addorremove: 0:remove, 1:add, 1+:change
+    /// </summary>
+    /// <param name="_playMode"></param>
+    /// <param name="addOrRemove"></param>
+    /// <param name="soundName"></param>
+    /// <param name="clearAll"></param>
+    /// <param name="clearOtherAll"></param>
+    /// <returns></returns>
     public int ChangeSoundPlayMode(int _playMode, int addOrRemove, string soundName, bool clearAll = false, bool clearOtherAll = false){// addOrRemove = false时, clearAll为true则清除其他模式
         if(addOrRemove > 0){
             if(addOrRemove == 1 && !audioPlayModeNow.Contains(_playMode) && audioClips.ContainsKey(soundName)){
                 audioPlayModeNow.Add(_playMode);
                 audioSources[_playMode].clip = audioClips[soundName];
+                audioSources[_playMode].name = soundName;
                 if(soundName == "alarm"){
                     audioSources[_playMode].loop = false;
                     audioSources[_playMode].volume = 1;
@@ -948,6 +968,10 @@ public class Moving : MonoBehaviour
         }
     }
 
+        public int PlaySoundPublic(int soundMode, string addInfo = "", bool manual = false){
+            return PlaySound(soundMode, addInfo, manual);
+        }
+
     /// <summary>
     /// audioSources.ContainsKey(soundName) -> audioSources[soundName].Play(), return 1: played, 0: alarm not ready
     /// </summary>
@@ -959,13 +983,13 @@ public class Moving : MonoBehaviour
     /// <param name="soundName"></param>
     /// <param name="isAlarm"></param>
     /// <returns></returns>
-    int PlaySound(AudioSource audioSource, int trackBackMode = -1, string addInfo = ""){
+    int PlaySound(AudioSource audioSource, int trackBackMode = -1, string addInfo = "", bool manual = false){
         if(!audioSources.ContainsValue(audioSource)){ return -1;}
         // if(audioSources[soundName].isPlaying){return 0;}
 
 
         if(audioSource.clip.name == "alarm"){
-            if(alarmPlayReady){
+            if(alarmPlayReady || manual){
                 Debug.Log("sound played: " + audioSource.clip.name);
                 audioSource.Play();
                 WriteInfo(recType:9, _lickPos:trackBackMode, addInfo:addInfo);
@@ -1010,10 +1034,10 @@ public class Moving : MonoBehaviour
             return -1;
         }
     }
-    int PlaySound(int soundMode, string addInfo = ""){
-        if(audioSources.ContainsKey(soundMode)){
-            int playResult = PlaySound(audioSources[soundMode], soundMode, addInfo:addInfo);
-            Debug.Log($"playResult"+playResult);
+    int PlaySound(int soundMode, string addInfo = "", bool manual = false){
+        if(audioSources.ContainsKey(soundMode) || manual == true){
+            int playResult = PlaySound(audioSources[soundMode], soundMode, addInfo:addInfo, manual:manual);
+            Debug.Log($"playResult: {playResult} {(manual? "manually":"")}");
             if(playResult == 1){
                 float[] _audioPlayTime = audioPlayTimes[soundMode];
                 _audioPlayTime[1] = Time.fixedUnscaledTime;
@@ -1065,14 +1089,14 @@ public class Moving : MonoBehaviour
     }
 
     void TryStopSound(){
-        foreach(int soundMode in audioPlayModeNow){
-            if(TrialSoundPlayModeExplain[soundMode] == "InPos"){//InPos不用TryStop
-                return;
+        foreach(int mode in audioPlayTimes.Keys){
+            if(TrialSoundPlayModeExplain[mode] == "InPos"){//InPos不用TryStop
+                continue;
             }
-            float[] tempTimes = audioPlayTimes[soundMode];
+            float[] tempTimes = audioPlayTimes[mode];
             if(tempTimes[0] > 0 && tempTimes[2] > 0){
                 if(Time.fixedUnscaledTime >= tempTimes[2]){
-                    StopSound(soundMode);
+                    StopSound(mode);
                 }
             }
         }
@@ -1270,7 +1294,7 @@ public class Moving : MonoBehaviour
             _tempMsg += $", lickCount before: {strLickCount}";
         }
         ui_update.MessageUpdate(_tempMsg);
-        WriteInfo(recType: 1);
+        WriteInfo(recType: 1, _lickPos:activitedPos);
 
         List<int> ints = new List<int>();
         // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
@@ -1786,7 +1810,7 @@ public class Moving : MonoBehaviour
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，外加视频检测移动到特定位置
+    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置，miniscope控制
         string tempHead = limitedCommand.Split(":")[0];
         switch(tempHead){
             case "lick":{
@@ -1800,6 +1824,9 @@ public class Moving : MonoBehaviour
             }
             case "stay":{
                 break ;
+            }
+            case "miniscopeRecord":{
+                break;
             }
             // case "sw":{
             //     return;
@@ -1916,11 +1943,21 @@ public class Moving : MonoBehaviour
                 }
                 break;
             }
+            case 10:{//syncInfo
+                WriteInfo(recType:11);
+                break;
+            }
+            case 11:{
+                int tempType = Convert.ToInt16(command.Split(":")[1]);
+                WriteInfo(recType:12, _lickPos:tempType);
+                CommandVerify("p_miniscopeRecord", tempType);
+                break;
+            }
             default: break;
         }
     }
 
-    void DataReceived(){
+    void SerialCommunicating(){
         while (true){
             manualResetEventVerify.WaitOne();
             if (sp!= null && sp.IsOpen){
@@ -2129,7 +2166,7 @@ public class Moving : MonoBehaviour
             logStreamWriter = new StreamWriter(logfileStream);
             FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             posStreamWriter = new StreamWriter(posfileStream);
-            posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "frameInd", "TimeInUnitySecFromTrialStart"}));
+            posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "syncFrameInd", "100*pythonTime", "frameInd", "TimeInUnitySecFromTrialStart"}));
             
         }
         catch (Exception e){
@@ -2180,7 +2217,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate
+    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord
     /// </summary>
     /// <param name="returnTypeHead"></param>
     /// <param name="recType"></param>
@@ -2191,8 +2228,8 @@ public class Moving : MonoBehaviour
         if(! returnTypeHead && nowTrial == -1){return "";}
 
         List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7        8          9            10
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate"
+            // 0        1       2     3         4          5           6           7        8          9            10          11          12
+            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord"
         };
         if(enqueueMsg != ""){
             logWriteQueue.Enqueue(enqueueMsg);
@@ -2344,40 +2381,48 @@ public class Moving : MonoBehaviour
                 SecondCamera.enabled = false;
             }
         }
+        try{
+            contextInfo = new ContextInfo(
+                iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
+                iniReader.ReadIniContent(                   "settings", "available_pos"     ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
+                iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
+                iniReader.ReadIniContent(                   "settings", "MatStartMethod"    ,   "assign"                ),
+                iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"               ),               
+                iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
+                iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
+                iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
+                iniReader.ReadIniContent(                   "settings", "TrackPosMark"      ,  ""                      ),                 // string _lick_pos_array
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
+                iniReader.ReadIniContent(                   "settings", "waitFromStart"     ,  "random2~5"             ),                // float go cue
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
+                iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
+                iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
+                iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
+                iniReader.ReadIniContent(                   "settings", "fail_wait_sec"     ,   "6"                     ),                // string _f_wait_sec
+                iniReader.ReadIniContent(                   "settings", "barShiftLs"        ,   "0"                     ),                // string _f_wait_sec
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
+            );
+            contextInfo.ContextInfoAdd(
+                Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "soundLength"             ,   "0.2"                   )),                // float 
+                Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "cueVolume"               ,   "0.5"                   )),                // float 
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "barOffset"               ,   "0"                     )),
+                iniReader.ReadIniContent(                   "settings"      , "destAreaFollow"          ,   "true"                  ) == "true",
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "contextInfo.standingSecInTrigger",   "0.5" )),
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrialInDest",   "0.5" ))
+            );
 
-        contextInfo = new ContextInfo(
-            iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
-            iniReader.ReadIniContent(                   "settings", "available_pos"     ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
-            iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
-            iniReader.ReadIniContent(                   "settings", "MatStartMethod"    ,   "assign"                ),
-            iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"               ),               
-            iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
-            iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
-            iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
-            iniReader.ReadIniContent(                   "settings", "TrackPosMark"      ,  ""                      ),                 // string _lick_pos_array
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barDelayTime"      ,   "1"                     )),                // float _barLastTime
-            iniReader.ReadIniContent(                   "settings", "waitFromStart"     ,  "random2~5"             ),                // float go cue
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "barLastingTime"    ,   "1"                     )),                // float 
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "waitFromLastLick"  ,   "3"                     )),                // float 
-            Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings", "soundLength"  ,   "0.2"                   )),                // float 
-            iniReader.ReadIniContent(                   "settings", "triggerModeDelay"  ,   "0"                     ),                 // float triggerDelay        
-            iniReader.ReadIniContent(                   "settings", "trialInterval"     ,   "random5~10"            ),                 // string
-            iniReader.ReadIniContent(                   "settings", "success_wait_sec"  ,   "3"                     ),                // string _s_wait_sec
-            iniReader.ReadIniContent(                   "settings", "fail_wait_sec"     ,   "6"                     ),                // string _f_wait_sec
-            iniReader.ReadIniContent(                   "settings", "barShiftLs"        ,   "0"                     ),                // string _f_wait_sec
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
-        );
-        contextInfo.ContextInfoAdd(
-            Convert.ToInt16(iniReader.ReadIniContent(   "settings", "barOffset"         ,   "0"                     )),
-            iniReader.ReadIniContent(                   "settings", "destAreaFollow"    ,   "true"                  ) == "true",
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "contextInfo.standingSecInTrigger",   "0.5" )),
-            Convert.ToSingle(iniReader.ReadIniContent(  "settings", "standingSecInTrialInDest",   "0.5" ))
-        );
+        }
+        catch(Exception e){
+            MessageBoxForUnity.Ensure("wrong arguments in config file: "+e.Message, "error");
+            Debug.LogError(e.Message);
+            Quit();
+        }
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
@@ -2388,18 +2433,32 @@ public class Moving : MonoBehaviour
                 -1
             });
         }
-        if (float.TryParse(iniReader.ReadIniContent("soundSettings", "cueVolume", "0.5"), out cueVolume)){
-            cueVolume = Math.Clamp(cueVolume, 0, 1);
-        }else{cueVolume = 0.5f;}
 
-        while(audioSources.Count < TrialSoundPlayModeExplain.Count){
-            GameObject gameObject = Instantiate(audioSourceSketchObject);
-            audioSources.Add(audioSources.Count + 1, gameObject.GetComponent<AudioSource>());
-        }
-
+        cueVolume = contextInfo.cueVolume;
+        
         foreach(AudioClip _clip in Resources.LoadAll("Audios", typeof(AudioClip))){
             if(!audioClips.ContainsKey(_clip.name)){
                 audioClips.Add(_clip.name, _clip);
+            }
+        }
+
+        while(audioSources.Count < TrialSoundPlayModeExplain.Count){
+            GameObject gameObject = Instantiate(audioSourceSketchObject);
+            AudioSource _tempAudioSource = gameObject.GetComponent<AudioSource>();
+            _tempAudioSource.volume = 1;
+            _tempAudioSource.clip = audioClips.Values.First();
+            audioSources.Add(audioSources.Count + 1, _tempAudioSource);
+        }
+                
+        foreach(string _option in iniReader.ReadIniContent("soundSettings" , "TrialSoundPlayMode", "").Split(";")){
+            List<string> _optionList = _option.Split(":").ToList();
+            try{
+                int mode = _optionList.Count > 0 ? Convert.ToInt16(_optionList[0]): -1;
+                string _audioName =  _optionList.Count > 1 ? _optionList[1]: audioClips.Keys.First();
+                ChangeSoundPlayMode(mode, audioPlayModeNow.Contains(mode)? 2: 1, _audioName);
+            }
+            catch(Exception e){
+                Debug.LogError(e.Message);
             }
         }
 
@@ -2457,6 +2516,12 @@ public class Moving : MonoBehaviour
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
+        List<string> compatibleVersion = new List<string>();
+        foreach(string matchVersion in iniReader.ReadIniContent("serialSettings", "compatibleVersion", "").Split(",")){
+            if(matchVersion.Length > 0){
+                compatibleVersion.Add(matchVersion);
+            }
+        }
         
         List<List<string>> tempIniReadContent = iniReader.GetReadContent();
         string tempIniReadContentStr = "default:\t\t\t\tothers:\n";
@@ -2489,16 +2554,28 @@ public class Moving : MonoBehaviour
                         Debug.Log("COM avaible: "+port);
 
                         sp.ReadTimeout = 1000;
-                        while(true){
+                        int fail_count = 10;
+                        while(fail_count > 0){
+                            fail_count--;
                             string temp_readline=sp.ReadLine();
                             //Debug.Log(temp_readline);
-                            if(temp_readline=="initialed"){
+                            if(temp_readline.StartsWith("initialed")){
+                                if(temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
+                                    string tempInfo = temp_readline[10..];
+                                    if(compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
+                                        continue;
+                                    }
+                                }
                                 break;
                             }
                             else{
+                                if(fail_count == 0){
+                                    throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
+                                }
                                 continue;
                             }
                         }
+                        
                     //}
                 }
                 catch (Exception e){
@@ -2517,7 +2594,7 @@ public class Moving : MonoBehaviour
                     }
                 }
                 finally{
-                    Thread thread = new Thread(new ThreadStart(DataReceived));
+                    Thread thread = new Thread(new ThreadStart(SerialCommunicating));
                     thread.Start();
                     Debug.Log("thread started");
                 }
@@ -2530,8 +2607,8 @@ public class Moving : MonoBehaviour
             string data_write = WriteInfo(returnTypeHead: true);
             logWriteQueue.Enqueue(data_write);
         }else{
-            MessageBoxForUnity.Ensure("No Connection to Arduino!", "Serial Error");
-            if(MessageBoxForUnity.YesOrNo("Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+            Debug.LogWarning("No Connection to Arduino!");
+            if(MessageBoxForUnity.YesOrNo("No Connection to Arduino! Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
                 InitializeStreamWriter();
                 string data_write = WriteInfo(returnTypeHead: true);
@@ -2548,7 +2625,7 @@ public class Moving : MonoBehaviour
         ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
         IsIPCInNeed();
         foreach(int mode in audioPlayModeNow){
-            ui_update.ControlsParse("sound", mode, "passive;add");
+            ui_update.ControlsParse("sound", mode, $"passive;add;{audioSources[mode].name}");
         }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
         else{                          ui_update.MessageUpdate($"interval: {contextInfo.trialTriggerDelay[0]} ~ {contextInfo.trialTriggerDelay[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
@@ -2703,6 +2780,7 @@ public class Moving : MonoBehaviour
                                 PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                                 if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){
                                     standingSecNowInDest = -1;
+                                    pos[0..2].CopyTo(standingPos, 0);
                                     WriteInfo(recType:8);
                                     CommandParsePublic("stay:1", urgent:true);
                                     // PlaySound("EnableReward");//已挪至lickingCheck

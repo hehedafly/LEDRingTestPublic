@@ -182,12 +182,18 @@ public class UIUpdate : MonoBehaviour
             }
             default:{
                 if(elementsName.StartsWith("sound")){
-                    if(stringArg.StartsWith("passive")){//format: passive
+                    if(stringArg.StartsWith("passive")){//format: passive;add;soundName/-
                         MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
                         foreach(int buttonInd in moving.audioPlayModeNow){
                             soundOptionsDict[buttonInd].GetComponent<ScrButton>().pressCount ++;
                             SetButtonColor(soundOptionsDict[buttonInd], Color.green);
-
+                            if(stringArg.Split(";").Count() == 3){
+                                string _soundName = stringArg.Split(";")[2];
+                                if(moving.audioClips.ContainsKey(_soundName)){
+                                    int tempSoundInd = moving.audioClips.Keys.ToList().IndexOf(_soundName);
+                                    soundOptionsDict[buttonInd].GetComponentInChildren<Dropdown>().value = tempSoundInd;
+                                }
+                            }
                         }
                         //triggerModeSelect.GetComponent<ScrDropDown>().isPassive = true;
                     }else{
@@ -201,15 +207,22 @@ public class UIUpdate : MonoBehaviour
                                     button.GetComponent<ScrButton>().pressCount = 0;
                                 }
                             }else{//其他
-                                moving.audioPlayModeNow.Remove(0);
-                                SetButtonColor(soundOptionsDict[0], Color.gray);
-                                soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
-
-                                bool selected = soundOptionsDict[tempId].GetComponent<ScrButton>().pressCount % 2 == 1;
-                                int _result = moving.ChangeSoundPlayMode(tempId, selected? 1: 0, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
-                                SetButtonColor(soundOptionsDict[tempId], selected? Color.green: Color.gray);
-                                // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
-                                MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
+                                if(moving.audioPlayModeNow.Contains(0)){
+                                    moving.audioPlayModeNow.Remove(0);
+                                    SetButtonColor(soundOptionsDict[0], Color.gray);
+                                    soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
+                                }
+                                if(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)){
+                                    if(moving.TrialSoundPlayModeExplain[tempId] != "InPos"){
+                                        moving.PlaySoundPublic(tempId, "manual", true);
+                                    }
+                                }else{
+                                    bool selected = soundOptionsDict[tempId].GetComponent<ScrButton>().pressCount % 2 == 1;
+                                    int _result = moving.ChangeSoundPlayMode(tempId, selected? 1: 0, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
+                                    SetButtonColor(soundOptionsDict[tempId], selected? Color.green: Color.gray);
+                                    // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
+                                    MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
+                                }
                             }
                         }else if(soundOptionSelected.StartsWith("Dropdown")){//dropdowns
                             string parentNameAfter = soundOptionSelected.Substring(8);
@@ -246,6 +259,10 @@ public class UIUpdate : MonoBehaviour
                         }
                     }
                 }
+                else if(elementsName.StartsWith("MS")){
+                    string _content = elementsName.Substring(2);
+                    moving.CommandParsePublic($"miniscopeRecord:{(_content == "Start"? 1: 0)}");
+                }
                 break;
             }
         }
@@ -261,7 +278,7 @@ public class UIUpdate : MonoBehaviour
 
     public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false){//随时可能被调用，需要对内容做null检查
         if(returnAllMsg){
-            return TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
+            return logMessage.text + "\n" + TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
         }
 
         if(UpdateFreq == 1){//高频
