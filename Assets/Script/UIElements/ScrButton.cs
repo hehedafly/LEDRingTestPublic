@@ -9,16 +9,25 @@ public class ScrButton : MonoBehaviour
     public UIUpdate ui_update;
     
     bool added = false;
+    public bool isCheckBox = false;
+    public Sprite checkBoxYes;
+    public Sprite checkBoxNo;
     public int pressCount = 0;
     public void OnClick(){
         if(ui_update != null){
             pressCount ++;
-            ui_update.ControlsParse(name, 1);
+            if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
+            else{ui_update.ControlsParse(name, 1);}
         }
     }
 
     public void ChangeColor(Color color){
         GetComponent<Image>().color = color;
+    }
+
+    public void ChangeStatus(bool yesorno = false){
+        if(yesorno){GetComponent<Image>().sprite = checkBoxYes;}
+        else{GetComponent<Image>().sprite = checkBoxNo;}
     }
 
     void Awake(){

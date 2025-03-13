@@ -249,12 +249,12 @@ public class UIUpdate : MonoBehaviour
                     string _content = elementsName.Substring(2);
                     if(_content == "Start"){
                         if(!int.TryParse(inputFieldContent["OGTime"], out int _mills)){_mills = 1000;}
-                        if(moving.OGSet(_mills) == 1){
+                        if(moving.OGSet(_mills)){
                             SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.green);
                             alarm.TrySetAlarm("OGStartToGrey", 0.5f, out _);
                         }
                     }else if(_content == "End"){
-                        if(moving.OGSet(0) == 1){
+                        if(moving.OGSet(0)){
                             SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.grey);
                         }
                     }
@@ -275,6 +275,43 @@ public class UIUpdate : MonoBehaviour
             moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
         }
     }
+
+    public void CheckBoxControlsParse(string elementsName,float value, string stringArg=""){
+        if(elementsName.StartsWith("MS")){
+            string _name = elementsName.Substring(2);
+            switch(_name){
+                case "trialStart":{
+                    break;
+                }
+                default:{
+                    break;
+                }
+            }
+            
+        }else if(elementsName.StartsWith("OG")){
+            string _name = elementsName.Substring(2);
+            switch(_name){
+                case "":{
+                    break;
+                }
+                default:{
+                    break;
+                }
+            }
+        }
+    }
+
+    public bool TryGetOGSetTime(out int _mills){
+        bool _res = inputFieldContent.TryGetValue("OGTime", out string _strMills);
+        try{
+            _mills = Convert.ToInt32(_strMills);
+        }catch{
+            _mills = 1000;
+            Debug.Log("failed to parse OGTime to int");
+        }
+        return  _res;
+    }
+
 
     public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false){//随时可能被调用，需要对内容做null检查
         if(returnAllMsg){
@@ -421,7 +458,7 @@ public class UIUpdate : MonoBehaviour
         //     }
         // }
         foreach(InputField inputField in inputFields){
-            if(!inputFieldContent.TryAdd(inputField.name, "null")){
+            if(!inputFieldContent.TryAdd(inputField.name, inputField.text)){
                 inputFieldContent[inputField.name] = "null";
             }
         }

@@ -56,6 +56,7 @@ public class IPCClient : MonoBehaviour
     /// <typeparam name="int[]"></typeparam>
     /// <returns></returns>
     List<int[]> selectedAreas = new List<int[]>();
+    int selectAreaCount = -1;
 
     /// <summary>
     /// 0-markType(0:dest, 1:trigger); 1-radius; 2-distance to center
@@ -98,7 +99,7 @@ public class IPCClient : MonoBehaviour
     }
 
     int UpdateDestCircledAreas(){
-        if(moving.GetContextInfDdestAreaFollow()){return 0;}
+        if(moving.GetContextInfoDestAreaFollow()){return 0;}
         
         int[] tempPos = moving.GetAvaiableBarPos().ToArray();
         for(int i = 0; i < tempPos.Count(); i++){
@@ -323,8 +324,10 @@ public class IPCClient : MonoBehaviour
         mouseDrawer = new MouseDrawer(image, mouseDrawerTrailShader, 0.002f, 30);
         MDDrawInit(sceneInfo:sceneInfo.ToArray());
         
-        if(selectedAreas.Count() == 0){
-            MessageBoxForUnity.Ensure("No selectarea loaded, check the python server", "load error");
+        if(selectedAreas.Count() != selectAreaCount){
+            MessageBoxForUnity.Ensure($"only {selectedAreas.Count()} selectarea received, missed {selectAreaCount - selectedAreas.Count()}, sync failed", "sync error");
+            Silent = true;
+            activited = false;
         }else{
             List<int[]>DestinationAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
             int tempradius = 0;
@@ -501,6 +504,7 @@ public class IPCClient : MonoBehaviour
                             // Debug.Log("msg from pyhon: "+ msg);
                                 if(pythonTimeOffset != 0){
                                     sceneInfo = msg[6..].Split(";").ToList().Select(v => Convert.ToSingle(v)).ToList();
+                                    selectAreaCount = (int)sceneInfo.Last();    sceneInfo.RemoveAt(sceneInfo.Count - 1);
                                     activited = true;
                                     moving.WriteInfo(sceneInfo);
                                     uiUpdate.MessageUpdate($"time synchronized: offset: {pythonTimeOffset}");

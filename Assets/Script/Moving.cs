@@ -241,13 +241,80 @@ class ContextInfo{
 
     }
 
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
         destAreaFollow = _destAreaFollow;
         standingSecInTrigger = _standingSecInTrigger;
         standingSecInDest = _standingSecInDest;
+        manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
+        DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd"};
+        DeviceTriggerMethodLsSorted = new List<List<string>>();
+        while(DeviceTriggerMethodLsSorted.Count() < 2){DeviceTriggerMethodLsSorted.Add(new List<string>());}
+        foreach( var _ in DeviceTriggerMethodLs){
+            if(_.Contains("TrialStart")){
+                DeviceTriggerMethodLsSorted[0].Add(_);
+            }
+            else if(_.Contains("TrialEnd")){
+                DeviceTriggerMethodLsSorted[1].Add(_);
+            }
+        }
+        
+        OGTriggerMethodLs = new List<Dictionary<string, int[]>>();
+        MSTriggerMethodLs = new List<Dictionary<string, int[]>>();
+
+        //format: [start]{"certainTrialStart":<trial indexes int array>|...};[end]{"everyTrialStart:<ignore value>"|...}
+        OGTriggerMethodLs.Add(new Dictionary<string, int[]>());
+        OGTriggerMethodLs.Add(new Dictionary<string, int[]>());
+        if(_OGTriggerMethod.Length > 0){
+            foreach(string section in _OGTriggerMethod.Split(';')){
+                if((section.Contains("[start]") || section.Contains("[end]")) && section[section.IndexOf(']') + 1].Equals('{') && section.EndsWith("}")){}
+                else{throw new Exception("OGTriggerMethod malform: " + section);}
+                string _section = section[(section.IndexOf(']') + 2)..(section.Length - 1)];
+                // if(method.StartsWith("[start]")){
+                foreach(string _method in _section.Split('|')){
+                    string _type = _method[.._method.IndexOf(':')];
+                    int[] _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
+                    if(DeviceTriggerMethodLs.Contains(_type)){
+                        OGTriggerMethodLs[section.StartsWith("[start]")? 0: 1].Add(_type, _values);
+                    }else{
+                        throw new Exception("wrong trigger method in OGTriggerMethod parse:" + _type);
+                    }
+                }
+            }
+        }
+
+        MSTriggerMethodLs.Add(new Dictionary<string, int[]>());
+        MSTriggerMethodLs.Add(new Dictionary<string, int[]>());
+        if(_OGTriggerMethod.Length > 0){
+            foreach(string section in _MSTriggerMethod.Split(';')){
+                if((section.Contains("[start]") || section.Contains("[end]")) && section[section.IndexOf(']') + 1].Equals('{') && section.EndsWith("}")){}
+                else{throw new Exception("MSTriggerMethod malform: " + section);}
+                string _section = section[(section.IndexOf(']') + 2)..(section.Length - 1)];
+                // if(method.StartsWith("[start]")){
+                foreach(string _method in _section.Split('|')){
+                    string _type = _method[.._method.IndexOf(':')];
+                    int[] _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
+                    if(DeviceTriggerMethodLs.Contains(_type)){
+                        MSTriggerMethodLs[section.StartsWith("[start]")? 0: 1].Add(_type, _values);
+                    }else{
+                        throw new Exception("wrong trigger method in MSTriggerMethod parse:" + _type);
+                    }
+                }
+            }
+        }
+        
+        OGTriggerSortedInType = new List<Dictionary<string, int[]>>();
+        MSTriggerSortedInType = new List<Dictionary<string, int[]>>();
+        for(int i = 0; i < DeviceTriggerMethodLsSorted.Count(); i++){
+            OGTriggerSortedInType.Add(
+                                    OGTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
+                                    OGTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).ToDictionary(kvp => kvp.Key + "end", kvp => kvp.Value)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            MSTriggerSortedInType.Add(
+                                    MSTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
+                                    MSTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).ToDictionary(kvp => kvp.Key + "end", kvp => kvp.Value)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+        }
     }
     //public string start_method;
     public string       startMethod     {get;}
@@ -280,6 +347,37 @@ class ContextInfo{
     public List<string> materialsInfo   {get;set;}
     public float        soundLength     {get; set;}
     public float        cueVolume {get; set;}
+    public string       manuplateMethods {get; set;}
+
+    /// <summary>
+    /// resore template keys of trigger Dicts:
+    ///keys:{"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd"};
+    /// values: trial indexes,      possibility(x100)        same             same
+    /// </summary> 
+    [JsonIgnore]
+    public List<string> DeviceTriggerMethodLs {get; set;}
+    
+    /// <summary>
+    /// 0:trialStart, 1:trialEnd
+    /// </summary>
+    [JsonIgnore]
+    public List<List<string>> DeviceTriggerMethodLsSorted {get; set;}
+
+    /// <summary>
+    /// 0-start, 1-end
+    /// </summary>
+    [JsonIgnore]
+    public List<Dictionary<string, int[]>> OGTriggerMethodLs {get; set;}//均包含开始和结束两个DIct，Dict Key为DeviceTriggerMethod内容，value为float
+    
+    /// <summary>
+    /// 0-start, 1-end
+    /// </summary>
+    [JsonIgnore]
+    public List<Dictionary<string, int[]>> MSTriggerMethodLs {get; set;}//均包含开始和结束两个DIct，Dict Key为DeviceTriggerMethod内容，value为float
+    [JsonIgnore]
+    public List<Dictionary<string, int[]>> OGTriggerSortedInType    {get; set;}
+    [JsonIgnore]
+    public List<Dictionary<string, int[]>> MSTriggerSortedInType    {get; set;}
     
     //addon info:
     public string userName;
@@ -582,7 +680,12 @@ public class Moving : MonoBehaviour
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     CommandConverter commandConverter;
-    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay", "syncInfo", "miniscopeRecord"};//stay为虚拟command，从另一脚本实现
+    /// <summary>
+    /// 0-lick, 1-entrance, 2-press, 3-context_info, 4-log, 5-echo, 6-value_change, 7-command, 8-debugLog, 9-stay, 10-syncInfo, 11-miniscopeRecord
+    /// </summary>
+    /// <typeparam name="string"></typeparam>
+    /// <returns></returns>
+    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay", "syncInfo", "miniscopeRecord"};//虚拟command从其他脚本实现
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
@@ -598,7 +701,12 @@ public class Moving : MonoBehaviour
                                                                                     debugMode = value;
                                                                                     //backgroundCover.SetActive(debugMode);
                                                                                 }}
-    List<string> serialSyncInfo = new List<string>();//留给串口线程记录同步信息
+    ConcurrentQueue<float> serialSyncTime = new ConcurrentQueue<float>();//留给串口线程记录同步时间
+    float UnscaledfixedTime = -1;
+    /// <summary>
+    /// DeviceTriggerMethod = new List<string>() {"certainTrialStart", "everyTrialStart", "randomTrialStart", "certainTrialEnd", "everyTrialEnd"};
+    /// </summary>
+
     #endregion communicating end
 
     #region  context generate
@@ -1123,9 +1231,7 @@ public class Moving : MonoBehaviour
     }
 
     int ContextEndSync(){//给水判定在lick中，暂时没用
-        // DataSend("p_trial_set=0", true);
-        // DataSend("_");
-        // return CommandVerify("p_trial_set", 0);
+
         return 0;
     }
 
@@ -1279,6 +1385,7 @@ public class Moving : MonoBehaviour
         alarm.StartAlarmAfter("SetWaitingToFalseAtTrialStart", "PlayGoCueWhenSetWaitingToFalse");
         alarm.DeleteAlarm("DeactivateBar", true);
         int activitedPos = ActivateBar(trial: nowTrial);
+        DeviceTriggerExecute(0);
 
         if(trialStartTriggerMode == 0){
             // contextInfo.soundCueLeadTime = UnityEngine.Random.Range(contextInfo.trialTriggerDelay[0], contextInfo.trialTriggerDelay[1]);
@@ -1335,6 +1442,7 @@ public class Moving : MonoBehaviour
         //Debug.Log("rightLickSpout" + rightLickSpout);
 
         if(!isInit){
+            DeviceTriggerExecute(1);
             waitSecRec = Time.fixedUnscaledTime;
             
             //lickCount.Clear();
@@ -1738,7 +1846,7 @@ public class Moving : MonoBehaviour
 
     /// <summary>
     /// recType: same as _recType in WriteInfo
-    /// "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "moving", "stay"
+    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord
     /// </summary>
     /// <param name="inOrLeave"></param>
     /// <param name="_recType"></param> 
@@ -1764,10 +1872,34 @@ public class Moving : MonoBehaviour
         return 1;
     }
 
-    public int OGSet(int _mills){
+    /// <summary>
+    /// use CommandVerify
+    /// </summary>
+    /// <param name="_mills"></param>
+    /// <returns></returns>
+    public bool OGSet(int _mills){//_mills: 0: 关闭, 1+: mills, -1：持续
         int res = CommandVerify("p_OGActiveMills", _mills);
         if(res == 1){WriteInfo(recType: 10, _lickPos: _mills);}
-        return res;
+        Debug.Log($"OG set {_mills}");
+        return res == 1;
+    }
+
+    /// <summary>
+    /// use CommandVerify
+    /// </summary>
+    /// <param name="_on"></param>
+    /// <returns></returns>
+    public bool MSSet(bool _on){
+        int res = CommandVerify("p_miniscopeRecord", _on? 1: 0);
+        if(res == 1){WriteInfo(recType: 10, _lickPos: _on? 1: 0);}
+        Debug.Log($"MS {(_on? "on": "off")}");
+        return res == 1;
+
+    }
+    
+    void CloseDevices(){
+        OGSet(0);
+        MSSet(false);
     }
 
     bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
@@ -1785,8 +1917,61 @@ public class Moving : MonoBehaviour
         return "";
     }
 
-    public bool GetContextInfDdestAreaFollow(){
+    public bool GetContextInfoDestAreaFollow(){
         return contextInfo.destAreaFollow;
+    }
+
+    /// <summary>
+    /// triggerType: 0, 1-trialStart/end, 2-...
+    /// keys:{"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd"};
+    /// values: trial indexes,      possibility(x100)        same             same
+    /// 
+    /// </summary>
+    /// <param name="triggerType"></param>
+    /// <returns></returns>
+    bool DeviceTriggerExecute(int triggerType){
+        if(!new int[]{0, 1}.Contains(triggerType)){return false;}
+        var OGTrigger = contextInfo.OGTriggerSortedInType[triggerType];
+        var MSTrigger = contextInfo.MSTriggerSortedInType[triggerType];
+        // switch(triggerType){
+        //     case 0:{
+                foreach(var _trigger in OGTrigger){
+                    int _mills = ui_update.TryGetOGSetTime(out int _mills_temp)? _mills_temp: -1;
+                    if(_trigger.Key.StartsWith("certain")){
+                        if(_trigger.Value[1..].Contains(nowTrial)){
+                            OGSet(_trigger.Value[0] == 1? _mills: 0);
+                            break;
+                        }
+                    }else if(_trigger.Key.StartsWith("every")){
+                        if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
+                            OGSet(_trigger.Value[0] == 1? _mills: 0);
+                            break;
+                        }
+                    }
+                }
+
+                foreach(var _trigger in MSTrigger){
+                    if(_trigger.Key.StartsWith("certain")){
+                        if(_trigger.Value[1..].Contains(nowTrial)){
+                            MSSet(_trigger.Value[0] == 1? true: false);
+                            break;
+                        }
+                    }else if(_trigger.Key.StartsWith("every")){
+                        if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
+                            MSSet(_trigger.Value[0] == 1? true: false);
+                            break;
+                        }
+                    }
+                }
+        //         break;
+        //     }
+        //     case 2:{
+                
+        //         break;
+        //     }
+        //     default: {break;}
+        // }
+        return true;
     }
 
     #endregion context generate end
@@ -1798,7 +1983,7 @@ public class Moving : MonoBehaviour
     List<string> logList = new List<string>();  public List<string> LogList { get { return logList; } }
     Queue<string> logWriteQueue = new Queue<string>();
     Queue<string> posWriteQueue = new Queue<string>();
-    const int BUFFER_SIZE = 256;
+    const int BUFFER_SIZE = 4096;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
     #endregion file writing end
@@ -1944,7 +2129,9 @@ public class Moving : MonoBehaviour
                 break;
             }
             case 10:{//syncInfo
-                WriteInfo(recType:11);
+                if(serialSyncTime.TryDequeue(out float _tempTime)){
+                    WriteInfo(recType:11,addInfo:_tempTime.ToString());
+                }
                 break;
             }
             case 11:{
@@ -1987,11 +2174,10 @@ public class Moving : MonoBehaviour
                         temp_complete_msg = commandConverter.ProcessSerialPortBytes(commandConverter.Read_buffer_concat(serial_read_content_ls, serialReadContentLsMark, -1));
                         //Debug.Log("process: "+string.Join(",", temp_complete_msg));
                         if(temp_complete_msg.Length>0){
-                            // if (command_Converter.GetCommandType(temp_complete_msg, out _) ==0 ){
-                            //     //Debug.Log(string.Join(",", temp_complete_msg));
-                            //     Command_parse(temp_complete_msg);
-                            // }
-                            // else{commandQueue.Enqueue(temp_complete_msg);}
+                            if (commandConverter.GetCommandType(temp_complete_msg, out _) ==  ls_types.IndexOf("syncInfo")){
+                                //Debug.Log(string.Join(",", temp_complete_msg));
+                                serialSyncTime.Enqueue(UnscaledfixedTime);
+                            }
                             commandQueue.Enqueue(temp_complete_msg);
                         }
 
@@ -2133,7 +2319,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// return:         p_trial_set:0-end, 1-start, 2-serve water and end
+    /// messages: p_... or other ;return:         p_trial_set:0-end, 1-start, 2-serve water and end
     /// </summary>
     /// <param name="message"></param>
     /// <param name="value"></param>
@@ -2162,12 +2348,11 @@ public class Moving : MonoBehaviour
                 if(!Directory.Exists(Application.dataPath+"/Logs")){Directory.CreateDirectory(Application.dataPath+"/Logs");}
                 filePath=Application.dataPath+"/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
             #endif
-            FileStream logfileStream = new FileStream(filePath + "_rec.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            FileStream logfileStream = new FileStream(filePath + "_rec.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             logStreamWriter = new StreamWriter(logfileStream);
-            FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Append, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             posStreamWriter = new StreamWriter(posfileStream);
             posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "syncFrameInd", "100*pythonTime", "frameInd", "TimeInUnitySecFromTrialStart"}));
-            
         }
         catch (Exception e){
             Debug.LogError($"Error initializing StreamWriter: {e.Message}");
@@ -2218,6 +2403,7 @@ public class Moving : MonoBehaviour
 
     /// <summary>
     /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord
+    /// if enqueMsg is not empty, it will enqueue the message and not write in normal format.
     /// </summary>
     /// <param name="returnTypeHead"></param>
     /// <param name="recType"></param>
@@ -2413,8 +2599,10 @@ public class Moving : MonoBehaviour
                 Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "cueVolume"               ,   "0.5"                   )),                // float 
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "barOffset"               ,   "0"                     )),
                 iniReader.ReadIniContent(                   "settings"      , "destAreaFollow"          ,   "true"                  ) == "true",
-                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "contextInfo.standingSecInTrigger",   "0.5" )),
-                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrialInDest",   "0.5" ))
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrigger"    ,   "0.5" )),
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrialInDest",   "0.5" )),
+                iniReader.ReadIniContent(                   "settings"      , "OGTriggerMethod"          ,   ""                  ),
+                iniReader.ReadIniContent(                   "settings"      , "MSTriggerMethod"          ,   ""                  )
             );
 
         }
@@ -2637,6 +2825,7 @@ public class Moving : MonoBehaviour
     }
 
     void FixedUpdate(){
+        UnscaledfixedTime = Time.fixedUnscaledTime;
         ui_update.MessageUpdate(UpdateFreq: 1);
         List<string> tempFInishedLs = alarm.GetAlarmFinish();
         foreach (string alarmFinished in tempFInishedLs){
@@ -2839,6 +3028,8 @@ public class Moving : MonoBehaviour
 
     public void Exit(){
         try{
+            CloseDevices();
+            
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioPlayModeNow));
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioSources.Select(
