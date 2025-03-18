@@ -28,7 +28,6 @@ public class UIUpdate : MonoBehaviour
     List<Dropdown> soundDropdowns = new List<Dropdown>();
     public List<UnityEngine.UI.Button> buttons = new List<UnityEngine.UI.Button>();
 
-
     Moving moving;
     InputField focus_input_field;
     Alarm alarm;

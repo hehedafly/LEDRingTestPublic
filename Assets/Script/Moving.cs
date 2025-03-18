@@ -14,6 +14,7 @@ using System.Runtime.Remoting;
 using TMPro;
 using UnityEngine.Experimental.GlobalIllumination;
 using MatrixClaculator;
+using Unity.VisualScripting;
 
 [System.Serializable]
 class ContextInfo{
@@ -275,7 +276,25 @@ class ContextInfo{
                 // if(method.StartsWith("[start]")){
                 foreach(string _method in _section.Split('|')){
                     string _type = _method[.._method.IndexOf(':')];
-                    int[] _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
+                    string _content = _method[(_method.IndexOf(':') + 1)..];
+                    int[] _values = new int[]{-1};
+                    if(_content.Contains("n")){
+                        List<int> _lsvalues = new List<int>(){section.StartsWith("[start]")? 1: 0};
+                        
+                        List<int> _nmultiple = ExtractFactors(_content, "*n");
+                        List<int> _n1multiple = ExtractFactors(_content, "*(n+1)");
+                        List<int> allFactors = _nmultiple.Concat(_n1multiple).ToList();
+
+                        foreach (int factor in allFactors){
+                            for (int i = factor == _n1multiple.FirstOrDefault(x => x == factor) ? factor : 0; i < maxTrial; i += factor){
+                                _lsvalues.Add(i);
+                            }
+                        }
+                        _values = _lsvalues.ToArray();
+                    }else{
+                        _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
+                    }
+
                     if(DeviceTriggerMethodLs.Contains(_type)){
                         OGTriggerMethodLs[section.StartsWith("[start]")? 0: 1].Add(_type, _values);
                     }else{
@@ -295,8 +314,24 @@ class ContextInfo{
                 // if(method.StartsWith("[start]")){
                 foreach(string _method in _section.Split('|')){
                     string _type = _method[.._method.IndexOf(':')];
-                    int[] _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
-                    if(DeviceTriggerMethodLs.Contains(_type)){
+                    string _content = _method[(_method.IndexOf(':') + 1)..];
+                    int[] _values = new int[]{-1};
+                    if(_content.Contains("n")){
+                        List<int> _lsvalues = new List<int>(){section.StartsWith("[start]")? 1: 0};
+                        
+                        List<int> _nmultiple = ExtractFactors(_content, "*n");
+                        List<int> _n1multiple = ExtractFactors(_content, "*(n+1)");
+                        List<int> allFactors = _nmultiple.Concat(_n1multiple).ToList();
+
+                        foreach (int factor in allFactors){
+                            for (int i = factor == _n1multiple.FirstOrDefault(x => x == factor) ? factor : 0; i < maxTrial; i += factor){
+                                _lsvalues.Add(i);
+                            }
+                        }
+                        _values = _lsvalues.ToArray();
+                    }else{
+                        _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
+                    }                    if(DeviceTriggerMethodLs.Contains(_type)){
                         MSTriggerMethodLs[section.StartsWith("[start]")? 0: 1].Add(_type, _values);
                     }else{
                         throw new Exception("wrong trigger method in MSTriggerMethod parse:" + _type);
@@ -315,6 +350,22 @@ class ContextInfo{
                                     MSTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
                                     MSTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).ToDictionary(kvp => kvp.Key + "end", kvp => kvp.Value)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
         }
+    }
+
+    List<int> ExtractFactors(string content, string pattern){
+        List<int> indices = content.AllIndexesOf(pattern).ToList();
+        return indices.Select(i => 
+        {
+            // Try parsing from (i-2)..i first, then (i-1)..i
+            if (int.TryParse(content.Substring(i - 2, 2), out int parseValue))
+                return parseValue;
+            else if (int.TryParse(content.Substring(i - 1, 1), out int secparseValue))
+                return secparseValue;
+            else
+                return -1;
+        })
+        .Where(x => x > 0) // Filter out non-positive values
+        .ToList();
     }
     //public string start_method;
     public string       startMethod     {get;}
@@ -679,6 +730,8 @@ public class Moving : MonoBehaviour
     IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
+    Thread serialThread;
+    Thread serialSyncThread;
     CommandConverter commandConverter;
     /// <summary>
     /// 0-lick, 1-entrance, 2-press, 3-context_info, 4-log, 5-echo, 6-value_change, 7-command, 8-debugLog, 9-stay, 10-syncInfo, 11-miniscopeRecord
@@ -701,8 +754,11 @@ public class Moving : MonoBehaviour
                                                                                     debugMode = value;
                                                                                     //backgroundCover.SetActive(debugMode);
                                                                                 }}
-    ConcurrentQueue<float> serialSyncTime = new ConcurrentQueue<float>();//留给串口线程记录同步时间
+    bool serialSync = true;
     float UnscaledfixedTime = -1;
+    public GameObject refseg;
+    Material refSegementMat;
+
     /// <summary>
     /// DeviceTriggerMethod = new List<string>() {"certainTrialStart", "everyTrialStart", "randomTrialStart", "certainTrialEnd", "everyTrialEnd"};
     /// </summary>
@@ -718,6 +774,7 @@ public class Moving : MonoBehaviour
         // string loadPath = Application.dataPath + "/";
     #endif
     IniReader iniReader;
+    string IniReadContent;
 
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
@@ -778,7 +835,7 @@ public class Moving : MonoBehaviour
             }
             else if(_mat.StartsWith("#")){
                 Color color;
-                if(!ColorUtility.TryParseHtmlString(_mat, out color)){
+                if(!UnityEngine.ColorUtility.TryParseHtmlString(_mat, out color)){
                     return this;
                 }
                 if(name.Contains("background")){
@@ -844,6 +901,9 @@ public class Moving : MonoBehaviour
         return (T)Convert.ChangeType(UnityEngine.Random.Range(Convert.ToSingle(_range[0]), Convert.ToSingle(_range[1])), typeof(T));
     }
 
+    /// <summary>
+    /// deg: float 0~360
+    /// </summary>
     public float DegToPos(float deg){
         if(displayPixelsLength <= 0){return -1;}
         float temp_value = deg % 360 /360;
@@ -902,7 +962,6 @@ public class Moving : MonoBehaviour
     }
 
     int ActivateBar(int pos = -1, int trial = -1){
-        Debug.Log("bar activited");
         float tempPos = -1;
         if(pos != -1){
             tempPos = contextInfo.GetDeg(pos);
@@ -919,6 +978,8 @@ public class Moving : MonoBehaviour
             barChild.SetActive(true);
             barChild2.SetActive(true);
         }
+        if(refSegementMat != null){refSegementMat.color = Color.white;}
+        Debug.Log("bar activited");
         return (int)tempPos;
     }
 
@@ -928,6 +989,8 @@ public class Moving : MonoBehaviour
             barChild.SetActive(false);
             barChild2.SetActive(false);
         }
+        if(refSegementMat != null){refSegementMat.color = Color.black;}
+
     }
 
     /// <summary>
@@ -1323,6 +1386,7 @@ public class Moving : MonoBehaviour
         StopSound();
         DeactivateBar();
         trialInitTime = Time.fixedUnscaledTime;
+        WriteInfo(recType:3);
         ui_update.MessageUpdate("Trial initialized");
         return 0;
     }
@@ -1900,6 +1964,8 @@ public class Moving : MonoBehaviour
     void CloseDevices(){
         OGSet(0);
         MSSet(false);
+        serialSync = false;
+        serialSyncThread.Join();
     }
 
     bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
@@ -1979,10 +2045,12 @@ public class Moving : MonoBehaviour
     #region  file writing
     StreamWriter logStreamWriter;
     StreamWriter posStreamWriter;
+    StreamWriter serialSyncStreamWriter;
     string filePath = "";
     List<string> logList = new List<string>();  public List<string> LogList { get { return logList; } }
     Queue<string> logWriteQueue = new Queue<string>();
     Queue<string> posWriteQueue = new Queue<string>();
+    ConcurrentQueue<float> syncWriteQueue = new ConcurrentQueue<float>();
     const int BUFFER_SIZE = 4096;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
@@ -2129,9 +2197,9 @@ public class Moving : MonoBehaviour
                 break;
             }
             case 10:{//syncInfo
-                if(serialSyncTime.TryDequeue(out float _tempTime)){
-                    WriteInfo(recType:11,addInfo:_tempTime.ToString());
-                }
+                // if(serialSyncTime.TryDequeue(out float _tempTime)){
+                //     WriteInfo(recType:11,addInfo:_tempTime.ToString());
+                // }
                 break;
             }
             case 11:{
@@ -2176,9 +2244,10 @@ public class Moving : MonoBehaviour
                         if(temp_complete_msg.Length>0){
                             if (commandConverter.GetCommandType(temp_complete_msg, out _) ==  ls_types.IndexOf("syncInfo")){
                                 //Debug.Log(string.Join(",", temp_complete_msg));
-                                serialSyncTime.Enqueue(UnscaledfixedTime);
+                                syncWriteQueue.Enqueue(UnscaledfixedTime);
+                            }else{
+                                commandQueue.Enqueue(temp_complete_msg);
                             }
-                            commandQueue.Enqueue(temp_complete_msg);
                         }
 
                         serial_read_content_ls.Clear();
@@ -2353,6 +2422,11 @@ public class Moving : MonoBehaviour
             FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             posStreamWriter = new StreamWriter(posfileStream);
             posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "syncFrameInd", "100*pythonTime", "frameInd", "TimeInUnitySecFromTrialStart"}));
+            FileStream serialSyncStreamWriter = new FileStream(filePath + "_sync.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            posStreamWriter = new StreamWriter(posfileStream);
+
+            serialSyncThread = new Thread(new ThreadStart(ProcessSerialSyncWriteQueue));
+            serialSyncThread.Start();
         }
         catch (Exception e){
             Debug.LogError($"Error initializing StreamWriter: {e.Message}");
@@ -2384,6 +2458,29 @@ public class Moving : MonoBehaviour
         }
     }
 
+    void ProcessSerialSyncWriteQueue()
+    {
+        while(serialSync){
+            while (syncWriteQueue.Count > 0 && serialSyncStreamWriter !=  null){
+                syncWriteQueue.TryPeek(out float chunk);
+                serialSyncStreamWriter.Write($"{chunk}\t");
+
+                if (serialSyncStreamWriter.BaseStream.Position >=  serialSyncStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
+                    serialSyncStreamWriter.Flush();
+                }
+
+                syncWriteQueue.TryDequeue(out _);
+            }
+        }
+
+        if (serialSyncStreamWriter !=  null)
+        {
+            serialSyncStreamWriter.Close();
+            serialSyncStreamWriter.Dispose();
+            serialSyncStreamWriter = null;
+        }
+    }
+
     private void CleanupStreamWriter()
     {
         if (logStreamWriter !=  null)
@@ -2399,6 +2496,7 @@ public class Moving : MonoBehaviour
             posStreamWriter.Dispose();
             posStreamWriter = null;
         }
+        serialSync = false;
     }
 
     /// <summary>
@@ -2468,22 +2566,23 @@ public class Moving : MonoBehaviour
     }
 
     // public string WriteInfo(int posx, int posy, int ind, string addInfo = ""){
-    public string WriteInfo(long[] posInfo, string addInfo = ""){
+    void WriteInfo(long[] posInfo, string addInfo = ""){
         string tempPosText = string.Join("\t", posInfo.Select(v => v.ToString("")).ToList());
         if(addInfo != "" && addInfo != null){
             tempPosText += "\t"+addInfo;
         }
         posWriteQueue.Enqueue(tempPosText);
         ProcessWriteQueue();
-        return "";
+        return;
     }
 
-    public string WriteInfo(List<float> sceneInfo){
+    public void WriteInfo(List<float> sceneInfo){
         string tempPosText = string.Join("\t", sceneInfo.Select(v => v.ToString("")).ToList());
         posWriteQueue.Enqueue(tempPosText);
         ProcessWriteQueue();
-        return "";
+        return;
     }
+
 
     #endregion methods of file write end
 
@@ -2529,9 +2628,22 @@ public class Moving : MonoBehaviour
         isRing = iniReader.ReadIniContent(  "displaySettings", "isRing", "false") == "true";
         bool separate = iniReader.ReadIniContent(  "displaySettings", "separate", "false") == "true";//仅支持分离为双屏1920
         displayVerticalPos = Math.Clamp(displayVerticalPos, -1, 2);
+        if(!float.TryParse(iniReader.ReadIniContent("settings", "refSegement", "-1"), out float refSegementDeg)){refSegementDeg = -1;}
+        if(refseg != null){
+            if(refSegementDeg >= 0){
+                if(refseg.name == "refSegement"){
+                    refSegementMat = refseg.GetComponent<MeshRenderer>().material;
+                    refseg.transform.localPosition = new Vector3(DegToPos(Math.Clamp(refSegementDeg, 0, 360)), refseg.transform.localPosition.y, refseg.transform.localPosition.z);
+                }
+            }else{
+                if(refseg.name == "refSegement"){refseg.gameObject.SetActive(false);}
+            }
+        }
 
         Display mainScreen = Display.displays[0];
-        mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
+        mainScreen.Activate();
+        mainScreen.SetRenderingResolution(1366, 768);
+        // mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
         Screen.fullScreen = false;
 
         if(InApp){
@@ -2543,11 +2655,13 @@ public class Moving : MonoBehaviour
                         Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
                         //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
                     }
-                    SecondCamera.enabled = true;
-                    CameraMonitor.targetDisplay = 1;
-                    Display.displays[1].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
-                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                    tempChildTs.targetDisplay = 1;
+                    if(Display.displays.Length == 4){
+                        SecondCamera.enabled = true;
+                        CameraMonitor.targetDisplay = 1;
+                        Display.displays[1].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                        Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                        tempChildTs.targetDisplay = 1;
+                    }
 
                     MainCamera.targetDisplay = 2;
                     MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
@@ -2611,6 +2725,13 @@ public class Moving : MonoBehaviour
             Debug.LogError(e.Message);
             Quit();
         }
+
+        ExeLauncher exeLauncher= new ExeLauncher();
+        if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
+            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""));
+            iniReader.WriteIniContent("settings", "logEventPath", _path);
+        }
+
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
@@ -2712,57 +2833,62 @@ public class Moving : MonoBehaviour
         }
         
         List<List<string>> tempIniReadContent = iniReader.GetReadContent();
-        string tempIniReadContentStr = "default:\t\t\t\tothers:\n";
+        IniReadContent = "default:\t\t\t\tothers:\n";
         for(int i = 0; i < Math.Max(tempIniReadContent[0].Count, tempIniReadContent[1].Count); i++){
             if(i < tempIniReadContent[0].Count){
-                tempIniReadContentStr += tempIniReadContent[0][i] + "\t\t\t";
-            }else{tempIniReadContentStr += "\t\t\t\t\t\t\t";}
+                IniReadContent += tempIniReadContent[0][i] + "\t\t\t";
+            }else{IniReadContent += "\t\t\t\t\t\t\t";}
 
             if(i < tempIniReadContent[1].Count){
-                tempIniReadContentStr += tempIniReadContent[1][i] + "\n";
-            }else{tempIniReadContentStr += "\n";}
+                IniReadContent += tempIniReadContent[1][i] + "\n";
+            }else{IniReadContent += "\n";}
         }
-        if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + tempIniReadContentStr, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
-
-        }else{
-            Quit();
+            if(iniReader.ReadIniContent("settings", "checkConfigContent", "false") == "true"){
+            if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + IniReadContent, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){}
+            else{
+                Quit();
+            }
         }
-
+        
+        int[] availableSerialSpeed = new int[]{115200, 230400, 250000, 460800, 500000, 921600};
+        if(!int.TryParse(iniReader.ReadIniContent("serialSettings", "serialSpeed", "115200"), out int serialSpeed) || !availableSerialSpeed.Contains(serialSpeed)){
+            serialSpeed = 115200;
+        }
         string[] portLs = ScanPorts_API();
+        bool connected = false;
         foreach(string port in portLs){
-            if(port.Contains("COM") && !portBlackList.Contains(port)){
+            if(!connected && port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
-                    //Debug.Log(sp.IsOpen);
-                    //if (!sp.IsOpen){
-                        Debug.Log("try normal");
-                        sp = new SerialPort(port, 115200, Parity.None, 8, StopBits.One);
-                        sp.RtsEnable = true;
-                        sp.DtrEnable = true;
-                        sp.Open();
-                        Debug.Log("COM avaible: "+port);
+                    sp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
+                    sp.RtsEnable = true;
+                    sp.DtrEnable = true;
+                    sp.Open();
+                    Debug.Log("COM avaible: "+port);
 
-                        sp.ReadTimeout = 1000;
-                        int fail_count = 10;
-                        while(fail_count > 0){
-                            fail_count--;
-                            string temp_readline=sp.ReadLine();
-                            //Debug.Log(temp_readline);
-                            if(temp_readline.StartsWith("initialed")){
-                                if(temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
-                                    string tempInfo = temp_readline[10..];
-                                    if(compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
-                                        continue;
-                                    }
+                    sp.ReadTimeout = 1000;
+                    int fail_count = 10;
+                    while(fail_count > 0){
+                        fail_count--;
+                        string temp_readline=sp.ReadLine();
+                        //Debug.Log(temp_readline);
+                        if(temp_readline.StartsWith("initialed")){
+                            if(temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
+                                string tempInfo = temp_readline[10..];
+                                if(compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
+                                    continue;
+                                }else{
+                                    connected = true;
                                 }
-                                break;
                             }
-                            else{
-                                if(fail_count == 0){
-                                    throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
-                                }
-                                continue;
-                            }
+                            break;
                         }
+                        else{
+                            if(fail_count == 0){
+                                throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
+                            }
+                            continue;
+                        }
+                    }
                         
                     //}
                 }
@@ -2773,18 +2899,16 @@ public class Moving : MonoBehaviour
                     sp.Close();
                     if(e.Message.Contains("拒绝访问")){
                         string strPortLs = string.Join(", ", portLs);
-                        MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\n all ports:{strPortLs}", "Serial Error");
+                        MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
                         Quit();
                     }else{
                         string strPortLs = string.Join(", ", portLs);
-                        MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nall ports: {strPortLs}", "Serial Error");
+                        MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
                         Quit();
                     }
                 }
                 finally{
-                    Thread thread = new Thread(new ThreadStart(SerialCommunicating));
-                    thread.Start();
-                    Debug.Log("thread started");
+                    
                 }
             }
             Debug.Log(port);
@@ -2794,6 +2918,10 @@ public class Moving : MonoBehaviour
             InitializeStreamWriter();
             string data_write = WriteInfo(returnTypeHead: true);
             logWriteQueue.Enqueue(data_write);
+
+            serialThread = new Thread(new ThreadStart(SerialCommunicating));
+            serialThread.Start();
+            Debug.Log(" serial thread started");
         }else{
             Debug.LogWarning("No Connection to Arduino!");
             if(MessageBoxForUnity.YesOrNo("No Connection to Arduino! Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
@@ -2801,6 +2929,7 @@ public class Moving : MonoBehaviour
                 InitializeStreamWriter();
                 string data_write = WriteInfo(returnTypeHead: true);
                 logWriteQueue.Enqueue(data_write);
+                
             }else{
                 Quit();
             }
@@ -3030,15 +3159,16 @@ public class Moving : MonoBehaviour
         try{
             CloseDevices();
             
-            logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
-            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioPlayModeNow));
-            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioSources.Select(
-                                                                                kvp => new { kvp.Key, kvp.Value.clip.name })
-                                                                                ));
+            // logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);
             }
+            logWriteQueue.Enqueue(IniReadContent);
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioPlayModeNow));
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioSources.Select(
+                                                                                kvp => new { kvp.Key, kvp.Value.clip.name })
+                                                                                ));
             ProcessWriteQueue(true);
             CleanupStreamWriter();
             
@@ -3047,6 +3177,7 @@ public class Moving : MonoBehaviour
             }
             if(sp!= null){
                 sp.Close();
+                serialThread.Join();
                 Debug.Log("serial closed");
             }
         }

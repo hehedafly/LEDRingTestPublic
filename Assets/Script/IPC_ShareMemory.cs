@@ -286,27 +286,47 @@ if(sharedmm.CheckServerOnlineStatus()){
             return 0;     //创建成功
         }
 
+        bool IsValidHandle(IntPtr handle) {
+            // return handle == IntPtr.Zero || handle == new IntPtr(-1);
+            return handle != IntPtr.Zero && handle != new IntPtr(-1);
+        }
+
         /// <summary>
         /// 关闭共享内存
         /// </summary>
         public void CloseSharedmm(bool manually = false)
         {   
             if(!closed){
+                Debug.Log("closing");
+                try{
                 if(shmInitiled){
-                    if(manually && m_pwData != IntPtr.Zero && m_hSharedMemoryFile != IntPtr.Zero){
+                    Debug.Log("shmInitiled");
+                    if(manually && IsValidHandle(m_pwData) && IsValidHandle(m_hSharedMemoryFile)){
+                        Debug.Log("m_pwData != IntPtr.Zero && m_hSharedMemoryFile != IntPtr.Zero");
                         List<byte> nowServerStatus = ReadShmHead().ToList();
                         WriteByte(2, (byte)(nowServerStatus[2]-1));
                         WriteByte(2 + UID, 0);
                     }
-                    if(m_pwData != IntPtr.Zero){UnmapViewOfFile(m_pwData); m_pwData = IntPtr.Zero;}
-                    if(m_hSharedMemoryFile != IntPtr.Zero){CloseHandle(m_hSharedMemoryFile); m_hSharedMemoryFile = IntPtr.Zero;}
+                    if(IsValidHandle(m_pwData)){
+                        Debug.Log($"UnmapViewOfFile({m_pwData})");
+                        UnmapViewOfFile(m_pwData); m_pwData = IntPtr.Zero;
+                    }
+                    if(IsValidHandle(m_hSharedMemoryFile)){
+                        Debug.Log($"CloseHandle({m_hSharedMemoryFile})");
+                        CloseHandle(m_hSharedMemoryFile); m_hSharedMemoryFile = IntPtr.Zero;
+                    }
                     shmInitiled = false;
                 }
                 else if (shmCreated){
                     if(m_hSharedMemoryFile != null){CloseHandle(m_hSharedMemoryFile); m_hSharedMemoryFile = IntPtr.Zero;}
                     shmCreated = false;
                 }
+                Debug.Log("closed");
                 closed = true;
+                }
+                catch(Exception e){
+                    Debug.LogError(e.Message);
+                }
             }
         }
 
