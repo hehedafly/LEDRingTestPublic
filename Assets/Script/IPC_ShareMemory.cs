@@ -302,7 +302,6 @@ if(sharedmm.CheckServerOnlineStatus()){
                 if(shmInitiled){
                     Debug.Log("shmInitiled");
                     if(manually && IsValidHandle(m_pwData) && IsValidHandle(m_hSharedMemoryFile)){
-                        Debug.Log("m_pwData != IntPtr.Zero && m_hSharedMemoryFile != IntPtr.Zero");
                         List<byte> nowServerStatus = ReadShmHead().ToList();
                         WriteByte(2, (byte)(nowServerStatus[2]-1));
                         WriteByte(2 + UID, 0);

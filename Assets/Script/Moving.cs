@@ -2045,12 +2045,12 @@ public class Moving : MonoBehaviour
     #region  file writing
     StreamWriter logStreamWriter;
     StreamWriter posStreamWriter;
-    StreamWriter serialSyncStreamWriter;
+    // StreamWriter serialSyncStreamWriter;
     string filePath = "";
     List<string> logList = new List<string>();  public List<string> LogList { get { return logList; } }
     Queue<string> logWriteQueue = new Queue<string>();
     Queue<string> posWriteQueue = new Queue<string>();
-    ConcurrentQueue<float> syncWriteQueue = new ConcurrentQueue<float>();
+    // ConcurrentQueue<float> syncWriteQueue = new ConcurrentQueue<float>();
     const int BUFFER_SIZE = 4096;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
@@ -2244,7 +2244,7 @@ public class Moving : MonoBehaviour
                         if(temp_complete_msg.Length>0){
                             if (commandConverter.GetCommandType(temp_complete_msg, out _) ==  ls_types.IndexOf("syncInfo")){
                                 //Debug.Log(string.Join(",", temp_complete_msg));
-                                syncWriteQueue.Enqueue(UnscaledfixedTime);
+                                // syncWriteQueue.Enqueue(UnscaledfixedTime);
                             }else{
                                 commandQueue.Enqueue(temp_complete_msg);
                             }
@@ -2422,11 +2422,11 @@ public class Moving : MonoBehaviour
             FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             posStreamWriter = new StreamWriter(posfileStream);
             posWriteQueue.Enqueue(string.Join("\t", new string[]{"x", "y", "syncFrameInd", "100*pythonTime", "frameInd", "TimeInUnitySecFromTrialStart"}));
-            FileStream serialSyncStreamWriter = new FileStream(filePath + "_sync.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
-            posStreamWriter = new StreamWriter(posfileStream);
+            // FileStream serialSyncStream = new FileStream(filePath + "_sync.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
+            // serialSyncStreamWriter = new StreamWriter(serialSyncStream);
 
-            serialSyncThread = new Thread(new ThreadStart(ProcessSerialSyncWriteQueue));
-            serialSyncThread.Start();
+            // serialSyncThread = new Thread(new ThreadStart(ProcessSerialSyncWriteQueue));
+            // serialSyncThread.Start();
         }
         catch (Exception e){
             Debug.LogError($"Error initializing StreamWriter: {e.Message}");
@@ -2458,28 +2458,28 @@ public class Moving : MonoBehaviour
         }
     }
 
-    void ProcessSerialSyncWriteQueue()
-    {
-        while(serialSync){
-            while (syncWriteQueue.Count > 0 && serialSyncStreamWriter !=  null){
-                syncWriteQueue.TryPeek(out float chunk);
-                serialSyncStreamWriter.Write($"{chunk}\t");
+    // void ProcessSerialSyncWriteQueue()
+    // {
+    //     while(serialSync){
+    //         while (syncWriteQueue.Count > 0 && serialSyncStreamWriter !=  null){
+    //             syncWriteQueue.TryPeek(out float chunk);
+    //             serialSyncStreamWriter.Write($"{chunk}\t");
 
-                if (serialSyncStreamWriter.BaseStream.Position >=  serialSyncStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
-                    serialSyncStreamWriter.Flush();
-                }
+    //             if (serialSyncStreamWriter.BaseStream.Position >=  serialSyncStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
+    //                 serialSyncStreamWriter.Flush();
+    //             }
 
-                syncWriteQueue.TryDequeue(out _);
-            }
-        }
+    //             syncWriteQueue.TryDequeue(out _);
+    //         }
+    //     }
 
-        if (serialSyncStreamWriter !=  null)
-        {
-            serialSyncStreamWriter.Close();
-            serialSyncStreamWriter.Dispose();
-            serialSyncStreamWriter = null;
-        }
-    }
+    //     if (serialSyncStreamWriter !=  null)
+    //     {
+    //         serialSyncStreamWriter.Close();
+    //         serialSyncStreamWriter.Dispose();
+    //         serialSyncStreamWriter = null;
+    //     }
+    // }
 
     private void CleanupStreamWriter()
     {
@@ -3159,12 +3159,12 @@ public class Moving : MonoBehaviour
         try{
             CloseDevices();
             
-            // logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);
             }
             logWriteQueue.Enqueue(IniReadContent);
+            logWriteQueue.Enqueue(JsonConvert.SerializeObject(contextInfo));
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioPlayModeNow));
             logWriteQueue.Enqueue(JsonConvert.SerializeObject(audioSources.Select(
                                                                                 kvp => new { kvp.Key, kvp.Value.clip.name })
