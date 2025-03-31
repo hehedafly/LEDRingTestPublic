@@ -754,7 +754,7 @@ public class Moving : MonoBehaviour
                                                                                     debugMode = value;
                                                                                     //backgroundCover.SetActive(debugMode);
                                                                                 }}
-    bool serialSync = true;
+    // bool serialSync = true;
     float UnscaledfixedTime = -1;
     public GameObject refseg;
     Material refSegementMat;
@@ -1392,7 +1392,16 @@ public class Moving : MonoBehaviour
     }
 
     int ServeWaterInTrial(){
-        return CommandVerify("p_trial_set", 2);
+        int fail = 0;
+        while(CommandVerify("p_trial_set", 2) == -1){
+            fail += 1;
+            if (fail > 10){
+                Debug.Log("ServeWaterInTrial failed for 10 times");
+                return -10;
+            }
+        };
+        Debug.Log($"ServeWaterInTrial {(fail == 0? "succes": $"failed for {fail} time")}");
+        return 0 - fail;
     }
 
     int StartTrial(bool isInit = false){//根据soundCueLeadTime在alarm中设置waiting
@@ -1964,8 +1973,8 @@ public class Moving : MonoBehaviour
     void CloseDevices(){
         OGSet(0);
         MSSet(false);
-        serialSync = false;
-        serialSyncThread.Join();
+        // serialSync = false;
+        // serialSyncThread.Join();
     }
 
     bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
@@ -2343,7 +2352,6 @@ public class Moving : MonoBehaviour
                     Debug.Log("echo received: "+temp_echo);
                     if(temp_echo.StartsWith("echo:")){
                         temp_echo=temp_echo[5..temp_echo.IndexOf(":echo")];
-                        temp_i = i+1;
                         break;
                     }else{
                         serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)).Concat(new byte[]{0xDD}).ToArray());
@@ -2352,6 +2360,8 @@ public class Moving : MonoBehaviour
                 string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
                 if(temp_echo.Replace(" ", "")==temp_aim){
                     Debug.Log("verified:"+temp_aim);
+                    temp_i = i+1;
+
                     //ui_update.Message_update("verified:"+temp_aim+"\n");
                     continue;
                 }
@@ -2496,7 +2506,7 @@ public class Moving : MonoBehaviour
             posStreamWriter.Dispose();
             posStreamWriter = null;
         }
-        serialSync = false;
+        // serialSync = false;
     }
 
     /// <summary>
@@ -2576,8 +2586,8 @@ public class Moving : MonoBehaviour
         return;
     }
 
-    public void WriteInfo(List<float> sceneInfo){
-        string tempPosText = string.Join("\t", sceneInfo.Select(v => v.ToString("")).ToList());
+    public void WriteInfo(List<float> sceneInfoEtc){
+        string tempPosText = string.Join("\t", sceneInfoEtc.Select(v => v.ToString("")).ToList());
         posWriteQueue.Enqueue(tempPosText);
         ProcessWriteQueue();
         return;
@@ -2856,6 +2866,7 @@ public class Moving : MonoBehaviour
         }
         string[] portLs = ScanPorts_API();
         bool connected = false;
+        List<string> portInfo = new List<string>();
         foreach(string port in portLs){
             if(!connected && port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
@@ -2897,14 +2908,17 @@ public class Moving : MonoBehaviour
                     Debug.Log(e);
                     ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
+                    sp = null;
                     if(e.Message.Contains("拒绝访问")){
                         string strPortLs = string.Join(", ", portLs);
-                        MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
-                        Quit();
+                        portInfo.Add($"port {port} accssion Denied");
+                        // MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
+                        // Quit();
                     }else{
                         string strPortLs = string.Join(", ", portLs);
-                        MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
-                        Quit();
+                        portInfo.Add($"Can not connect to port {port}");
+                        // MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
+                        // Quit();
                     }
                 }
                 finally{
@@ -2923,8 +2937,8 @@ public class Moving : MonoBehaviour
             serialThread.Start();
             Debug.Log(" serial thread started");
         }else{
-            Debug.LogWarning("No Connection to Arduino!");
-            if(MessageBoxForUnity.YesOrNo("No Connection to Arduino! Continue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+            Debug.LogWarning("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
+            if(MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
                 InitializeStreamWriter();
                 string data_write = WriteInfo(returnTypeHead: true);

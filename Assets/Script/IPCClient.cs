@@ -292,6 +292,7 @@ public class IPCClient : MonoBehaviour
         if(mouseDrawer == null){return -1;}
         
         mouseDrawer.UpdateDisplayTexture();
+
         return 0;
     }
 
@@ -361,6 +362,11 @@ public class IPCClient : MonoBehaviour
             }
             if(tempradius != -1 && tempdisttocenter != -1){
                 meanSelectArea.Add(new float[]{1, tempradius, (float)tempdisttocenter});
+            }
+
+            foreach(int[] area in selectedAreas){
+                List<float> areaList = area.Select(v => (float)v).ToList();
+                moving.WriteInfo(areaList);
             }
 
         }

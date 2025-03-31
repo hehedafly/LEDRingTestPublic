@@ -366,13 +366,21 @@ public class UIUpdate : MonoBehaviour
 
                 string  temp_context_info =  $"trial:{tempStatus["NowTrial"]}     now pos:{tempStatus["NowPos"]}    {(tempStatus["IsPausing"] == 1? "paused" : "")}\n";
                         temp_context_info += "lick count in this trial: ";
-                        // if(tempStatus["lickCountArrayLength"] > 0){
-                        // for(int i =0; i < 8; i ++){
-                        //     if(tempStatus.ContainsKey("lickCount" + i.ToString())){
-                        //         temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
-                        //     }
-                        // }
-                        // }
+                        List<int> realPosAdded = new List<int>();
+                        if(tempStatus["lickPosCount"] > 0){
+                            for(int i =0; i < 8; i ++){
+                                if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
+                                    int RealPos = tempStatus[$"LickSpout{i}"];
+                                    if(!realPosAdded.Contains(RealPos)){
+                                        if(tempStatus.ContainsKey("lickCount" + RealPos.ToString())){
+                                            temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
+                                            realPosAdded.Add(RealPos);
+                                        }
+                                    }
+                                }
+                            }
+                            temp_context_info += "\n";
+                        }
                         if(tempStatus["waitSec"] != -1){
                             temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
                         }
@@ -381,7 +389,9 @@ public class UIUpdate : MonoBehaviour
                         for(int i =0; i < 8; i ++){
                             if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
                                 int RealPos = tempStatus[$"LickSpout{i}"];
-                                temp_context_info += $"LickSpout{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickSpoutTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                                if(!temp_context_info.Contains($"LickSpout{RealPos}")){
+                                    temp_context_info += $"LickSpout{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickSpoutTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                                }
                             }
                         }
                         temp_context_info += $"Total: {tempStatus["TrialSuccessNum"]}        {tempStatus["TrialFailNum"]}\n";
