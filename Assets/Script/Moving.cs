@@ -731,7 +731,7 @@ public class Moving : MonoBehaviour
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
     Thread serialThread;
-    Thread serialSyncThread;
+    // Thread serialSyncThread;
     CommandConverter commandConverter;
     /// <summary>
     /// 0-lick, 1-entrance, 2-press, 3-context_info, 4-log, 5-echo, 6-value_change, 7-command, 8-debugLog, 9-stay, 10-syncInfo, 11-miniscopeRecord
@@ -1277,7 +1277,7 @@ public class Moving : MonoBehaviour
     int ContextInitSync(){
         List<string> names = new List<string>(){"p_lick_mode", "p_trial"};
         List<int> values = new List<int>(){trialMode % 0x10, 0};
-        DataSend("init");
+        DataSend("forceinit");
         int res = CommandVerify(names, values);
         //DataSend("p_trial_set=1", true);
         return res;
@@ -1808,7 +1808,9 @@ public class Moving : MonoBehaviour
                     //只能舔对的
                     result = result || lickInd == -2;
                     TrialResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
-                    if(result && trialMode == 0x11){ServeWaterInTrial();}
+                    if(result && trialMode == 0x11){
+                        ServeWaterInTrial();
+                    }
                     else{CommandVerify("p_trial_set", 0);}
                     if(lickInd < 0){
                         ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {lickInd}, right place: {rightLickInd}");
@@ -2124,18 +2126,18 @@ public class Moving : MonoBehaviour
                     if(trialStartTime < 0){//trial开始前指定时间舔了应延迟
                         if(waitFromLastLick > 0){
                             float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
-                            Debug.Log($"from lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+                            // Debug.Log($"from lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
                             if(_lasttime < waitFromLastLick){
                                 float tempDelay = (soundCueLeadTime < 0 || soundCueLeadTime > waitFromLastLick)? waitFromLastLick: (_lasttime < soundCueLeadTime? soundCueLeadTime* 0.95f: _lasttime);
                                 if(alarm.GetAlarm("StartTrialWaitSoundCue") > 0){alarm.TrySetAlarm("StartTrialWaitSoundCue", tempDelay, out _);}
                                 waitSecRec = Time.fixedUnscaledTime - waitSec + tempDelay;//无论声音是否出现，trial开始前舔则延迟trial开始
-                                Debug.Log($"after lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+                                // Debug.Log($"after lick parse : Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
 
                                 // Debug.Log("waitSecRec" + waitSecRec);
                                 // PlaySound("NearStart");
                             }
                         }
-                        Debug.Log("alarm of SetAlarmReadyToTrueAfterTrianEnd: " + alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd"));
+                        // Debug.Log("alarm of SetAlarmReadyToTrueAfterTrianEnd: " + alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd"));
                         if(alarm.GetAlarm("SetAlarmReadyToTrueAfterTrianEnd") < 0){
                             PlaySound("NearStart");//无论等待时间，间隔舔了都播放警报
                         }else{
@@ -2284,6 +2286,7 @@ public class Moving : MonoBehaviour
         return 1;
     }
     public int DataSend(string message, bool needParse = false, bool inVerifyOrVerifyNeedless=false){
+        Debug.Log("Data sent: " + message);
         if(sp!= null && sp.IsOpen){
             if(needParse){//form: p_.... = 1
                 // if(simple_mode){
@@ -2308,7 +2311,7 @@ public class Moving : MonoBehaviour
                         }
                         byte[] temp_msg = commandConverter.ConvertToByteArray("value_change:"+temp_command);
                         sp.Write(temp_msg, 0, temp_msg.Length);
-                        Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
+                        // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
                         return 2;
                     }
                     else{
@@ -2339,62 +2342,76 @@ public class Moving : MonoBehaviour
         if(sp == null){return -3;}
         manualResetEventVerify.Reset();
         sp.ReadTimeout = 200;
+        int fail_count = 0;
+        bool succes = false;
+        int fail_countMax = 10;
+        int tempMsgInd = 0;//记录已经同步完成的内容
+
         Debug.Log("verify start");
-        try{
-            int temp_i = 0;//记录已经同步完成的内容
-            for(int i=temp_i; i<messages.Count; i++){
-                string temp_echo = "error";
-                DataSend("test", inVerifyOrVerifyNeedless:true); 
-                DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
-                while(true){
-                    temp_echo = sp.ReadLine();
-                    
-                    Debug.Log("echo received: "+temp_echo);
-                    if(temp_echo.StartsWith("echo:")){
-                        temp_echo=temp_echo[5..temp_echo.IndexOf(":echo")];
-                        break;
-                    }else{
-                        serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)).Concat(new byte[]{0xDD}).ToArray());
+        while(!succes && fail_count < fail_countMax){
+            try{
+                for(int i=tempMsgInd; i<messages.Count; i++){
+                    string temp_echo = "error";
+                    DataSend("test", inVerifyOrVerifyNeedless:true); 
+                    DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
+                    while(true){
+                        temp_echo = sp.ReadLine();
+                        
+                        Debug.Log("echo received: "+temp_echo);
+                        if(temp_echo.StartsWith("echo:")){
+                            temp_echo=temp_echo[5..temp_echo.IndexOf(":echo")];
+                            break;
+                        }else{
+                            serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[]{0xDD}).ToArray());
+                        }
+                    }
+                    string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
+                    if(temp_echo.Replace(" ", "")==temp_aim){
+                        Debug.Log("verified:"+temp_aim);
+                        tempMsgInd = i+1;
+
+                        if(tempMsgInd == messages.Count){
+                            succes = true;
+                            manualResetEventVerify.Set();
+                            return 1;
+                        }
+                        //ui_update.Message_update("verified:"+temp_aim+"\n");
+                        continue;
+                    }
+                    manualResetEventVerify.Set();
+                    return -1;
+                }
+            }
+            catch(Exception e){
+                Debug.Log(e.Message);
+                if(e.Message.Contains("not open")){
+                    manualResetEventVerify.Set();
+                    return -2;
+                }
+                // return -1;
+            }
+            finally{
+                if(serial_read_content_ls.Count() > 0){
+                    byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
+                    int temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                    while(temp_end != -1){
+                        byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
+                        Debug.Log("process: "+string.Join(",", tempCompleteMsgInVerify));
+                        if(tempCompleteMsgInVerify.Length>0){
+                            commandQueue.Enqueue(tempCompleteMsgInVerify);
+                        }else{
+                            serial_read_content_ls.Clear();
+                        }
+                        totalMsgInVerify = totalMsgInVerify[(temp_end+1)..].ToArray();
+                        temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+
                     }
                 }
-                string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
-                if(temp_echo.Replace(" ", "")==temp_aim){
-                    Debug.Log("verified:"+temp_aim);
-                    temp_i = i+1;
-
-                    //ui_update.Message_update("verified:"+temp_aim+"\n");
-                    continue;
-                }
-                manualResetEventVerify.Set();
-                return -1;
+                // manualResetEventVerify.Set();
             }
         }
-        catch(Exception e){
-            Debug.Log(e.Message);
-            manualResetEventVerify.Set();
-            if(e.Message.Contains("not open")){
-                return -2;
-            }
-            return -1;
-        }
-        finally{
-            if(serial_read_content_ls.Count() > 0){
-                byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
-                int temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
-                while(temp_end != -1){
-                    byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
-                    Debug.Log("process: "+string.Join(",", tempCompleteMsgInVerify));
-                    if(tempCompleteMsgInVerify.Length>0){
-                        commandQueue.Enqueue(tempCompleteMsgInVerify);
-                    }
-                    totalMsgInVerify = totalMsgInVerify[(temp_end+1)..].ToArray();
-                    temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
-
-                }
-            }
-            manualResetEventVerify.Set();
-        }
-        return 1;
+        manualResetEventVerify.Set();
+        return -1;
     }
 
     /// <summary>
@@ -3191,7 +3208,7 @@ public class Moving : MonoBehaviour
             }
             if(sp!= null){
                 sp.Close();
-                serialThread.Join();
+                serialThread.Join(100);
                 Debug.Log("serial closed");
             }
         }
