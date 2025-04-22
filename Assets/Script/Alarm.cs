@@ -15,6 +15,7 @@ public class Alarm
     int[] alarmExecuteTimes = new int[20];
     Dictionary<string, int> alarmNameIndDic = new Dictionary<string, int>();
     List<string> alarmName = new List<string>();
+    float[] alarmAddInfo = new float[20];
     public Alarm(int initValue = -1, int size = 20){
         if(alarm.Count() != size){
             alarm = new long[size];
@@ -50,13 +51,23 @@ public class Alarm
         }else{}
     }
 
-    public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0){
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="_alarmName"></param>
+    /// <param name="frames"></param>
+    /// <param name="alarmInd"></param>
+    /// <param name="executeCount"></param>
+    /// <param name="addInfo"></param> -1 in default
+    /// <returns></returns>
+    public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0, float addInfo = -1){
         // Debug.Log($"{_alarmName} set for {frames} frames");
         if(!alarmName.Contains(_alarmName)){
             for(int i = 0; i < alarm.Count(); i++){
                 if(alarmName[i] == ""){
                     alarmInd = i;
                     SetAlarm(i, frames, _alarmName, executeCount);
+                    alarmAddInfo[i] = addInfo;
                     return true;
                 }
             }
@@ -64,13 +75,14 @@ public class Alarm
             return false;
         }else{
             SetAlarm(alarmNameIndDic[_alarmName], frames, executeCount:executeCount);
+            alarmAddInfo[alarmNameIndDic[_alarmName]] = addInfo;
             alarmInd = alarmNameIndDic[_alarmName];
             return true;
         }
     }
 
-    public bool TrySetAlarm(string _alarmName, float _sec, out int alarmInd, int executeCount = 0){
-        return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount);
+    public bool TrySetAlarm(string _alarmName, float _sec, out int alarmInd, int executeCount = 0, float addInfo = -1){
+        return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount, addInfo);
     }
 
     public int PauseAlarm(int ind){
@@ -98,6 +110,9 @@ public class Alarm
         }else{return -1;}
     }
 
+    /// <summary>
+    /// subsequent:当前需要等待 nextTo 触发后再立即触发的alarm
+    /// </summary>
     public int StartAlarmAfter(int subsequent, int nextTo){//一个alarm只能跟在另一个后触发，但多个alarm都可以跟在同一个alarm后触发
         if(subsequent < 0 || subsequent >= 20 || nextTo < 0 || nextTo >= 20){return 0;}
 
@@ -106,6 +121,9 @@ public class Alarm
         return 1;
     }
 
+    /// <summary>
+    /// subsequent:当前需要等待 nextTo 触发后再立即触发的alarm
+    /// </summary>
     public int StartAlarmAfter(string _alarmName, string _alarmNameAfter){
         if(alarmNameIndDic.TryGetValue(_alarmName, out int _ind) && alarmNameIndDic.TryGetValue(_alarmNameAfter, out int _indAfter)){
             return StartAlarmAfter(_ind, _indAfter);
@@ -172,6 +190,22 @@ public class Alarm
             return -2;
         }
         //return -1;
+    }
+
+    public float GetAlarmAddInfo(int ind){
+        if(ind < 0 || ind >= alarm.Count()){
+            return -2;
+        }
+        return alarmAddInfo[ind];
+    }
+
+    public float GetAlarmAddInfo(string indName){
+        if(alarmNameIndDic.TryGetValue(indName, out int ind)){
+            return alarmAddInfo[ind];
+        }
+        else{
+            return -2;
+        }
     }
 
     public List<string> GetAlarmFinish(){

@@ -33,6 +33,7 @@ public class UIUpdate : MonoBehaviour
     Alarm alarm;
     float manualWaitSec = 5;
     
+    private int _FrameCount = 0; private float _TimeCount = 0; private float _FrameRate = 0;
 
     //public Image LineChartImage;
     public int AddSelf(UnityEngine.UI.Button button){
@@ -244,24 +245,58 @@ public class UIUpdate : MonoBehaviour
                         }
                     }
                 }
-                else if(elementsName.StartsWith("OG")){
+                else if(elementsName.StartsWith("OG") || elementsName.StartsWith("MS")){
+                    string _type = elementsName.Substring(0, 2);
                     string _content = elementsName.Substring(2);
                     if(_content == "Start"){
-                        if(!int.TryParse(inputFieldContent["OGTime"], out int _mills)){_mills = 1000;}
-                        if(moving.OGSet(_mills)){
-                            SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.green);
-                            alarm.TrySetAlarm("OGStartToGrey", 0.5f, out _);
+                        moving.trialStatus = -3;
+                        if(!int.TryParse(inputFieldContent[$"{_type}Time"], out int _mills)){_mills = _type == "OG"? 10000: 480;}
+                        bool res = _type == "OG"? moving.OGSet(_mills): moving.MSSet(_mills);
+                        if(res){
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), Color.green);
+                            // alarm.TrySetAlarm("OGStartToGrey", 0.5f, out _);
                         }
-                    }else if(_content == "End"){
-                        if(moving.OGSet(0)){
-                            SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.grey);
+                    }else if(_content == "Stop"){
+                        bool res = _type == "OG"? moving.OGSet(0): moving.MSSet(0);
+                        if(res){
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), Color.grey);
+                        }
+                    }else if(_content == "Enable"){
+                        if(moving.DeviceEnableDict.TryGetValue(_type, out bool _enabled)){
+                            _enabled = ! _enabled;
+                            moving.DeviceEnableDict[_type] = _enabled;
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), _enabled? Color.green: Color.grey);
+
+                        }else{
+                            moving.DeviceEnableDict.Add(_type, true);
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
                         }
                     }
                 }
-                else if(elementsName.StartsWith("MS")){
-                    string _content = elementsName.Substring(2);
-                    moving.CommandParsePublic($"miniscopeRecord:{(_content == "Start"? 1: 0)}");
-                }
+                // else if(elementsName.StartsWith("MS")){
+                //     string _content = elementsName.Substring(2);
+                //     if(_content == "Start"){
+                //         if(!int.TryParse(inputFieldContent["MSTime"], out int _sec)){_sec = 1000;}
+                //         if(moving.MSSet(_sec)){
+                //             SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.green);
+                //             // alarm.TrySetAlarm("MSStartToGrey", 0.5f, out _);
+                //         }
+                //     }else if(_content == "Stop"){
+                //         if(moving.MSSet(0)){
+                //             SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.grey);
+                //         }
+                //     }else if(_content == "Enable"){
+                //         if(moving.DeviceEnableDict.TryGetValue("MS", out bool _enabled)){
+                //             _enabled = ! _enabled;
+                //             moving.DeviceEnableDict["MS"] = _enabled;
+                //             SetButtonColor(buttons.Find(button => button.name == "MSEnable"), _enabled? Color.green: Color.grey);
+
+                //         }else{
+                //             moving.DeviceEnableDict.Add("MS", true);
+                //             SetButtonColor(buttons.Find(button => button.name == "MSEnable"), Color.green);
+                //         }
+                //     }
+                // }
                 break;
             }
         }
@@ -275,44 +310,55 @@ public class UIUpdate : MonoBehaviour
         }
     }
 
-    public void CheckBoxControlsParse(string elementsName,float value, string stringArg=""){
-        if(elementsName.StartsWith("MS")){
-            string _name = elementsName.Substring(2);
-            switch(_name){
-                case "trialStart":{
-                    break;
-                }
-                default:{
-                    break;
-                }
-            }
+    // public void CheckBoxControlsParse(string elementsName,float value, string stringArg=""){
+    //     if(elementsName.StartsWith("MS")){
+    //         string _name = elementsName.Substring(2);
+    //         switch(_name){
+    //             case "trialStart":{
+    //                 break;
+    //             }
+    //             default:{
+    //                 break;
+    //             }
+    //         }
             
-        }else if(elementsName.StartsWith("OG")){
-            string _name = elementsName.Substring(2);
-            switch(_name){
-                case "":{
-                    break;
-                }
-                default:{
-                    break;
-                }
+    //     }else if(elementsName.StartsWith("OG")){
+    //         string _name = elementsName.Substring(2);
+    //         switch(_name){
+    //             case "":{
+    //                 break;
+    //             }
+    //             default:{
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="deviceName"></param> "MSTime" or "OGTime"
+    /// <param name="_mills"></param>
+    /// <returns></returns>
+    public bool TryGetDeviceSetTime(string deviceName, out int _mills){
+        List<string> _devices = new List<string>{"MSTime", "OGTime"};
+        if(_devices.Contains(deviceName)){
+            bool _res = inputFieldContent.TryGetValue(deviceName, out string _strMills);
+            try{
+                _mills = Convert.ToInt32(_strMills);
+            }catch{
+                _mills = 1000;
+                Debug.Log($"failed to parse {deviceName} to int");
             }
+            return  _res;
         }
-    }
-
-    public bool TryGetOGSetTime(out int _mills){
-        bool _res = inputFieldContent.TryGetValue("OGTime", out string _strMills);
-        try{
-            _mills = Convert.ToInt32(_strMills);
-        }catch{
-            _mills = 1000;
-            Debug.Log("failed to parse OGTime to int");
-        }
-        return  _res;
+        _mills = -2;
+        return false;
     }
 
 
-    public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false){//随时可能被调用，需要对内容做null检查
+    public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false, bool attachToLastLine = false){//随时可能被调用，需要对内容做null检查
         if(returnAllMsg){
             return logMessage.text + "\n" + TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
         }
@@ -323,7 +369,7 @@ public class UIUpdate : MonoBehaviour
                 int hour = time / 3600;
                 int minute = (time - hour*3600) / 60;
                 int second = time % 60;
-                TexContextHighFreqInfo.text = $"{hour:D2}:{minute:D2}:{second:D2}";
+                TexContextHighFreqInfo.text = $"{hour:D2}:{minute:D2}:{second:D2}, fps={(int)_FrameRate}";
             }
         }else if(UpdateFreq == -1){//fix
             TexContextFixInfo.text = add_log_message;
@@ -339,7 +385,11 @@ public class UIUpdate : MonoBehaviour
                 if(logMessage.text.Contains(_time) && logMessage.text.Contains(_time+add_log_message)){
                     return "";
                 }else{
-                    logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
+                    if(attachToLastLine){
+                        logMessage.text = (logMessage.text.EndsWith("\n")? logMessage.text.Substring(0, logMessage.text.Length-1) :"") + "  --" + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
+                    }else{
+                        logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
+                    }
                 }
 
                 if(alarm != null){
@@ -364,44 +414,43 @@ public class UIUpdate : MonoBehaviour
                     return "";
                 }
 
-                string  temp_context_info =  $"trial:{tempStatus["NowTrial"]}     now pos:{tempStatus["NowPos"]}    {(tempStatus["IsPausing"] == 1? "paused" : "")}\n";
-                        temp_context_info += "lick count in this trial: ";
-                        List<int> realPosAdded = new List<int>();
-                        if(tempStatus["lickPosCount"] > 0){
-                            for(int i =0; i < 8; i ++){
-                                if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
-                                    int RealPos = tempStatus[$"LickSpout{i}"];
-                                    if(!realPosAdded.Contains(RealPos)){
-                                        if(tempStatus.ContainsKey("lickCount" + RealPos.ToString())){
-                                            temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
-                                            realPosAdded.Add(RealPos);
-                                        }
-                                    }
-                                }
-                            }
-                            temp_context_info += "\n";
-                        }
-                        if(tempStatus["waitSec"] != -1){
-                            temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
-                        }
-
-                        temp_context_info += $"\n          Success:    Fail:    Total:    Miss:\n";
-                        for(int i =0; i < 8; i ++){
-                            if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
-                                int RealPos = tempStatus[$"LickSpout{i}"];
-                                if(!temp_context_info.Contains($"LickSpout{RealPos}")){
-                                    temp_context_info += $"LickSpout{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickSpoutTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
+                string  temp_context_info =  $"trial:{tempStatus["NowTrial"]}     now pos:{tempStatus["NowPos"]}    {(tempStatus["IsPausing"] == 1? "paused" : "")}\n"; 
+                if(tempStatus["lickPosCount"] > 0){
+                    temp_context_info += "lick count in this trial: ";
+                    List<int> realPosAdded = new List<int>();
+                    for(int i =0; i < 8; i ++){
+                        if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
+                            int RealPos = tempStatus[$"LickSpout{i}"];
+                            if(!realPosAdded.Contains(RealPos)){
+                                if(tempStatus.ContainsKey("lickCount" + RealPos.ToString())){
+                                    temp_context_info += $"{tempStatus["lickCount" + i.ToString()]}, ";
+                                    realPosAdded.Add(RealPos);
                                 }
                             }
                         }
-                        temp_context_info += $"Total: {tempStatus["TrialSuccessNum"]}        {tempStatus["TrialFailNum"]}\n";
-                        
-                        if(tempStatus["NowTrial"] > 0){
-                            float tempAccuracy = tempStatus["TrialSuccessNum"] / (float)(tempStatus["TrialSuccessNum"]+tempStatus["TrialFailNum"]) * 100;
-                            temp_context_info += $"Accuracy: {tempAccuracy:f2}%\n";
+                    }
+                    temp_context_info += "\n";
+                }
+
+                temp_context_info += $"           Success:    Fail:    Total:    Miss:\n";
+                for(int i =0; i < 8; i ++){
+                    if(tempStatus.ContainsKey("LickSpout" + i.ToString())){
+                        int RealPos = tempStatus[$"LickSpout{i}"];
+                        if(!temp_context_info.Contains($"LickSpout{RealPos}")){
+                            temp_context_info += $"LickSpout{RealPos}: {tempStatus["TrialSuccessNum" + i.ToString()]}          {tempStatus["TrialFailNum" + i.ToString()]}           {tempStatus["LickSpoutTotalTrial" + i.ToString()]}           {tempStatus["TrialMissNum" + i.ToString()]}\n";
                         }
+                    }
+                }
+                temp_context_info += $"Total: {tempStatus["TrialSuccessNum"]}        {tempStatus["TrialFailNum"]}\n";
+                
+                if(tempStatus["NowTrial"] > 0){
+                    float tempAccuracy = tempStatus["TrialSuccessNum"] / (float)(tempStatus["TrialSuccessNum"]+tempStatus["TrialFailNum"]) * 100;
+                    temp_context_info += $"Accuracy: {tempAccuracy:f2}%\n";
+                }
 
-
+                if(tempStatus["waitSec"] != -1){
+                    temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
+                }
 
                 TexContextInfo.text=temp_context_info; 
             }
@@ -491,6 +540,10 @@ public class UIUpdate : MonoBehaviour
             if (focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue"){focus_input_field.text="";}
         }
         // MessageUpdate();
+
+        _FrameCount++;
+        _TimeCount += Time.unscaledDeltaTime;
+        if (_TimeCount >= 10){ _FrameRate = _FrameCount / _TimeCount; _FrameCount = 0; _TimeCount -= 10;}
     }
 
     void FixedUpdate() {
@@ -501,10 +554,14 @@ public class UIUpdate : MonoBehaviour
                     moving.Ipcclient.Silent = false;
                     break;
                 }
-                case "OGStartToGrey":
+                case "OGStartToGrey":{
                     SetButtonColor(buttons.Find(button => button.name == "OGStart"), Color.white);
                     break;
-                
+                }
+                case "MSStartToGrey":{
+                    SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.white);
+                    break;
+                }
                 default:{
                     break;
                 }

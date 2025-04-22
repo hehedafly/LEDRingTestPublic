@@ -250,15 +250,16 @@ class ContextInfo{
         standingSecInTrigger = _standingSecInTrigger;
         standingSecInDest = _standingSecInDest;
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
-        DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd"};
+        DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialFinish", "everyTrialFinish", "nextTrialStart", "nextTrialEnd", "nextTrialFinish"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
-        while(DeviceTriggerMethodLsSorted.Count() < 2){DeviceTriggerMethodLsSorted.Add(new List<string>());}
-        foreach( var _ in DeviceTriggerMethodLs){
-            if(_.Contains("TrialStart")){
-                DeviceTriggerMethodLsSorted[0].Add(_);
-            }
-            else if(_.Contains("TrialEnd")){
-                DeviceTriggerMethodLsSorted[1].Add(_);
+        while(DeviceTriggerMethodLsSorted.Count() < DeviceTriggerMethodLs.Count()/2){DeviceTriggerMethodLsSorted.Add(new List<string>());}
+        foreach(var triggerMethod in DeviceTriggerMethodLs){
+            if(triggerMethod.Contains("TrialStart")){
+                DeviceTriggerMethodLsSorted[0].Add(triggerMethod);
+            }else if(triggerMethod.Contains("TrialEnd")){
+                DeviceTriggerMethodLsSorted[1].Add(triggerMethod);
+            }else if(triggerMethod.Contains("TrialFinish")){
+                DeviceTriggerMethodLsSorted[2].Add(triggerMethod);
             }
         }
         
@@ -285,9 +286,17 @@ class ContextInfo{
                         List<int> _n1multiple = ExtractFactors(_content, "*(n+1)");
                         List<int> allFactors = _nmultiple.Concat(_n1multiple).ToList();
 
+                        int _length = ExtractFactor(_content, "~", 1);
+                        int _offset = ExtractFactor(_content, "+", 0) - ExtractFactor(_content, "-", 0);
+
                         foreach (int factor in allFactors){
                             for (int i = factor == _n1multiple.FirstOrDefault(x => x == factor) ? factor : 0; i < maxTrial; i += factor){
-                                _lsvalues.Add(i);
+                                for (int j = 0; j < _length; j++){
+                                    int _i = i + j + _offset;
+                                    if(_i > 0 && _i < maxTrial){
+                                        _lsvalues.Add(_i);
+                                    }
+                                }
                             }
                         }
                         _values = _lsvalues.ToArray();
@@ -306,7 +315,7 @@ class ContextInfo{
 
         MSTriggerMethodLs.Add(new Dictionary<string, int[]>());
         MSTriggerMethodLs.Add(new Dictionary<string, int[]>());
-        if(_OGTriggerMethod.Length > 0){
+        if(_MSTriggerMethod.Length > 0){
             foreach(string section in _MSTriggerMethod.Split(';')){
                 if((section.Contains("[start]") || section.Contains("[end]")) && section[section.IndexOf(']') + 1].Equals('{') && section.EndsWith("}")){}
                 else{throw new Exception("MSTriggerMethod malform: " + section);}
@@ -318,20 +327,29 @@ class ContextInfo{
                     int[] _values = new int[]{-1};
                     if(_content.Contains("n")){
                         List<int> _lsvalues = new List<int>(){section.StartsWith("[start]")? 1: 0};
-                        
                         List<int> _nmultiple = ExtractFactors(_content, "*n");
                         List<int> _n1multiple = ExtractFactors(_content, "*(n+1)");
+                        int _length = ExtractFactor(_content, "~", 1);
+                        int _offset = ExtractFactor(_content, "+", 0) - ExtractFactor(_content, "-", 0);
+
                         List<int> allFactors = _nmultiple.Concat(_n1multiple).ToList();
 
                         foreach (int factor in allFactors){
                             for (int i = factor == _n1multiple.FirstOrDefault(x => x == factor) ? factor : 0; i < maxTrial; i += factor){
-                                _lsvalues.Add(i);
+                                for (int j = 0; j < _length; j++){
+                                    int _i = i + j + _offset;
+                                    if(_i > 0 && _i < maxTrial){
+                                        _lsvalues.Add(_i);
+                                    }
+                                }
                             }
                         }
                         _values = _lsvalues.ToArray();
                     }else{
                         _values = new int[]{section.StartsWith("[start]")? 1: 0}.Concat(_method[(_method.IndexOf(':') + 1)..].Split(',').Select(x => Convert.ToInt32(x))).ToArray();
-                    }                    if(DeviceTriggerMethodLs.Contains(_type)){
+                    }
+                                        
+                    if(DeviceTriggerMethodLs.Contains(_type)){
                         MSTriggerMethodLs[section.StartsWith("[start]")? 0: 1].Add(_type, _values);
                     }else{
                         throw new Exception("wrong trigger method in MSTriggerMethod parse:" + _type);
@@ -344,11 +362,40 @@ class ContextInfo{
         MSTriggerSortedInType = new List<Dictionary<string, int[]>>();
         for(int i = 0; i < DeviceTriggerMethodLsSorted.Count(); i++){
             OGTriggerSortedInType.Add(
-                                    OGTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
-                                    OGTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).ToDictionary(kvp => kvp.Key + "end", kvp => kvp.Value)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+                                    OGTriggerMethodLs
+                                    .SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))  // 展开所有符合条件的键值对
+                                    .GroupBy(kvp => kvp.Key)  // 按原始Key分组
+                                    .SelectMany(group => 
+                                        group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
+                                            index == 0 
+                                                ? item  // 第一个保留原键
+                                                : new KeyValuePair<string, int[]>(
+                                                    $"{item.Key}_{index}",  // 后续添加后缀
+                                                    item.Value
+                                                )
+                                        )
+                                    )
+                                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
             MSTriggerSortedInType.Add(
-                                    MSTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
-                                    MSTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).ToDictionary(kvp => kvp.Key + "end", kvp => kvp.Value)).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+                                    MSTriggerMethodLs.SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))  // 展开所有符合条件的键值对
+                                    .GroupBy(kvp => kvp.Key)  // 按原始Key分组
+                                    .SelectMany(group => 
+                                        group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
+                                            index == 0 
+                                                ? item  // 第一个保留原键
+                                                : new KeyValuePair<string, int[]>(
+                                                    $"{item.Key}_{index}",  // 后续添加后缀
+                                                    item.Value
+                                                )
+                                        )
+                                    )
+                                    .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            // OGTriggerSortedInType.Add(
+            //                         OGTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
+            //                         OGTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key))).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
+            // MSTriggerSortedInType.Add(
+            //                         MSTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
+            //                         MSTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key))).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
         }
     }
 
@@ -357,15 +404,32 @@ class ContextInfo{
         return indices.Select(i => 
         {
             // Try parsing from (i-2)..i first, then (i-1)..i
-            if (int.TryParse(content.Substring(i - 2, 2), out int parseValue))
-                return parseValue;
-            else if (int.TryParse(content.Substring(i - 1, 1), out int secparseValue))
-                return secparseValue;
-            else
-                return -1;
+            int _i = 1;
+            int parseValue = -1;
+            int parsedValue = -1;
+            while(int.TryParse(content.Substring(Math.Max(0, i - _i), _i), out parseValue)){
+                _i++;
+                parsedValue = parseValue;
+            }
+            return parsedValue;
+            // if (int.TryParse(content.Substring(Math.Max(0, i - 2), 2)))
+            //     return parseValue;
+            // else if (int.TryParse(content.Substring(Math.Max(0, i - 1), 1), out int secparseValue))
+            //     return secparseValue;
+            // else
+            //     return -1;
         })
         .Where(x => x > 0) // Filter out non-positive values
         .ToList();
+    }
+
+    int ExtractFactor(string content, string pattern, int _default){
+        List<int> _res = ExtractFactors(content, pattern);
+        if(_res.Count() > 0){
+            return _res[0];
+        }else{
+            return _default;
+        }
     }
     //public string start_method;
     public string       startMethod     {get;}
@@ -664,9 +728,10 @@ public class Moving : MonoBehaviour
     bool waiting = true;
     bool forceWaiting = true;
     /// <summary>
-    /// -1：初始未开始，-2：forcewaiting，0：waiting， 1：started，2：finished but not end
+    /// -1：初始未开始，-2：forcewaiting, -3:not start but record，0：waiting， 1：started，2：finished but not end
     /// </summary>
-    int trialStatus = -1;
+    public  int trialStatus = -1;
+    int[] trialDeviceTriggerStatus = new int[3];
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
     /// <summary>
     /// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间  |||  0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
@@ -750,14 +815,12 @@ public class Moving : MonoBehaviour
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
-    bool debugMode = false; public bool DebugMode { get { return debugMode;} set{
-                                                                                    debugMode = value;
-                                                                                    //backgroundCover.SetActive(debugMode);
-                                                                                }}
+    bool debugMode = false; public bool DebugMode { get { return debugMode;} set{debugMode = value;}}
     // bool serialSync = true;
-    float UnscaledfixedTime = -1;
+    // float UnscaledfixedTime = -1;
     public GameObject refseg;
     Material refSegementMat;
+    public Dictionary<string, bool> DeviceEnableDict = new Dictionary<string, bool>{};
 
     /// <summary>
     /// DeviceTriggerMethod = new List<string>() {"certainTrialStart", "everyTrialStart", "randomTrialStart", "certainTrialEnd", "everyTrialEnd"};
@@ -1530,7 +1593,7 @@ public class Moving : MonoBehaviour
                 }
 
                 if(_temp_waitSec > 0){
-                    ui_update.MessageUpdate($"Interval: {_temp_waitSec}");
+                    ui_update.MessageUpdate($"Interval: {_temp_waitSec}", attachToLastLine:true);
                     // Debug.Log($"Interval: {_temp_waitSec}");
                 }
                 waitSec = _temp_waitSec;
@@ -1538,11 +1601,11 @@ public class Moving : MonoBehaviour
                 if(trialStartTriggerMode == 0){
                     
                     waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
-                    ui_update.MessageUpdate($"Interval: {waitSec}");
+                    ui_update.MessageUpdate($"Interval: {waitSec}", attachToLastLine:true);
 
                 }else{//其他主动触发模式
                     waitSec = contextInfo.barDelayTime;
-                    ui_update.MessageUpdate($"Interval: {waitSec}");
+                    ui_update.MessageUpdate($"Interval: {waitSec}", attachToLastLine:true);
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
                     // ui_update.MessageUpdate($"Interval: {waitSec}");
                     // Debug.Log($"Interval: {waitSec}");
@@ -1836,6 +1899,7 @@ public class Moving : MonoBehaviour
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             DeactivateBar();
                             ui_update.MessageUpdate("Trial finished");
+                            DeviceTriggerExecute(2);
                             TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial);
                             PlaySound("EnableReward");
 
@@ -1953,28 +2017,78 @@ public class Moving : MonoBehaviour
     /// <param name="_mills"></param>
     /// <returns></returns>
     public bool OGSet(int _mills){//_mills: 0: 关闭, 1+: mills, -1：持续
-        int res = CommandVerify("p_OGActiveMills", _mills);
-        if(res == 1){WriteInfo(recType: 10, _lickPos: _mills);}
-        Debug.Log($"OG set {_mills}");
+        bool _on = _mills > 0 || _mills == -1;
+        int res = 0;
+        if(_mills < 30000){
+            res = CommandVerify("p_OGActiveMills", _mills);
+            if(res == 1 || res == -3){
+                WriteInfo(recType: 10, _lickPos: _mills);
+                Debug.Log($"OG set {_mills}");
+                ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
+            }
+            return res == 1;
+        }
+
+        if(alarm.GetAlarm("ogEnd") >= 0){
+            alarm.TrySetAlarm("ogStart", 1, out _, addInfo:_mills);
+            alarm.StartAlarmAfter("ogStart", "ogEnd");
+            alarm.TrySetAlarm("ogEnd", 1, out _);
+        }else{
+            res = CommandVerify("p_OGActiveMills", _on? -1: 0);
+            if(res == 1 || res == -3){
+                WriteInfo(recType:12, _lickPos:_mills);
+                Debug.Log($"OG {(_on? "on": "off")}");
+                ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
+                if(_mills > 0){
+                    alarm.TrySetAlarm("ogEnd", (float)_mills / 1000, out _);
+                }
+            }
+
+        }
+        
         return res == 1;
+    
+        // int res = CommandVerify("p_OGActiveMills", _mills);
+        // if(res == 1 || res == -3){
+        //     WriteInfo(recType: 10, _lickPos: _mills);
+        //     Debug.Log($"OG set {_mills}");
+        //     ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
+
+        // }
+        // return res == 1;
     }
 
     /// <summary>
-    /// use CommandVerify
+    /// use CommandVerify, return res
     /// </summary>
     /// <param name="_on"></param>
     /// <returns></returns>
-    public bool MSSet(bool _on){
-        int res = CommandVerify("p_miniscopeRecord", _on? 1: 0);
-        if(res == 1){WriteInfo(recType: 10, _lickPos: _on? 1: 0);}
-        Debug.Log($"MS {(_on? "on": "off")}");
-        return res == 1;
+    public bool MSSet(int _sec = -1){
+        bool _on = _sec > 0 || _sec == -1;
+        int res = 0;
+        if(alarm.GetAlarm("miniscopeEnd") >= 0){
+            alarm.TrySetAlarm("miniscopeStart", 1, out _, addInfo:_sec);
+            alarm.StartAlarmAfter("miniscopeStart", "miniscopeEnd");
+            alarm.TrySetAlarm("miniscopeEnd", 1, out _);
+        }else{
+            res = CommandVerify("p_miniscopeRecord", (_sec > 0 || _sec == -1)? 1: 0);
+            if(res == 1 || res == -3){
+                WriteInfo(recType:12, _lickPos:_sec);
+                Debug.Log($"MS {(_on? "on": "off")}");
+                ui_update.MessageUpdate($"MS {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}");
+                if(_sec > 0){
+                    alarm.TrySetAlarm("miniscopeEnd", (float)_sec, out _);
+                }
+            }
 
+        }
+        
+        return res == 1;
     }
     
     void CloseDevices(){
         OGSet(0);
-        MSSet(false);
+        MSSet(0);
         // serialSync = false;
         // serialSyncThread.Join();
     }
@@ -1999,56 +2113,73 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// triggerType: 0, 1-trialStart/end, 2-...
-    /// keys:{"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd"};
+    /// triggerType: 0, 1-trialStart/end, 2-finish  ，无论具体名称后缀              
+    /// 
+    /// keys:{"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialFinish", "everyTrialFinish"};
     /// values: trial indexes,      possibility(x100)        same             same
     /// 
     /// </summary>
     /// <param name="triggerType"></param>
     /// <returns></returns>
     bool DeviceTriggerExecute(int triggerType){
-        if(!new int[]{0, 1}.Contains(triggerType)){return false;}
+        if(!new int[]{0, 1, 2}.Contains(triggerType)){return false;}
+        // if (triggerType < 2){
         var OGTrigger = contextInfo.OGTriggerSortedInType[triggerType];
         var MSTrigger = contextInfo.MSTriggerSortedInType[triggerType];
-        // switch(triggerType){
-        //     case 0:{
-                foreach(var _trigger in OGTrigger){
-                    int _mills = ui_update.TryGetOGSetTime(out int _mills_temp)? _mills_temp: -1;
-                    if(_trigger.Key.StartsWith("certain")){
-                        if(_trigger.Value[1..].Contains(nowTrial)){
-                            OGSet(_trigger.Value[0] == 1? _mills: 0);
-                            break;
-                        }
-                    }else if(_trigger.Key.StartsWith("every")){
-                        if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
-                            OGSet(_trigger.Value[0] == 1? _mills: 0);
-                            break;
-                        }
+        if(DeviceEnableDict.TryGetValue("OG", out bool _enable) && _enable){
+            foreach(var _trigger in OGTrigger){
+                int _mills = ui_update.TryGetDeviceSetTime("OGTime", out int _mills_temp)? _mills_temp: -1;
+                if(_trigger.Key.StartsWith("certain")){
+                    if(_trigger.Value[1..].Contains(nowTrial)){
+                        OGSet(_trigger.Value[0] == 1? _mills: 0);
+                        trialDeviceTriggerStatus[0] = nowTrial;
+                        break;
+                    }
+                }else if(_trigger.Key.StartsWith("every")){
+                    if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
+                        OGSet(_trigger.Value[0] == 1? _mills: 0);
+                        trialDeviceTriggerStatus[0] = nowTrial;
+                        break;
+                    }
+                }else if(_trigger.Key.StartsWith("next")){
+                    if(nowTrial == trialDeviceTriggerStatus[0] + 1){
+                        OGSet(_trigger.Value[0] == 1? _mills: 0);
                     }
                 }
+            }
+        }
 
-                foreach(var _trigger in MSTrigger){
-                    if(_trigger.Key.StartsWith("certain")){
-                        if(_trigger.Value[1..].Contains(nowTrial)){
-                            MSSet(_trigger.Value[0] == 1? true: false);
-                            break;
-                        }
-                    }else if(_trigger.Key.StartsWith("every")){
-                        if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
-                            MSSet(_trigger.Value[0] == 1? true: false);
-                            break;
-                        }
+        if(DeviceEnableDict.TryGetValue("MS", out _enable) && _enable){
+            foreach(var _trigger in MSTrigger){
+                int _sec = ui_update.TryGetDeviceSetTime("MSTime", out int _mills_temp)? _mills_temp: -1;
+                if(_trigger.Key.StartsWith("certain")){
+                    if(_trigger.Value[1..].Contains(nowTrial)){
+                        MSSet(_trigger.Value[0] == 1? _sec: 0);
+                        trialDeviceTriggerStatus[1] = nowTrial;
+
+                        break;
+                    }
+                }else if(_trigger.Key.StartsWith("every")){
+                    if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
+                        MSSet(_trigger.Value[0] == 1? _sec: 0);
+                        trialDeviceTriggerStatus[1] = nowTrial;
+
+                        break;
+                    }
+                }else if(_trigger.Key.StartsWith("next")){
+                    if(nowTrial == trialDeviceTriggerStatus[0] + 1){
+                        MSSet(_trigger.Value[0] == 1? _sec: 0);
                     }
                 }
-        //         break;
-        //     }
-        //     case 2:{
-                
-        //         break;
-        //     }
-        //     default: {break;}
+            }
+        }
+            // return true;
+        
+        // }else if(triggerType == 2){
+            
         // }
-        return true;
+
+        return false;
     }
 
     #endregion context generate end
@@ -2207,16 +2338,10 @@ public class Moving : MonoBehaviour
                 }
                 break;
             }
-            case 10:{//syncInfo
-                // if(serialSyncTime.TryDequeue(out float _tempTime)){
-                //     WriteInfo(recType:11,addInfo:_tempTime.ToString());
-                // }
+            case 10:{
                 break;
             }
-            case 11:{
-                int tempType = Convert.ToInt16(command.Split(":")[1]);
-                WriteInfo(recType:12, _lickPos:tempType);
-                CommandVerify("p_miniscopeRecord", tempType);
+            case 11:{//miniscope control
                 break;
             }
             default: break;
@@ -2344,7 +2469,7 @@ public class Moving : MonoBehaviour
         sp.ReadTimeout = 200;
         int fail_count = 0;
         bool succes = false;
-        int fail_countMax = 10;
+        int fail_countMax = 20;
         int tempMsgInd = 0;//记录已经同步完成的内容
 
         Debug.Log("verify start");
@@ -2352,7 +2477,7 @@ public class Moving : MonoBehaviour
             try{
                 for(int i=tempMsgInd; i<messages.Count; i++){
                     string temp_echo = "error";
-                    DataSend("test", inVerifyOrVerifyNeedless:true); 
+                    DataSend("ping", inVerifyOrVerifyNeedless:true); 
                     DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
                     while(true){
                         temp_echo = sp.ReadLine();
@@ -2376,10 +2501,13 @@ public class Moving : MonoBehaviour
                             return 1;
                         }
                         //ui_update.Message_update("verified:"+temp_aim+"\n");
+                        fail_count++;
                         continue;
                     }
-                    manualResetEventVerify.Set();
-                    return -1;
+                    fail_count++;
+
+                    // manualResetEventVerify.Set();
+                    // return -1;
                 }
             }
             catch(Exception e){
@@ -2388,6 +2516,7 @@ public class Moving : MonoBehaviour
                     manualResetEventVerify.Set();
                     return -2;
                 }
+                fail_count++;
                 // return -1;
             }
             finally{
@@ -2884,6 +3013,7 @@ public class Moving : MonoBehaviour
         string[] portLs = ScanPorts_API();
         bool connected = false;
         List<string> portInfo = new List<string>();
+        if (portLs.Length == 0){portInfo.Add("No Port Found!");}
         foreach(string port in portLs){
             if(!connected && port.Contains("COM") && !portBlackList.Contains(port)){
                 try{
@@ -2923,7 +3053,7 @@ public class Moving : MonoBehaviour
                 catch (Exception e){
                     sp = new SerialPort();
                     Debug.Log(e);
-                    ui_update.MessageUpdate(e.Message+"\n");
+                    // ui_update.MessageUpdate(e.Message+"\n");
                     sp.Close();
                     sp = null;
                     if(e.Message.Contains("拒绝访问")){
@@ -2985,7 +3115,7 @@ public class Moving : MonoBehaviour
     }
 
     void FixedUpdate(){
-        UnscaledfixedTime = Time.fixedUnscaledTime;
+        // UnscaledfixedTime = Time.fixedUnscaledTime;
         ui_update.MessageUpdate(UpdateFreq: 1);
         List<string> tempFInishedLs = alarm.GetAlarmFinish();
         foreach (string alarmFinished in tempFInishedLs){
@@ -3036,6 +3166,24 @@ public class Moving : MonoBehaviour
                 }
                 case "StartTrialAfterReady":{
                     StartTrial();
+                    break;
+                }
+                case "miniscopeStart":{
+                    float _secInAlarm = alarm.GetAlarmAddInfo("miniscopeStart");
+                    if(_secInAlarm > 0){MSSet((int)_secInAlarm);}
+                    break;
+                }
+                case "miniscopeEnd":{
+                    MSSet(0);
+                    break;
+                }
+                case "ogStart":{
+                    float _secInAlarm = alarm.GetAlarmAddInfo("ogStart");
+                    if(_secInAlarm > 0){OGSet((int)_secInAlarm);}
+                    break;
+                }
+                case "ogEnd":{
+                    OGSet(0);
                     break;
                 }
                 default:{

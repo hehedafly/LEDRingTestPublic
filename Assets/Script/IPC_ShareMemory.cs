@@ -47,10 +47,10 @@ if(sharedmm.CheckServerOnlineStatus()){
     care = certain name("UnityProject")/"", only one allowed in this version, if "": ignore all write/read Mark, else update marks base on cared one
     careindex = index/-1, if cared one online and applied, update to index of cared one, if multiple have same name, take the frist one applied, until its offline, then wait for another apply.
 
-    0:              server Online status(0/1)                                           $write by Server
+    0:              server Online status(0/-255)                                           $write by Server
     1:              max client number(4 max)                                            $write by Server
     2:              now client number(0-4)                                              $write by client, read then check online status
-    3-6:            clients online status(0/1)                                          $write by client, check from 0 to 3, frist zero value as client's own index
+    3-6:            clients online status(0-255)                                          $write by client, check from 0 to 3, frist zero value as client's own index
     7:              client index applied                                                $write by client, check if careindex == -1
     8:              name length of client applied                                       $write by client
     9-31            name of client applied                                              $write by client
@@ -145,6 +145,13 @@ if(sharedmm.CheckServerOnlineStatus()){
         int newestEndPos = -1;
         List<int> messageStartPosLs = new List<int>();
         List<int> messageLengthLs = new List<int>();
+
+        bool heartBeat = false;
+        int maxOfflineTick = 5;
+        int offlineTick = 0;
+        // int careOfflineTick = 0;
+        List<int> careOnlineStatus = new List<int>{};//for client: index: 0-server, 1-care; value: updateTick.   for server:index: 0~maxclientnum-clients; value: same
+        List<int> clientOfflineTick = new List<int>{};//only for server:index: 0~maxclientnum-clients; value: tick
  
         /// <summary>
         /// name: "server" or other client name, not the name of the shared memory(claim in Init func)
@@ -155,7 +162,7 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// </summary>
         /// <param name="_name"></param>
         /// <param name="_care"></param>
-        public Sharedmm(string _name, string _care)
+        public Sharedmm(string _name, string _care, bool _heartbeat = false)
         {
             name = _name;
             care = _care;
@@ -164,6 +171,7 @@ if(sharedmm.CheckServerOnlineStatus()){
             // contentBegin = 0;
             writeBufferLength = 16 * 1024;
             writeBufferStartPosAll = new List<int>();
+            heartBeat = _heartbeat;
         }
 
         ~Sharedmm()
@@ -239,41 +247,52 @@ if(sharedmm.CheckServerOnlineStatus()){
                     // int size = Marshal.SizeOf(typeof(byte));
                     ShmBuffer = (byte*)m_pwData.ToPointer();
 
-                    List<byte> nowServerStatus = ReadShmHead().ToList();
-                    maxClientNum = nowServerStatus[1];
-                    if(nowServerStatus[2] >= maxClientNum){
-                        UnmapViewOfFile(m_pwData);
-                        CloseHandle(m_hSharedMemoryFile);
-                        shmCreated = false;
-
-                        if(maxClientNum == 0){throw new Exception("server offline");}
-                        else{throw new Exception($"already {maxClientNum} clients on server");}
-                    }else{
-                        UID = nowServerStatus.FindIndex(3, x => x == 0) - 2;
-                        if(UID < 0 || UID > maxClientNum){
+                    if(name != "server"){
+                        List<byte> nowServerStatus = ReadShmHead().ToList();
+                        maxClientNum = nowServerStatus[1];
+                        if(nowServerStatus[2] >= maxClientNum){
                             UnmapViewOfFile(m_pwData);
                             CloseHandle(m_hSharedMemoryFile);
                             shmCreated = false;
 
-                            throw new Exception("wrong status record, failed to get index");
-                        }
-                        WriteByte(2, (byte)(nowServerStatus[2]+1));
-                        WriteByte(3 + UID - 1, 1);
-                        ApplyForCare();
-                        Debug.Log($"UID: {UID}");
-                    }
+                            if(maxClientNum == 0){throw new Exception("server offline");}
+                            else{throw new Exception($"already {maxClientNum} clients on server");}
+                        }else{
+                            UID = nowServerStatus.FindIndex(3, x => x == 0) - 2;
+                            if(UID < 0 || UID > maxClientNum){
+                                UnmapViewOfFile(m_pwData);
+                                CloseHandle(m_hSharedMemoryFile);
+                                shmCreated = false;
 
-                    for (int i = 32; i < 32 + (maxClientNum + 1) * writeBufferLength; i += writeBufferLength)
-                    {
-                        writeBufferStartPosAll.Add(i);
+                                throw new Exception("wrong status record, failed to get index");
+                            }
+                            WriteByte(2, (byte)(nowServerStatus[2]+1));
+                            WriteByte(3 + UID - 1, 1);
+                            ApplyForCare();
+                            
+                            Debug.Log($"UID: {UID}");
+                        }
+
+                        for (int i = 32; i < 32 + (maxClientNum + 1) * writeBufferLength; i += writeBufferLength)
+                        {
+                            writeBufferStartPosAll.Add(i);
+                        }
+                        
+                        if(care == "server"){careIndex = 0;}
+                        else{careIndex = 0;}//暂时不支持client间互相关注
+                        careOnlineStatus.Add(nowServerStatus[0]);
+                        // careOnlineStatus.Add(care == "server"? -1: nowServerStatus[3 + careIndex]);
+                        careOnlineStatus.Add(-1);//暂时不支持client间互相关注
+
+                        writeBufferStartPos = writeBufferStartPosAll[UID];
+                        newestStartPos = 15;
+                        newestEndPos = newestStartPos;
+                        WriteBytes(writeBufferStartPos, 0x00, 15);
+                        writtenmark = 0;
+                    }else{
+                        careOnlineStatus.AddRange(Enumerable.Repeat(-1, maxClientNum));
+                        clientOfflineTick.AddRange(Enumerable.Repeat(-1, maxClientNum));
                     }
-                    
-                    if(care == "server"){careIndex = 0;}
-                    writeBufferStartPos = writeBufferStartPosAll[UID];
-                    newestStartPos = 15;
-                    newestEndPos = newestStartPos;
-                    WriteBytes(writeBufferStartPos, 0x00, 15);
-                    writtenmark = 0;
                     // }
                 }
                 //----------------------------------------
@@ -555,7 +574,64 @@ if(sharedmm.CheckServerOnlineStatus()){
         }
 
         public bool CheckServerOnlineStatus(){
-            return ReadShmHead()[0] == 1;
+            return ReadShmHead()[0] > 0;
+        }
+
+        public int UpdateOnlineStatus(){
+
+            byte[] head = ReadShmHead();
+            if(!heartBeat){
+                if(head[2 + UID] == 0){
+                    return -3; //server set offline
+                }
+            
+            }
+            if(name != "server"){
+                if(head[0] == 0){return -1;}//server offline
+                else{
+                    WriteByte(2 + UID, (byte)(head[2 + UID] % 256 + 1));
+
+                    if(head[0] != careOnlineStatus[0]){
+                        careOnlineStatus[0] = head[0];
+                        offlineTick = 0;
+                    }else{offlineTick ++;}
+                    
+                    // if(head[2 + careIndex] > 0){//暂时不支持client间互相关注
+                    //     if(head[2 + careIndex] != careOnlineStatus[1]){
+                    //         careOnlineStatus[1] = head[2 + careIndex];
+                    //         careOfflineTick = 0;
+                    //     }else{careOfflineTick ++;}
+                    // }
+
+                }
+
+                if(offlineTick == maxOfflineTick){
+                    offlineTick = 0;
+                    return -2;//server offline accidentally
+                }else{
+                    return 1;
+                }
+            }else{
+                WriteByte(0, (byte)(head[0] % 256 + 1));
+                for(int i = 0; i < maxClientNum; i++){
+                    if(head[3 + i] > 0){
+                        if(head[3 + i] != careOnlineStatus[i]){
+                            careOnlineStatus[i] = head[3 + i];
+                            clientOfflineTick[i] = 0;
+                        }else{
+                            clientOfflineTick[i]++;
+
+                            if(clientOfflineTick[i] == maxOfflineTick){
+                                WriteByte(2, (byte)(head[2] - 1));
+                                WriteByte(3 + i, 0);
+                                clientOfflineTick[i] = 0;
+                            }
+                        }
+                    }
+                }
+                return 1;
+
+            }
         }
 
         public int ApplyForCare(){

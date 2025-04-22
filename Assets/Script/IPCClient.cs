@@ -66,6 +66,8 @@ public class IPCClient : MonoBehaviour
     List<float[]> meanSelectArea = new List<float[]>();
     double pythonTimeOffset = 0;//差值不可能为0
 
+    float lastTime = 0;
+
     #region mouse pos and selectarea related
 
     /// <summary>
@@ -371,6 +373,12 @@ public class IPCClient : MonoBehaviour
 
         }
     }
+  
+    public void CloseSharedmm(){
+        if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
+        activited = false;
+        Silent = true;
+    }
 
     void Awake()
     {
@@ -386,11 +394,19 @@ public class IPCClient : MonoBehaviour
     {
         
     }
-    
-    public void CloseSharedmm(){
-        if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
-        activited = false;
-        Silent = true;
+  
+    void Update(){
+        if(activited && Time.unscaledDeltaTime - lastTime >= 1){
+            lastTime = Time.unscaledDeltaTime;
+            int res = sharedmm.UpdateOnlineStatus();
+            if(res < 0){
+                CloseSharedmm();
+                if(res == -1){uiUpdate.MessageUpdate($"lost connection");}
+                else if(res == -2){uiUpdate.MessageUpdate($"server shutdown");}
+                else if(res == -3){uiUpdate.MessageUpdate($"offline by server, check heartbeat setting");}
+                
+            };
+        }
     }
 
     // Update is called once per frame
@@ -526,9 +542,10 @@ public class IPCClient : MonoBehaviour
                     if(failTimes >= 99){
                         uiUpdate.MessageUpdate($"failed to sync");
                         // Debug.Log("failed to sync");
-                        if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
-                        sharedmm = null;
-                        Silent = true;
+                        // if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
+                        // sharedmm = null;
+                        // Silent = true;
+                        CloseSharedmm();
                     }
                 }else{
                     Activated = false;
