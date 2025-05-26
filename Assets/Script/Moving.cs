@@ -242,6 +242,9 @@ class ContextInfo{
 
     }
 
+    /// <summary>
+    /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
+    /// </summary>
     public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
@@ -663,9 +666,9 @@ class ContextInfo{
         return pumpPosLs[barPosLs[trial]];
     }
 
-    public float GetDegInTrial(int trial, bool raw = false){
+    public float GetDegInTrial(int trial, bool raw = false, bool withoffset = true){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
-        return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial]) + barOffset) % 360;
+        return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial]) + (withoffset? barOffset: 0)) % 360;
     }
 
     public int GetTrackMarkInTrial(int trial){
@@ -1537,7 +1540,7 @@ public class Moving : MonoBehaviour
             _tempMsg += $", lickCount before: {strLickCount}";
         }
         ui_update.MessageUpdate(_tempMsg);
-        WriteInfo(recType: 1, _lickPos:activitedPos);
+        WriteInfo(recType: 1, _lickPos:activitedPos, addInfo:$"{contextInfo.GetBarShift(nowTrial)}");
 
         List<int> ints = new List<int>();
         // for(int i = 0; i < contextInfo.avaliablePosArray.Count; i++){
@@ -2247,6 +2250,14 @@ public class Moving : MonoBehaviour
         //Debug.Log(command);
         switch(temp_type){
             case 0:{//lick, format: lick:lickInd:TrialMark
+                try{
+                    Convert.ToInt16(command.Split(":")[1]);
+                    Convert.ToInt16(command.Split(":")[2]);
+                }
+                catch(Exception e){
+                    Debug.Log(e.Message + "invalid command: " + command);
+                    return;
+                }
                 int lickInd = Convert.ToInt16(command.Split(":")[1]);
                 int lickTrialMark = Convert.ToInt16(command.Split(":")[2]);
                 float soundCueLeadTime = contextInfo.soundCueLeadTime;
@@ -2330,6 +2341,8 @@ public class Moving : MonoBehaviour
                 break;
             }
             case 9:{//stay
+                try{Convert.ToInt16(command.Split(":")[1]);}
+                catch(Exception e){Debug.Log(e.Message + "invalid command: " + command);return;}
                 int tempType = Convert.ToInt16(command.Split(":")[1]);
                 if(tempType == 0){
                     TriggerRespond(true, 9);
@@ -2676,7 +2689,7 @@ public class Moving : MonoBehaviour
             ProcessWriteQueue();
         }
         else if(!returnTypeHead){
-            time_rec_for_log[1] = Time.fixedUnscaledTime;
+            time_rec_for_log[1] = Time.realtimeSinceStartup;
             try{
                 string data_write =   $@"{recTypeLs[recType]}"
                                         +$"\t{time_rec_for_log[1]-time_rec_for_log[0]}"
@@ -2757,7 +2770,7 @@ public class Moving : MonoBehaviour
             // if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
         #endif
 
-        time_rec_for_log[0] = Time.fixedUnscaledTime;
+        time_rec_for_log[0] = Time.realtimeSinceStartup;
         commandConverter = new CommandConverter(ls_types);
         alarm = new Alarm();
         string errorMessage = $"no config file: {config_path}";
@@ -3115,7 +3128,7 @@ public class Moving : MonoBehaviour
     }
 
     void FixedUpdate(){
-        // UnscaledfixedTime = Time.fixedUnscaledTime;
+        // UnscaledfixedTime = Time.realtimeSinceStartup;
         ui_update.MessageUpdate(UpdateFreq: 1);
         List<string> tempFInishedLs = alarm.GetAlarmFinish();
         foreach (string alarmFinished in tempFInishedLs){
@@ -3234,7 +3247,7 @@ public class Moving : MonoBehaviour
             // }
 
             if(trialStatus != -1 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
-                WriteInfo(pos, $"{Time.fixedUnscaledTime - time_rec_for_log[0]}");
+                WriteInfo(pos, $"{Time.realtimeSinceStartup - time_rec_for_log[0]}");
                 // if(kalmanFilter == null){
                 //     kalmanFilter = new KalmanFilter(pos[0], pos[1]);
                 // }

@@ -501,12 +501,12 @@ public class IPCClient : MonoBehaviour
                     }
                 }
             }else{
-                if(sharedmm.WriteContent($"time:{Time.fixedUnscaledTime}") != -1){//被读了
+                if(sharedmm.WriteContent($"time:{Time.realtimeSinceStartup}") != -1){//被读了
                     int failTimes = 0;
                     while(!activited && failTimes < 99){
                         float waitTime = 0.01f;
                         float nowTime = Time.time;
-                        while(sharedmm.WriteContent($"time:{Time.fixedUnscaledTime}") == -1){
+                        while(sharedmm.WriteContent($"time:{Time.realtimeSinceStartup}") == -1){
                             if(Time.time - nowTime >= waitTime){
                                 break;
                             }
@@ -518,7 +518,7 @@ public class IPCClient : MonoBehaviour
                         foreach(string msg in timeMsgs){
                             if(msg.StartsWith("time:") && !timeUpdated){
                                 if(double.TryParse(msg[5..], out double time)){
-                                    pythonTimeOffset = Time.fixedUnscaledTime - time;
+                                    pythonTimeOffset = Time.realtimeSinceStartup - time;
                                     timeUpdated = true;
                                 }
                                 // break;
