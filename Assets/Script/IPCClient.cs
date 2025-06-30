@@ -351,10 +351,10 @@ public class IPCClient : MonoBehaviour
                 meanSelectArea.Add(new float[]{0, 60, sceneInfo[2]});
             }
 
-            List<int[]>TriggerinationAreas = GetselectedArea().Where(area => area[0] / 32 == 0 && area[1] == 0).ToList();
+            List<int[]>TriggerAreas = GetselectedArea().Where(area => area[0] / 32 == 0 && area[1] == 0).ToList();
             tempradius = 0;
             tempdisttocenter = 0;
-            foreach(int[] area in TriggerinationAreas){
+            foreach(int[] area in TriggerAreas){
                 if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
                 else{tempradius = -1;}
 
@@ -434,7 +434,7 @@ public class IPCClient : MonoBehaviour
             }
         }
 
-        if(!Silent && sharedmm != null && sharedmm.CheckServerOnlineStatus()){
+        if(!Silent && sharedmm != null && sharedmm.CheckServerOnlineStatus()){//if set slient to true, "else" part will close sharedmm
 
             if(activited){
                 // string tempStr = $"From Unity-- Now Time:{Time.time}";
@@ -460,7 +460,7 @@ public class IPCClient : MonoBehaviour
                                 break;
                             }
                             case "select":{
-                                Debug.Log("from Python:" + msg);
+                                // Debug.Log("from Python:" + msg);
                                 if(msg.Split(";").Length == 6){
                                     int[] tempselectedArea = new int[]{-1, -1, -1, -1, -1, -1};
                                     string tempmsg = msg.Split(":")[1];
@@ -541,10 +541,6 @@ public class IPCClient : MonoBehaviour
                     }
                     if(failTimes >= 99){
                         uiUpdate.MessageUpdate($"failed to sync");
-                        // Debug.Log("failed to sync");
-                        // if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
-                        // sharedmm = null;
-                        // Silent = true;
                         CloseSharedmm();
                     }
                 }else{
@@ -563,6 +559,7 @@ public class IPCClient : MonoBehaviour
             }
             // Debug.Log("no one online or not activated");
             if(sharedmm != null){
+                Array.Fill(pos, -1);
                 sharedmm.CloseSharedmm(manually:true);
                 sharedmm = null;
             }

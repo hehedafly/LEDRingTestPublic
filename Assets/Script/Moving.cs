@@ -97,24 +97,33 @@ class ContextInfo{
                 }
             }
             
-            errorMessage = "assign or random port parse";
+            errorMessage = "assign or random pos parse";
             List<int> posLs = new List<int>();
             List<int> availablePosArray = avaliablePosDict.Keys.ToList();
 
-            if(startMethod.StartsWith("random")){
+            if(startMethod.StartsWith("random")){//format like random0,90,180
                 string content = startMethod[6..].Replace(" ", "");
                 string[] temp = content.Length > 0? content.Split(",") : new string[]{};
                 // Debug.Log(temp.Length > 0);
-                if(temp.Length > 0){posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt32(str))? Convert.ToInt32(str): -1).ToList();}
-                else{posLs = availablePosArray;}
-                if(posLs.Contains(-1)){throw new Exception("");}
-                
-                List<int> ints = new List<int>();
-                for (int i = 0; i < posLs.Count * 3; i++){ints.Add(i % posLs.Count);}
-                while(barPosLs.Count < _maxTrial){
-                    Shuffle(ints);
-                    foreach(int j in ints){barPosLs.Add(posLs[j]);}
-                }
+                // try{
+                    if(temp.Length > 0){posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt16(str))? Convert.ToInt16(str): -1).ToList();}
+                    else{posLs = availablePosArray;}
+                    if(posLs.Contains(-1)){throw new Exception("");}
+                    
+                    List<int> ints = new List<int>();
+                    for (int i = 0; i < posLs.Count * 3; i++){ints.Add(i % posLs.Count);}
+                    while(barPosLs.Count < _maxTrial){
+                        Shuffle(ints);
+                        foreach(int j in ints){barPosLs.Add(posLs[j]);}
+                    }
+                // }
+                // catch(FormatException e){
+                //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
+                    
+                // }
+                // catch(Exception e){
+                //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
+                // }
 
                 
             }else if(startMethod.StartsWith("assign")){
@@ -227,31 +236,53 @@ class ContextInfo{
             errorMessage = "barShiftLs";
             barShiftLs = new List<int>();
             barShiftedLs = new List<int>{};
-            RandomParse(_barShiftLs, barShiftLs);
-            
-            foreach( var _ in barPosLs){
-                barShiftedLs.Add(GetRandom(barShiftLs));
+            try{
+                RandomParse(_barShiftLs, barShiftLs);
+                foreach( var _ in barPosLs){
+                    barShiftedLs.Add(GetRandom(barShiftLs));
+                }
             }
-            
+            catch(Exception e) when(e.Message.Equals("invalid input")){//format like random-20~20*30,0.. or random-20~20*30,0*30,-20~20*30 or random0*40,-20~30*20...
+                barShiftedLs.Clear();
+                string lastUnit = "";
+                foreach(string _unit in _barShiftLs[6..].Replace("..", "").Split(",")){
+                    ProcessUnit(_unit, barShiftedLs);
+                    lastUnit = _unit;
+                }
+
+                for(int i=barShiftedLs.Count(); i<_maxTrial; i++){
+                    if(_barShiftLs.EndsWith("..")){
+                        while(barShiftedLs.Count() < maxTrial){
+                            ProcessUnit(lastUnit, barShiftedLs);
+                        }
+                    }else{
+                        barShiftedLs.Add(0);
+                    }
+                    //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
+                }
+            }
         }
         catch{
             MessageBoxForUnity.Ensure($"Value Error in Config: {errorMessage}", "Config Parse Failed");
             Quit();
         }
-        finally{}
+        finally{
+            
+        }
 
     }
 
     /// <summary>
     /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
     /// </summary>
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
         destAreaFollow = _destAreaFollow;
         standingSecInTrigger = _standingSecInTrigger;
         standingSecInDest = _standingSecInDest;
+        countAfterLeave = _countAfterLeave;
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
         DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialFinish", "everyTrialFinish", "nextTrialStart", "nextTrialEnd", "nextTrialFinish"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
@@ -402,6 +433,12 @@ class ContextInfo{
         }
     }
 
+    /// <summary>
+    /// return possible positive numbers before the assigned pattern, like 20,30 will be returned when content:20*n..30*n and pattern:*n were given
+    /// </summary>
+    /// <param name="content"></param>
+    /// <param name="pattern"></param>
+    /// <returns></returns>
     List<int> ExtractFactors(string content, string pattern){
         List<int> indices = content.AllIndexesOf(pattern).ToList();
         return indices.Select(i => 
@@ -415,17 +452,15 @@ class ContextInfo{
                 parsedValue = parseValue;
             }
             return parsedValue;
-            // if (int.TryParse(content.Substring(Math.Max(0, i - 2), 2)))
-            //     return parseValue;
-            // else if (int.TryParse(content.Substring(Math.Max(0, i - 1), 1), out int secparseValue))
-            //     return secparseValue;
-            // else
-            //     return -1;
         })
         .Where(x => x > 0) // Filter out non-positive values
         .ToList();
     }
 
+    /// <summary>
+    /// return the first positive integer before the assigned pattern, like 20 will be returned when content:20*n..30*n and pattern:*n were given
+    /// </summary>
+    /// <returns></returns>
     int ExtractFactor(string content, string pattern, int _default){
         List<int> _res = ExtractFactors(content, pattern);
         if(_res.Count() > 0){
@@ -466,6 +501,7 @@ class ContextInfo{
     public float        soundLength     {get; set;}
     public float        cueVolume {get; set;}
     public string       manuplateMethods {get; set;}
+    public bool         countAfterLeave   {get;set; }
 
     /// <summary>
     /// resore template keys of trigger Dicts:
@@ -523,11 +559,11 @@ class ContextInfo{
                     ls.Sort();
                 }catch{
                     Debug.Log($"error in parse, invalid input: {randomArg}");
-                    throw new Exception("");
+                    throw new Exception("invalid input");
                 }
             }else{
-                Debug.Log("error in parse, invalid input: {randomArg}");
-                throw new Exception("");
+                Debug.Log($"error in parse, invalid input: {randomArg}");
+                throw new Exception("invalid input");
             }
         }else{
             ls.Clear();
@@ -540,12 +576,14 @@ class ContextInfo{
         return (T)Convert.ChangeType(UnityEngine.Random.Range(Convert.ToSingle(_range[0]), Convert.ToSingle(_range[1])), typeof(T));
     }
 
-    void ProcessUnit(string pos){
+    void ProcessUnit(string pos, List<int> targetLs = null){
+        if(targetLs==null){targetLs = barPosLs;}
+
         List<int> _pos = new List<int>{};
-        int multiple = 1;
+        int multiple = 0;
         if(pos.Contains("*")){
-            if(pos.Contains("-")){
-                foreach(string posUnit in pos[..pos.LastIndexOf("*")].Replace("(", "").Replace(")", "").Split('-')){
+            if(pos.Contains("+")){//format like (20+30+20)*n, means 20,30,20, 20,30,20,...
+                foreach(string posUnit in pos[..pos.LastIndexOf("*")].Replace("(", "").Replace(")", "").Split('+')){
                     if(posUnit.Contains("*")){
                         int tempMultiple = Convert.ToInt16(posUnit[(posUnit.IndexOf("*")+1)..]);
                         for(int i = 0; i < tempMultiple; i++){_pos.Add(Convert.ToInt16(posUnit[..posUnit.IndexOf("*")]));}
@@ -556,21 +594,38 @@ class ContextInfo{
                 multiple = Convert.ToInt16(pos[(pos.LastIndexOf("*") + 1)..]);
             }
             else{
-                _pos.Add(Convert.ToInt16(pos[..pos.IndexOf("*")]));
-                multiple = Convert.ToInt16(pos[(pos.IndexOf("*") + 1)..]);
+                string posContent = pos[..pos.IndexOf("*")];
+                try{
+                    multiple = Convert.ToInt16(pos[(pos.IndexOf("*") + 1)..]);
+                    _pos.Add(Convert.ToInt16(posContent));
+                }
+                catch(FormatException) when(multiple > 0){
+                    if(posContent.Contains("~")){
+                        List<int> tempRange = new List<int>();
+                        RandomParse("random" + posContent, tempRange);
+                        for (int i = 0; i < multiple; i++){
+                            targetLs.Add(GetRandom(tempRange));
+                        }
+                        multiple = 0;
+                    }
+                    else{
+                        throw;
+                    }
+                }
             }
         }else{
+            multiple = 1;
             _pos.Add(Convert.ToInt16(pos));
         }
 
         
         for(int i = 0; i < multiple; i++){
             foreach(int posUnit in _pos){
-                if(posUnit < avaliablePosDict.Count()){
-                    barPosLs.Add(posUnit);
+                if(posUnit > avaliablePosDict.Count() && targetLs == barPosLs){
+                    throw new Exception("wrong pos id: pos not in available_pos");
                 }
                 else{
-                    throw new Exception("");
+                    targetLs.Add(posUnit);
                 }
             }
         }
@@ -790,6 +845,11 @@ public class Moving : MonoBehaviour
     float alarmPlayTimeInterval;
     bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
     float alarmLickDelaySec = 2;
+    List<string> recTypeLs = new List<string>(){
+        // 0        1       2     3         4          5           6           7        8          9            10          11          12
+        "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord"
+    };
+    List<string> recTypeAddtion = new List<string>(){"skip", "complete_manually", "null"};
     UIUpdate ui_update;
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
     // public SoundConfig soundConfig;
@@ -1773,14 +1833,13 @@ public class Moving : MonoBehaviour
     }
 
     int TrialResultAdd(int result, int trial, int LickSpout = -1, int rightLickSpout = -1, bool force = false){
+        if(LickSpout < 0 || rightLickSpout < 0){return -2;}
         if(trialResult.Count() == trial){
             trialResult.Add(result);
-            if(LickSpout >= 0){
-                trialResultPerLickSpout[LickSpout*2].Add(result);
-                if(result == 0){
-                    trialResultPerLickSpout[rightLickSpout*2+1].Add(1);
-                    return 1;
-                }
+            trialResultPerLickSpout[LickSpout*2].Add(result);
+            if(result == 0){
+                trialResultPerLickSpout[rightLickSpout*2+1].Add(1);
+                return 1;
             }
         }else{
             if(trialResult.Count() > trial){
@@ -1802,43 +1861,48 @@ public class Moving : MonoBehaviour
 
     }
 
-    public int LickingCheckPubic(int lickInd){
-        return LickingCheck(lickInd, nowTrial);
+    public int LickingCheckPubic(int lickInd, int lickTypeMark = 1){
+        return LickingCheck(lickInd, lickTypeMark);
     }
 
     /// <summary>
     /// check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial
+    /// lick: 1:reach, 0:leave, default 
+    /// return: 1: default lick, 0:default leave  -3:延时, -4:位置判定过
     /// </summary>
     /// <param name="lickInd"></param>
-    /// <param name="lickTrial"></param>
+    /// <param name="lickTypeMark"></param>
     /// <returns></returns>
-    int LickingCheck(int lickInd, int lickTrial){
-        if(lickTrial != nowTrial){
-            Debug.LogWarning("trial not sync");
-            lickTrial = nowTrial;
-        }
-        
-        int rightLickInd = contextInfo.GetRightLickPosIndInTrial(lickTrial);
+    int LickingCheck(int lickInd, int lickTypeMark = 1){
+
+        int rightLickInd = contextInfo.GetRightLickPosIndInTrial(nowTrial);
         
         if(lickInd >= 0 && trialMode >> 4 == 3){
             lickInd = -4;
         }
-
-        lickCountGetSet("set", lickInd, lickTrial);
-
-        if(!forceWaiting){
-            if(lickInd <= -3){
-                if(TrialResultCheck(nowTrial) > 0){//位置检测模式已判定过，
-                    return -4;
+        
+        if(lickTypeMark == 1){
+            lickCountGetSet("set", lickInd, nowTrial);
+            
+            if(!forceWaiting){
+                if(lickInd <= -3){
+                    if(TrialResultCheck(nowTrial) > 0){//位置检测模式已判定过，
+                        return -4;
+                    }else{
+                        WriteInfo(_lickPos: lickInd);
+                    }
                 }else{
                     WriteInfo(_lickPos: lickInd);
                 }
-            }else{
-                WriteInfo(_lickPos: lickInd);
             }
         }
 
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
+            if(lickTypeMark == 0){
+                WriteInfo(_lickPos: lickInd, addInfo:"leave");
+                return 0;
+            }
+            
             bool result = contextInfo.verify(lickInd, nowTrial);
             // if(trialResult.Count == nowTrial+1){
             //     return -2;//错误trial
@@ -1897,7 +1961,7 @@ public class Moving : MonoBehaviour
                         // }//结束时已经给了水，只用结束trial
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
-                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd, -1);
+                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
                         if(result){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             DeactivateBar();
@@ -1921,7 +1985,11 @@ public class Moving : MonoBehaviour
             return 1;//正常判断完成
         }else{
             ui_update.MessageUpdate();
-            return -3;//不需要判断，已返回给commandParse做延时处理
+            if(lickTypeMark == 1 || contextInfo.countAfterLeave){
+                return -3;//不需要判断，已返回给commandParse做延时处理
+            }else{
+                return 1;
+            }
         }
     }
 
@@ -2050,15 +2118,6 @@ public class Moving : MonoBehaviour
         }
         
         return res == 1;
-    
-        // int res = CommandVerify("p_OGActiveMills", _mills);
-        // if(res == 1 || res == -3){
-        //     WriteInfo(recType: 10, _lickPos: _mills);
-        //     Debug.Log($"OG set {_mills}");
-        //     ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
-
-        // }
-        // return res == 1;
     }
 
     /// <summary>
@@ -2259,12 +2318,12 @@ public class Moving : MonoBehaviour
                     return;
                 }
                 int lickInd = Convert.ToInt16(command.Split(":")[1]);
-                int lickTrialMark = Convert.ToInt16(command.Split(":")[2]);
+                int lickTypeMark = Convert.ToInt16(command.Split(":")[2]);
                 float soundCueLeadTime = contextInfo.soundCueLeadTime;
                 float waitFromLastLick = Math.Max(soundCueLeadTime, contextInfo.waitFromLastLick);
 
                 // if(LickResultCheck(lickInd, lickTrialMark) == -3 && waitFromLastLick > 0){
-                if(LickingCheck(lickInd, nowTrial) == -3){//仍在waiting
+                if(LickingCheck(lickInd, lickTypeMark) == -3){//仍在waiting
                     if(trialStartTime < 0){//trial开始前指定时间舔了应延迟
                         if(waitFromLastLick > 0){
                             float _lasttime = waitSec - (Time.fixedUnscaledTime - waitSecRec);
@@ -2347,7 +2406,7 @@ public class Moving : MonoBehaviour
                 if(tempType == 0){
                     TriggerRespond(true, 9);
                 }else if(tempType == 1){
-                    LickingCheckPubic(-3);
+                    LickingCheckPubic(lickInd:-3);
                 }
                 break;
             }
@@ -2671,6 +2730,7 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord
     /// if enqueMsg is not empty, it will enqueue the message and not write in normal format.
+    /// mouse leave lick spout marked by addInfo.
     /// </summary>
     /// <param name="returnTypeHead"></param>
     /// <param name="recType"></param>
@@ -2679,11 +2739,6 @@ public class Moving : MonoBehaviour
     /// <returns></returns>
     public string WriteInfo(bool returnTypeHead = false, int recType = 0, int _lickPos = -1, string enqueueMsg = "", string addInfo = ""){
         if(! returnTypeHead && nowTrial == -1){return "";}
-
-        List<string> recTypeLs = new List<string>(){
-            // 0        1       2     3         4          5           6           7        8          9            10          11          12
-            "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord"
-        };
         if(enqueueMsg != ""){
             logWriteQueue.Enqueue(enqueueMsg);
             ProcessWriteQueue();
@@ -2691,6 +2746,9 @@ public class Moving : MonoBehaviour
         else if(!returnTypeHead){
             time_rec_for_log[1] = Time.realtimeSinceStartup;
             try{
+                string recTypeStr = (recType == 0 && _lickPos < 0)? recTypeAddtion[Math.Abs(_lickPos) - 1]: recTypeLs[recType];
+                if(recTypeStr.Equals("null")){return "";}
+
                 string data_write =   $@"{recTypeLs[recType]}"
                                         +$"\t{time_rec_for_log[1]-time_rec_for_log[0]}"
                                         +$"\t0x{trialMode:X2}"
@@ -2860,7 +2918,7 @@ public class Moving : MonoBehaviour
                 iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
                 iniReader.ReadIniContent(                   "settings", "pump_pos"          ,   "0,1,2,3"               ),                 // string _pump_pos_array
                 iniReader.ReadIniContent(                   "settings", "lick_pos"          ,   "0,1,2,3"               ),                 // string _lick_pos_array
-                iniReader.ReadIniContent(                   "settings", "TrackPosMark"      ,  ""                      ),                 // string _lick_pos_array
+                iniReader.ReadIniContent(                   "settings", "TrackPosMark"      ,   ""                      ),                 // string _lick_pos_array
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings", "max_trial"         ,   "10000"                 )),               // int _maxTrial
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLight"   ,   "0"                     )),                // int _backgroundLight
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings", "backgroundLightRed",   "-1"                    )),                // int _backgroundLightRed
@@ -2885,7 +2943,8 @@ public class Moving : MonoBehaviour
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrigger"    ,   "0.5" )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrialInDest",   "0.5" )),
                 iniReader.ReadIniContent(                   "settings"      , "OGTriggerMethod"          ,   ""                  ),
-                iniReader.ReadIniContent(                   "settings"      , "MSTriggerMethod"          ,   ""                  )
+                iniReader.ReadIniContent(                   "settings"      , "MSTriggerMethod"          ,   ""                  ),
+                iniReader.ReadIniContent(                   "settings"      , "countAfterLeave"          ,   "true"              ) == "true"
             );
 
         }
@@ -3240,29 +3299,20 @@ public class Moving : MonoBehaviour
         if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
             int markCountPerType = 32;
             long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
-            List<int[]> selectedAreas = ipcclient.GetselectedArea();
-            // Debug.Log(JsonConvert.SerializeObject(selectedAreas));
-            // if(kalmanFilter != null){
-                
-            // }
 
             if(trialStatus != -1 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
                 WriteInfo(pos, $"{Time.realtimeSinceStartup - time_rec_for_log[0]}");
-                // if(kalmanFilter == null){
-                //     kalmanFilter = new KalmanFilter(pos[0], pos[1]);
-                // }
-                
-                List<int[]> TriggerAreas = selectedAreas.Where(area => area[0] / markCountPerType == 0).ToList();
-
-                // if(selectedArea[..(selectedArea.Length - 2)].Contains(-1)){break;}
-                if(trialStartTriggerMode == 3){//trigger，目前所有trigger区域合并处理
+                if(trialStartTriggerMode == 3){//trigger
                     pos[0..2].CopyTo(standingPos, 0);
                     bool InTriggerArea = false;
-                    foreach (int[] selectedArea in TriggerAreas){
-                        if(CheckInRegion(pos, selectedArea)){
+                    // foreach (int[] selectedArea in TriggerAreas){
+                    List<int[]> areas = ipcclient.GetCurrentSelectArea();
+                    if(areas.Count>0){
+                        if(CheckInRegion(pos, areas[1])){
                             InTriggerArea = true;
                         }
                     }
+                    // }
                     if(InTriggerArea){
                         standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
                         float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
@@ -3341,7 +3391,7 @@ public class Moving : MonoBehaviour
                 return;
             }
             if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime && trialResult.Count <= nowTrial){//超时进入下一个trial，因track模式下小鼠完成任务和结束分离，加入result判断
-                LickingCheck(-1, nowTrial);
+                LickingCheck(-1);
             }
 
         }

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.UIElements;
 using Image = UnityEngine.UI.Image;
@@ -20,8 +21,13 @@ public class UIUpdate : MonoBehaviour
     public Text TexContextHighFreqInfo;
     public Text TexContextFixInfo;
     public Text TexContextInfo;
-    public Text logMessage;
+    string logMessage = "";
+    public Text PageNum;
+    public Text logMessageShow;
+    List<string> logMessageList = new List<string>();
     public Scrollbar logScrollBar;
+    int logWindowDraging = 0;//-1: another page, 0: no draging, 1: draging
+    int logPage = 0;
     public List<InputField> inputFields = new List<InputField>();
     Dictionary<string, string> inputFieldContent = new Dictionary<string, string>();
     List<Dropdown> dropdowns = new List<Dropdown>();
@@ -180,6 +186,35 @@ public class UIUpdate : MonoBehaviour
                 }
                 break;
             }
+            case "IPCDisconnect":{
+                if(moving.IsIPCInNeed()){
+                    moving.Ipcclient.Silent = true;
+                    moving.Ipcclient.Activated = false;
+                }
+                break;
+            }
+            case"PageUp":{
+                logPage = Math.Max(logPage - 1, 0);
+                if(logMessageList.Count > 0){
+                    logMessageShow.text = logMessageList[logPage];
+                    logWindowDraging = -1;
+                }
+                PageNum.text = $"{logPage+1}/{logMessageList.Count+1}";
+                break;
+            }
+            case "PageDown":{
+                logPage = Math.Min(logPage + 1, Math.Max(0, logMessageList.Count));
+                if(logPage != logMessageList.Count){
+                    logMessageShow.text = logMessageList[logPage];
+                    logWindowDraging = -1;
+                }else{
+                    logMessageShow.text = logMessage;
+                    logWindowDraging = 1;
+                    alarm.TrySetAlarm("setlogWindowDragingToZeorAfter5sec", 5f, out _);
+                }
+                PageNum.text = $"{logPage+1}/{logMessageList.Count+1}";
+                break;
+            }
             default:{
                 if(elementsName.StartsWith("sound")){
                     if(stringArg.StartsWith("passive")){//format: passive;add;soundName/-
@@ -303,7 +338,7 @@ public class UIUpdate : MonoBehaviour
 
         if(elementsName.StartsWith("LickSpout")){
             string Spout = elementsName.Substring(elementsName.Length-1);
-            moving.CommandParsePublic($"lick:{Spout}:{moving.NowTrial}");
+            moving.CommandParsePublic($"lick:{Spout}:1");
         }else if (elementsName.StartsWith("WaterSpout")){
             string Spout = elementsName.Substring(elementsName.Length-1);
             moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
@@ -360,7 +395,7 @@ public class UIUpdate : MonoBehaviour
 
     public string MessageUpdate(string add_log_message="", int UpdateFreq = 0, bool returnAllMsg = false, bool attachToLastLine = false){//随时可能被调用，需要对内容做null检查
         if(returnAllMsg){
-            return logMessage.text + "\n" + TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
+            return logMessage + "\n" + TexContextHighFreqInfo.text + "\n" + TexContextInfo.text;
         }
 
         if(UpdateFreq == 1){//高频
@@ -374,23 +409,32 @@ public class UIUpdate : MonoBehaviour
         }else if(UpdateFreq == -1){//fix
             TexContextFixInfo.text = add_log_message;
         }else{
+            string _time = DateTime.Now.ToString("HH:mm:ss ");
+            if(logMessage.Contains(_time) && logMessage.Contains(_time+add_log_message)){return "";}
+            
             if(add_log_message!=""){
-                if(logMessage.text.Length > 8000){
+                if(logMessage.Length > 8000){
                     //moving.WriteInfo(enqueueMsg: log_message.text);
-                    moving.LogList.Add(logMessage.text);
-                    logMessage.text = "";
+                    moving.LogList.Add(logMessage);
+                    logMessageList.Add(logMessage);
+                    logMessage = "";
+                    if(logPage == logMessageList.Count - 1){
+                        logPage ++;
+                        // logMessageShow.text = logMessage;
+                    }
+                    // logPage ++;
                 }
 
-                string _time = DateTime.Now.ToString("HH:mm:ss ");
-                if(logMessage.text.Contains(_time) && logMessage.text.Contains(_time+add_log_message)){
-                    return "";
+                if(attachToLastLine){
+                    logMessage = (logMessage.EndsWith("\n")? logMessage.Substring(0, logMessage.Length-1) :"") + "  --" + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }else{
-                    if(attachToLastLine){
-                        logMessage.text = (logMessage.text.EndsWith("\n")? logMessage.text.Substring(0, logMessage.text.Length-1) :"") + "  --" + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
-                    }else{
-                        logMessage.text += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
-                    }
+                    logMessage += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }
+                if(logPage == logMessageList.Count){
+                    logMessageShow.text = logMessage;
+                }
+
+                PageNum.text = $"{logPage+1}/{logMessageList.Count+1}";
 
                 if(alarm != null){
                     alarm.TrySetAlarm("setBarToZeroAfterSizeChange", 0.5f, out _);
@@ -540,6 +584,25 @@ public class UIUpdate : MonoBehaviour
             if (focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue"){focus_input_field.text="";}
         }
         // MessageUpdate();
+        if(Input.GetMouseButtonDown(0) && logWindowDraging >= 0){
+            PointerEventData eventData = new PointerEventData(EventSystem.current);
+            eventData.position = Input.mousePosition;
+            List<RaycastResult> raysastResults = new List<RaycastResult>();
+            EventSystem.current.RaycastAll(eventData, raysastResults);
+
+            for (int index = 0; index < raysastResults.Count; index++)
+            {
+                RaycastResult curRaysastResult = raysastResults[index];
+                if(curRaysastResult.gameObject.name == "LogWindowBackground"){
+                    if(logWindowDraging == 0){
+                        logWindowDraging = 1;
+                        alarm.TrySetAlarm("setlogWindowDragingToZeorAfter5sec", 5f, out _);
+                    }
+                    // alarm.TrySetAlarm("setBarToZeroAfterSizeChange", 2f, out _);
+
+                }
+            }
+        }
 
         _FrameCount++;
         _TimeCount += Time.unscaledDeltaTime;
@@ -562,6 +625,10 @@ public class UIUpdate : MonoBehaviour
                     SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.white);
                     break;
                 }
+                case"setlogWindowDragingToZeorAfter5sec":{
+                    logWindowDraging = 0;
+                    break;
+                }
                 default:{
                     break;
                 }
@@ -571,7 +638,9 @@ public class UIUpdate : MonoBehaviour
         alarm.AlarmFixUpdate();
 
         if(alarm.GetAlarm("setBarToZeroAfterSizeChange") >= 0){
-            logScrollBar.value = 0;
+            if(logWindowDraging == 0){
+                logScrollBar.value = 0;
+            }
         }
         //Debug.Log(logScrollBar.value);
     }
