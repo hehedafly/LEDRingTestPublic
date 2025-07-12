@@ -13,6 +13,8 @@ public class ScrButton : MonoBehaviour
     public Sprite checkBoxYes;
     public Sprite checkBoxNo;
     public int pressCount = 0;
+    public Color defaultColor;
+    Color previousColor;
     public void OnClick(){
         if(ui_update != null){
             if(!Input.GetKey(KeyCode.LeftControl) & !Input.GetKey(KeyCode.RightControl) & !Input.GetKey(KeyCode.LeftShift) & !Input.GetKey(KeyCode.RightShift)){
@@ -24,7 +26,12 @@ public class ScrButton : MonoBehaviour
         }
     }
 
-    public void ChangeColor(Color color){
+    public void ChangeColor(Color color, bool setToDefault = false, bool setToPrevious = false){
+        if(setToDefault && setToPrevious){Debug.Log("Error: Both setToDefault and setToPrevious are true");return;}
+
+        if(setToPrevious){GetComponent<Image>().color = previousColor;return;}
+        previousColor = GetComponent<Image>().color;
+        if(setToDefault){GetComponent<Image>().color = defaultColor;return;}
         GetComponent<Image>().color = color;
     }
 
@@ -38,6 +45,8 @@ public class ScrButton : MonoBehaviour
             ui_update.AddSelf(this.GetComponent<UnityEngine.UI.Button>());
             added = true;
         }
+        defaultColor = GetComponent<Image>().color;
+        previousColor = defaultColor;
     }
 
     void Start()

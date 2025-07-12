@@ -49,18 +49,17 @@ public class UIUpdate : MonoBehaviour
         return 1;
     }
 
-    public int SetButtonColor(string buttonName, Color color){
-        foreach(UnityEngine.UI.Button button in buttons){
-            if (button.name == buttonName){
-                button.GetComponent<ScrButton>().ChangeColor(color);
-                return 1;
-            }
+    public int SetButtonColor(string buttonName, Color color = default, bool setToDefault = false, bool setToPrevious = false){
+        UnityEngine.UI.Button button = buttons.Find(button => button.name == buttonName);
+        if(button != null){
+            SetButtonColor(button, color, setToDefault, setToPrevious);
+            return 1;
         }
         return -1;
     }
-    void SetButtonColor(UnityEngine.UI.Button _button, Color color){
+    void SetButtonColor(UnityEngine.UI.Button _button, Color color = default, bool setToDefault = false, bool setToPrevious = false){
         if(_button == null){return;}
-        _button.GetComponent<ScrButton>().ChangeColor(color);
+        _button.GetComponent<ScrButton>().ChangeColor(color, setToDefault, setToPrevious);
     }
 
     public void ControlsParsePublic(string elementsName,float value, string stringArg=""){
@@ -75,19 +74,37 @@ public class UIUpdate : MonoBehaviour
     /// <param name="stringArg"></param>
     public void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreKeyboard = true){
         if(! ignoreKeyboard){//目前仅支持button延时点击
-            if(Input.GetKey(KeyCode.LeftControl) & Input.GetKey(KeyCode.LeftShift) & buttons.Find(button => button.name == elementsName) != null){
+            UnityEngine.UI.Button selectedButton = buttons.Find(button => button.name == elementsName);
+            if(selectedButton != null){
                 string targetButtonTimingName = $"buttonTiming{elementsName}";
-                if(alarm.GetAlarmAddInfo(targetButtonTimingName) != elementsName){
-                    if(float.TryParse(inputFieldContent[$"IFTiming"], out float _sec)){
-                        alarm.TrySetAlarm(targetButtonTimingName, _sec, out _, addInfo:elementsName, force:true);
-                        MessageUpdate($"button {elementsName} timing set to {_sec}s");
-                        inputFields.Find(inputfield => inputfield.name == "IFTiming").text = "";
+                bool isTiming = alarm.GetAlarmAddInfo(targetButtonTimingName) == elementsName;
+                if(!isTiming){
+                    if(Input.GetKey(KeyCode.LeftControl) & Input.GetKey(KeyCode.LeftShift)){
+                        if(float.TryParse(inputFieldContent[$"IFTiming"], out float _sec)){
+                            alarm.TrySetAlarm(targetButtonTimingName, _sec, out _, addInfo:elementsName, force:true);
+                            MessageUpdate($"button {elementsName} timing set to {_sec}s");
+                            inputFields.Find(inputfield => inputfield.name == "IFTiming").text = "";
+                            inputFieldContent[$"IFTiming"] = "null";
+                            SetButtonColor(selectedButton, Color.yellow);
+                        }else{
+                            MessageUpdate("please input a valid number for button timing");
+                        }
+                        return;
                     }
                 }else{
                     alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);
                     MessageUpdate($"button {elementsName} timing cancelled");
+                    SetButtonColor(selectedButton, setToPrevious:true);
+                    return;
                 }
-                return;
+                // }else{
+                //     if(isTiming){
+                //         alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);
+                //         MessageUpdate($"button {elementsName} timing cancelled");
+                //         SetButtonColor(selectedButton, setToPrevious:true);
+                //         return;
+                //     }
+                // }
             }
         }
         //if(string_arg==""){return;}
@@ -194,7 +211,7 @@ public class UIUpdate : MonoBehaviour
                 moving.DebugMode = !moving.DebugMode;
                 foreach(UnityEngine.UI.Button button in buttons){
                     if(button.name == "DebugButton"){
-                        SetButtonColor(button, moving.DebugMode? Color.green: Color.grey);
+                        SetButtonColor(button, moving.DebugMode? Color.green: button.GetComponent<ScrButton>().defaultColor);
                     }
                 }
                 break;
@@ -259,13 +276,13 @@ public class UIUpdate : MonoBehaviour
                             if(tempId == 0){//"Off"
                                 moving.ChangeSoundPlayMode(0, 0, "", true);
                                 foreach(UnityEngine.UI.Button button in soundOptionsDict.Values){
-                                    SetButtonColor(button, Color.gray);
+                                    SetButtonColor(button, setToDefault:true);
                                     button.GetComponent<ScrButton>().pressCount = 0;
                                 }
                             }else{//其他
                                 if(moving.audioPlayModeNow.Contains(0)){
                                     moving.audioPlayModeNow.Remove(0);
-                                    SetButtonColor(soundOptionsDict[0], Color.gray);
+                                    SetButtonColor(soundOptionsDict[0], setToDefault:true);
                                     soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
                                 }
                                 if(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)){
@@ -275,7 +292,7 @@ public class UIUpdate : MonoBehaviour
                                 }else{
                                     bool selected = soundOptionsDict[tempId].GetComponent<ScrButton>().pressCount % 2 == 1;
                                     int _result = moving.ChangeSoundPlayMode(tempId, selected? 1: 0, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
-                                    SetButtonColor(soundOptionsDict[tempId], selected? Color.green: Color.gray);
+                                    SetButtonColor(soundOptionsDict[tempId], selected? Color.green: soundOptionsDict[tempId].GetComponent<ScrButton>().defaultColor);
                                     // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
                                     MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
                                 }
@@ -315,13 +332,14 @@ public class UIUpdate : MonoBehaviour
                     }else if(_content == "Stop"){
                         bool res = _type == "OG"? moving.OGSet(0): moving.MSSet(0);
                         if(res){
-                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), Color.grey);
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), setToDefault:true);
                         }
                     }else if(_content == "Enable"){
                         if(moving.DeviceEnableDict.TryGetValue(_type, out bool _enabled)){
                             _enabled = ! _enabled;
                             moving.DeviceEnableDict[_type] = _enabled;
-                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), _enabled? Color.green: Color.grey);
+                            if(_enabled){}
+                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green, !_enabled);
 
                         }else{
                             moving.DeviceEnableDict.Add(_type, true);
@@ -604,6 +622,7 @@ public class UIUpdate : MonoBehaviour
                 default:{
                     if(alarmFinished.StartsWith("buttonTiming")){
                         string timingButtonName = alarm.GetAlarmAddInfo(alarmFinished);//format:"{buttonName}"，暂时不需要stringArg传递
+                        SetButtonColor(timingButtonName, setToPrevious:true);
                         ControlsParse(timingButtonName, 1);
                         alarm.DeleteAlarm(alarmFinished);
                     }
