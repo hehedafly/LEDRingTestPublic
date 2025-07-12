@@ -8,14 +8,14 @@ using UnityEngine;
 public class Alarm
 {
     // Start is called before the first frame update
-    long[] alarm = new long[20];
-    long[] alarmRec = new long[20];
-    int[] alarmPause = new int[20];
-    int[] alarmStartAfter = new int[20];
-    int[] alarmExecuteTimes = new int[20];
+    long[] alarm = new long[40];
+    long[] alarmRec = new long[40];
+    int[] alarmPause = new int[40];
+    int[] alarmStartAfter = new int[40];
+    int[] alarmExecuteTimes = new int[40];
     Dictionary<string, int> alarmNameIndDic = new Dictionary<string, int>();
     List<string> alarmName = new List<string>();
-    float[] alarmAddInfo = new float[20];
+    string[] alarmAddInfo = new string[40];
     public Alarm(int initValue = -1, int size = 20){
         if(alarm.Count() != size){
             alarm = new long[size];
@@ -60,7 +60,7 @@ public class Alarm
     /// <param name="executeCount"></param>
     /// <param name="addInfo"></param> -1 in default
     /// <returns></returns>
-    public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0, float addInfo = -1){
+    public bool TrySetAlarm(string _alarmName, long frames, out int alarmInd, int executeCount = 0, string addInfo = "", bool force = false){
         // Debug.Log($"{_alarmName} set for {frames} frames");
         if(!alarmName.Contains(_alarmName)){
             for(int i = 0; i < alarm.Count(); i++){
@@ -74,15 +74,15 @@ public class Alarm
             alarmInd = -1;
             return false;
         }else{
-            SetAlarm(alarmNameIndDic[_alarmName], frames, executeCount:executeCount);
+            SetAlarm(alarmNameIndDic[_alarmName], frames, executeCount:executeCount, force:force);
             alarmAddInfo[alarmNameIndDic[_alarmName]] = addInfo;
             alarmInd = alarmNameIndDic[_alarmName];
             return true;
         }
     }
 
-    public bool TrySetAlarm(string _alarmName, float _sec, out int alarmInd, int executeCount = 0, float addInfo = -1){
-        return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount, addInfo);
+    public bool TrySetAlarm(string _alarmName, float _sec, out int alarmInd, int executeCount = 0, string addInfo = "", bool force = false){
+        return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount, addInfo, force);
     }
 
     public int PauseAlarm(int ind){
@@ -192,19 +192,19 @@ public class Alarm
         //return -1;
     }
 
-    public float GetAlarmAddInfo(int ind){
+    public string GetAlarmAddInfo(int ind){
         if(ind < 0 || ind >= alarm.Count()){
-            return -2;
+            return "//invalid ind";
         }
         return alarmAddInfo[ind];
     }
 
-    public float GetAlarmAddInfo(string indName){
+    public string GetAlarmAddInfo(string indName){
         if(alarmNameIndDic.TryGetValue(indName, out int ind)){
             return alarmAddInfo[ind];
         }
         else{
-            return -2;
+            return "//invalid name";
         }
     }
 

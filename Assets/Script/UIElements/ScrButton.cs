@@ -15,10 +15,12 @@ public class ScrButton : MonoBehaviour
     public int pressCount = 0;
     public void OnClick(){
         if(ui_update != null){
-            pressCount ++;
+            if(!Input.GetKey(KeyCode.LeftControl) & !Input.GetKey(KeyCode.RightControl) & !Input.GetKey(KeyCode.LeftShift) & !Input.GetKey(KeyCode.RightShift)){
+                pressCount ++;
+            }
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParse(name, 1);
+            ui_update.ControlsParse(name, 1, ignoreKeyboard:false);
         }
     }
 

@@ -8,7 +8,7 @@ public class ScrScrollBar : MonoBehaviour
     public UIUpdate ui_update;
 
     public void OnValueChanged(float value){
-        ui_update.ControlsParse(name, value);
+        ui_update.ControlsParsePublic(name, value);
     }
     void Start()
     {

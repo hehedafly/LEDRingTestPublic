@@ -39,28 +39,24 @@ public class ExeLauncher
         public int flagsEx;
     }
 
-    public string Start(string exePath)
+    public string Start(string exePath, string exeName = "", bool forceLaunch = false)
     {
-        return LaunchExe(exePath);
+        return LaunchExe(exePath, exeName, forceLaunch);
     }
 
-    private string LaunchExe(string exePath)
+    private string LaunchExe(string exePath, string exeName = "", bool forceLaunch = false)
     {
 
-        if (IsValidExePath(exePath))
-        {
+        if(!IsValidExePath(exePath)){exePath = OpenFileDialog();}
+
+        if(IsValidExePath(exePath)){
+            if (System.Diagnostics.Process.GetProcessesByName(exeName).Length > 0 & !forceLaunch) {
+                return exePath;
+            }
             StartExe(exePath);
             return exePath;
         }
-        else
-        {
-            string newPath = OpenFileDialog();
-            if(!string.IsNullOrEmpty(newPath))
-            {
-                StartExe(newPath);
-                return newPath;
-            }
-        }
+
         return "";
     }
 

@@ -2101,7 +2101,7 @@ public class Moving : MonoBehaviour
         }
 
         if(alarm.GetAlarm("ogEnd") >= 0){
-            alarm.TrySetAlarm("ogStart", 1, out _, addInfo:_mills);
+            alarm.TrySetAlarm("ogStart", 1, out _, addInfo:$"{_mills}");
             alarm.StartAlarmAfter("ogStart", "ogEnd");
             alarm.TrySetAlarm("ogEnd", 1, out _);
         }else{
@@ -2129,7 +2129,7 @@ public class Moving : MonoBehaviour
         bool _on = _sec > 0 || _sec == -1;
         int res = 0;
         if(alarm.GetAlarm("miniscopeEnd") >= 0){
-            alarm.TrySetAlarm("miniscopeStart", 1, out _, addInfo:_sec);
+            alarm.TrySetAlarm("miniscopeStart", 1, out _, addInfo:$"{_sec}");
             alarm.StartAlarmAfter("miniscopeStart", "miniscopeEnd");
             alarm.TrySetAlarm("miniscopeEnd", 1, out _);
         }else{
@@ -2956,8 +2956,10 @@ public class Moving : MonoBehaviour
 
         ExeLauncher exeLauncher= new ExeLauncher();
         if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
-            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""));
-            iniReader.WriteIniContent("settings", "logEventPath", _path);
+            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""), "LogEvent");
+            if(File.Exists(_path)){
+                iniReader.WriteIniContent("settings", "logEventPath", _path);
+            }
         }
 
         lickPosLsCopy = contextInfo.lickPosLs;
@@ -3171,11 +3173,11 @@ public class Moving : MonoBehaviour
     }
 
     void Start(){
-        ui_update.ControlsParse("ModeSelect", trialMode, "passive");
-        ui_update.ControlsParse("TriggerModeSelect", trialStartTriggerMode, "passive");
+        ui_update.ControlsParsePublic("ModeSelect", trialMode, "passive");
+        ui_update.ControlsParsePublic("TriggerModeSelect", trialStartTriggerMode, "passive");
         IsIPCInNeed();
         foreach(int mode in audioPlayModeNow){
-            ui_update.ControlsParse("sound", mode, $"passive;add;{audioSources[mode].name}");
+            ui_update.ControlsParsePublic("sound", mode, $"passive;add;{audioSources[mode].name}");
         }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
         else{                          ui_update.MessageUpdate($"interval: {contextInfo.trialTriggerDelay[0]} ~ {contextInfo.trialTriggerDelay[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
@@ -3241,8 +3243,9 @@ public class Moving : MonoBehaviour
                     break;
                 }
                 case "miniscopeStart":{
-                    float _secInAlarm = alarm.GetAlarmAddInfo("miniscopeStart");
-                    if(_secInAlarm > 0){MSSet((int)_secInAlarm);}
+                    if(float.TryParse(alarm.GetAlarmAddInfo("miniscopeStart"), out float _secInAlarm)){
+                        if(_secInAlarm > 0){MSSet((int)_secInAlarm);}
+                    }else{Debug.Log("wrong argument in time set");}
                     break;
                 }
                 case "miniscopeEnd":{
@@ -3250,8 +3253,9 @@ public class Moving : MonoBehaviour
                     break;
                 }
                 case "ogStart":{
-                    float _secInAlarm = alarm.GetAlarmAddInfo("ogStart");
-                    if(_secInAlarm > 0){OGSet((int)_secInAlarm);}
+                    if(float.TryParse(alarm.GetAlarmAddInfo("miniscopeStart"), out float _secInAlarm)){
+                        if(_secInAlarm > 0){OGSet((int)_secInAlarm);}
+                    }else{Debug.Log("wrong argument in time set");}
                     break;
                 }
                 case "ogEnd":{

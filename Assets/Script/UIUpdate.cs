@@ -62,6 +62,10 @@ public class UIUpdate : MonoBehaviour
         if(_button == null){return;}
         _button.GetComponent<ScrButton>().ChangeColor(color);
     }
+
+    public void ControlsParsePublic(string elementsName,float value, string stringArg=""){
+        ControlsParse(elementsName, value, stringArg);
+    }
     
     /// <summary>
     /// for inputfield, stringArg is the content of IF, value is 0 if failed to parse to float
@@ -69,7 +73,23 @@ public class UIUpdate : MonoBehaviour
     /// <param name="elementsName"></param>
     /// <param name="value"></param>
     /// <param name="stringArg"></param>
-    public void ControlsParse(string elementsName,float value, string stringArg=""){
+    public void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreKeyboard = true){
+        if(! ignoreKeyboard){//目前仅支持button延时点击
+            if(Input.GetKey(KeyCode.LeftControl) & Input.GetKey(KeyCode.LeftShift) & buttons.Find(button => button.name == elementsName) != null){
+                string targetButtonTimingName = $"buttonTiming{elementsName}";
+                if(alarm.GetAlarmAddInfo(targetButtonTimingName) != elementsName){
+                    if(float.TryParse(inputFieldContent[$"IFTiming"], out float _sec)){
+                        alarm.TrySetAlarm(targetButtonTimingName, _sec, out _, addInfo:elementsName, force:true);
+                        MessageUpdate($"button {elementsName} timing set to {_sec}s");
+                        inputFields.Find(inputfield => inputfield.name == "IFTiming").text = "";
+                    }
+                }else{
+                    alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);
+                    MessageUpdate($"button {elementsName} timing cancelled");
+                }
+                return;
+            }
+        }
         //if(string_arg==""){return;}
         switch (elementsName){
             case "StartButton":{
@@ -99,6 +119,7 @@ public class UIUpdate : MonoBehaviour
             }
             case "IFSerialMessage":{
                 string temp_str=serialMessageInputs.text;
+                MessageUpdate($"serial message sent: {temp_str}");
                 if(serialMessageInputs.text.StartsWith("//")){
                     moving.DataSendRaw(temp_str);
                 }else{
@@ -308,30 +329,6 @@ public class UIUpdate : MonoBehaviour
                         }
                     }
                 }
-                // else if(elementsName.StartsWith("MS")){
-                //     string _content = elementsName.Substring(2);
-                //     if(_content == "Start"){
-                //         if(!int.TryParse(inputFieldContent["MSTime"], out int _sec)){_sec = 1000;}
-                //         if(moving.MSSet(_sec)){
-                //             SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.green);
-                //             // alarm.TrySetAlarm("MSStartToGrey", 0.5f, out _);
-                //         }
-                //     }else if(_content == "Stop"){
-                //         if(moving.MSSet(0)){
-                //             SetButtonColor(buttons.Find(button => button.name == "MSStart"), Color.grey);
-                //         }
-                //     }else if(_content == "Enable"){
-                //         if(moving.DeviceEnableDict.TryGetValue("MS", out bool _enabled)){
-                //             _enabled = ! _enabled;
-                //             moving.DeviceEnableDict["MS"] = _enabled;
-                //             SetButtonColor(buttons.Find(button => button.name == "MSEnable"), _enabled? Color.green: Color.grey);
-
-                //         }else{
-                //             moving.DeviceEnableDict.Add("MS", true);
-                //             SetButtonColor(buttons.Find(button => button.name == "MSEnable"), Color.green);
-                //         }
-                //     }
-                // }
                 break;
             }
         }
@@ -344,31 +341,6 @@ public class UIUpdate : MonoBehaviour
             moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
         }
     }
-
-    // public void CheckBoxControlsParse(string elementsName,float value, string stringArg=""){
-    //     if(elementsName.StartsWith("MS")){
-    //         string _name = elementsName.Substring(2);
-    //         switch(_name){
-    //             case "trialStart":{
-    //                 break;
-    //             }
-    //             default:{
-    //                 break;
-    //             }
-    //         }
-            
-    //     }else if(elementsName.StartsWith("OG")){
-    //         string _name = elementsName.Substring(2);
-    //         switch(_name){
-    //             case "":{
-    //                 break;
-    //             }
-    //             default:{
-    //                 break;
-    //             }
-    //         }
-    //     }
-    // }
 
     /// <summary>
     /// 
@@ -630,6 +602,11 @@ public class UIUpdate : MonoBehaviour
                     break;
                 }
                 default:{
+                    if(alarmFinished.StartsWith("buttonTiming")){
+                        string timingButtonName = alarm.GetAlarmAddInfo(alarmFinished);//format:"{buttonName}"，暂时不需要stringArg传递
+                        ControlsParse(timingButtonName, 1);
+                        alarm.DeleteAlarm(alarmFinished);
+                    }
                     break;
                 }
             }

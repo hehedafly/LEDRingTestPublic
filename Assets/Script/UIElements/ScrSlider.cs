@@ -11,7 +11,7 @@ public class ScrSlider : MonoBehaviour
 
     public void OnValueChanged(float value){
         if(valueText != null){valueText.text = value.ToString();}
-        if(ui_update != null){ui_update.ControlsParse(name, value);}
+        if(ui_update != null){ui_update.ControlsParsePublic(name, value);}
     }
     
     void Start()
