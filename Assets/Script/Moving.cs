@@ -788,7 +788,7 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// -1：初始未开始，-2：forcewaiting, -3:not start but record，0：waiting， 1：started，2：finished but not end
     /// </summary>
-    public  int trialStatus = -1;
+    public  int trialStatus = -2;
     int[] trialDeviceTriggerStatus = new int[3];
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
     /// <summary>
@@ -1464,7 +1464,7 @@ public class Moving : MonoBehaviour
             }else{
 
             }
-            InitTrial();
+            InitTrial(isFristInit:manual);
         }
         
         if((trialStartTriggerMode == 0 || trialStartTriggerMode == 4) && manual || (!manual && trialStartReady == true)){//延时触发以及trial结束后触发仅在最初通过manual调用
@@ -1489,7 +1489,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    int InitTrial(){
+    int InitTrial(bool isFristInit = false){
         nowTrial = -1;
         trialStatus = -1;
         ContextInitSync();
@@ -1509,6 +1509,12 @@ public class Moving : MonoBehaviour
             trialResultPerLickSpout.Add(new List<int>());
         }
         // cueSoundPlayTime = new float[]{cueSoundPlayTime[0], -1, -1};
+        if(isFristInit){
+            if(trialStartTriggerMode == 3 && ipcclient.Activated){
+                ipcclient.SetCurrentTriggerArea(0);
+                ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
+            }
+        }
         StopSound();
         DeactivateBar();
         trialInitTime = Time.fixedUnscaledTime;
@@ -1542,6 +1548,8 @@ public class Moving : MonoBehaviour
         SetBarMaterial(tempMs);
         alarmPlayReady = true;//为waiting的delay允许alarm
         if(ipcclient.Activated){
+            ipcclient.MDClearTemp();
+
             int markCountPerType = 32;
             int rightMark = contextInfo.GetTrackMarkInTrial(nowTrial);
             List<int[]>DestinationAreas = ipcclient.GetselectedArea().Where(area => area[0] / markCountPerType == 1).ToList();
@@ -1632,10 +1640,11 @@ public class Moving : MonoBehaviour
         alarmPlayReady = false;
         alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);
         alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
-        if(ipcclient.Activated){
+        if(ipcclient.Activated && trialStartTriggerMode == 3){
             ipcclient.MDClearTemp();
+            ipcclient.SetCurrentTriggerArea(0);
+            ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
         }
-
         
         WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
         //Debug.Log("rightLickSpout" + rightLickSpout);
@@ -3304,9 +3313,9 @@ public class Moving : MonoBehaviour
             int markCountPerType = 32;
             long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
 
-            if(trialStatus != -1 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
+            if(trialStatus != -2 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
                 WriteInfo(pos, $"{Time.realtimeSinceStartup - time_rec_for_log[0]}");
-                if(trialStartTriggerMode == 3){//trigger
+                if(trialStartTriggerMode == 3 && (trialStatus == -1 || trialStatus == 0)){//trigger
                     pos[0..2].CopyTo(standingPos, 0);
                     bool InTriggerArea = false;
                     // foreach (int[] selectedArea in TriggerAreas){

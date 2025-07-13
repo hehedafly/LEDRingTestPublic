@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections.Generic;
 using System.Linq;
 using System;
+using Unity.VisualScripting;
 
 namespace MouseDraw{
 public class MouseDrawer
@@ -196,9 +197,9 @@ public class MouseDrawer
     #endregion
 
     #region 轨迹系统
-    public void UpdateTrail(Vector2 pos)
+    public void UpdateTrail(Vector2 pos, bool force = false, float distanceThreshold = 1)
     {
-        
+        if(!force && trailPoints.Count>0 && Vector2.Distance(trailPoints.Last(), pos) < distanceThreshold){return;}
         trailPoints.Enqueue(pos);
         if (trailPoints.Count > maxTrailLength){
             // Color[] historypixels = historyLayer.GetPixels();
