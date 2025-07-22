@@ -29,6 +29,7 @@ public class UIUpdate : MonoBehaviour
     int logWindowDraging = 0;//-1: another page, 0: no draging, 1: draging
     int logPage = 0;
     public List<InputField> inputFields = new List<InputField>();
+    public Dropdown backgroundSwitch;
     Dictionary<string, string> inputFieldContent = new Dictionary<string, string>();
     List<Dropdown> dropdowns = new List<Dropdown>();
     List<Dropdown> soundDropdowns = new List<Dropdown>();
@@ -62,49 +63,51 @@ public class UIUpdate : MonoBehaviour
         _button.GetComponent<ScrButton>().ChangeColor(color, setToDefault, setToPrevious);
     }
 
-    public void ControlsParsePublic(string elementsName,float value, string stringArg=""){
-        ControlsParse(elementsName, value, stringArg);
+    public void ControlsParsePublic(string elementsName,float value, string stringArg="", bool ignoreKeyboard = true, bool forceTiming = false){
+        ControlsParse(elementsName, value, stringArg, ignoreKeyboard, forceTiming);
     }
     
     /// <summary>
     /// for inputfield, stringArg is the content of IF, value is 0 if failed to parse to float
+    /// for ButtonTiming, stringArg is the timing value(in seconds)
     /// </summary>
     /// <param name="elementsName"></param>
     /// <param name="value"></param>
     /// <param name="stringArg"></param>
-    public void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreKeyboard = true){
+    void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreKeyboard = true, bool forceTiming = false){
         if(! ignoreKeyboard){//目前仅支持button延时点击
             UnityEngine.UI.Button selectedButton = buttons.Find(button => button.name == elementsName);
             if(selectedButton != null){
                 string targetButtonTimingName = $"buttonTiming{elementsName}";
-                bool isTiming = alarm.GetAlarmAddInfo(targetButtonTimingName) == elementsName;
+                bool isTiming = alarm.GetAlarmAddInfo(targetButtonTimingName) == elementsName || moving.ButtonTriggerDict.ContainsKey(elementsName);
                 if(!isTiming){
-                    if(Input.GetKey(KeyCode.LeftControl) & Input.GetKey(KeyCode.LeftShift)){
-                        if(float.TryParse(inputFieldContent[$"IFTiming"], out float _sec)){
-                            alarm.TrySetAlarm(targetButtonTimingName, _sec, out _, addInfo:elementsName, force:true);
+                    if(Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) || forceTiming){
+                        if(float.TryParse(stringArg, out float _sec) || float.TryParse(inputFieldContent[$"IFTimingBySec"], out _sec)){
+                            alarm.TrySetAlarm(targetButtonTimingName, _sec, out _, addInfo:"FromTiming", force:true);
                             MessageUpdate($"button {elementsName} timing set to {_sec}s");
-                            inputFields.Find(inputfield => inputfield.name == "IFTiming").text = "";
-                            inputFieldContent[$"IFTiming"] = "null";
+                            inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
+                            inputFieldContent[$"IFTimingBySec"] = "null";
                             SetButtonColor(selectedButton, Color.yellow);
-                        }else{
+                        }else if(int.TryParse(inputFieldContent[$"IFTimingByTrial"], out int _trial)){//默认按trial start，暂时不考虑finish和end
+                            if(moving.ButtonTriggerDict.ContainsKey(elementsName)){moving.ButtonTriggerDict.Remove(elementsName);}
+                            MessageUpdate($"button {elementsName} timing set to trial {_trial}");
+                            moving.ButtonTriggerDict.Add(elementsName, _trial);
+                            inputFields.Find(inputfield => inputfield.name == "IFTimingByTrial").text = "";
+                            inputFieldContent[$"IFTimingByTrial"] = "null";
+                            SetButtonColor(selectedButton, Color.yellow);
+                        }
+                        else{
                             MessageUpdate("please input a valid number for button timing");
                         }
                         return;
                     }
                 }else{
-                    alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);
+                    if(moving.ButtonTriggerDict.ContainsKey(elementsName)){moving.ButtonTriggerDict.Remove(elementsName);}
+                    else{alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);}
                     MessageUpdate($"button {elementsName} timing cancelled");
                     SetButtonColor(selectedButton, setToPrevious:true);
                     return;
                 }
-                // }else{
-                //     if(isTiming){
-                //         alarm.DeleteAlarm(targetButtonTimingName, forceDelete:true);
-                //         MessageUpdate($"button {elementsName} timing cancelled");
-                //         SetButtonColor(selectedButton, setToPrevious:true);
-                //         return;
-                //     }
-                // }
             }
         }
         //if(string_arg==""){return;}
@@ -127,7 +130,12 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "ExitButton":{
-                moving.Exit();
+                if(stringArg == "FromTiming"){
+                    moving.Exit();
+                }else{
+                    moving.PreExit();
+                    ControlsParse(elementsName, 1, "1", ignoreKeyboard:false, forceTiming:true);
+                }
                 break;
             }
             case "SliderPos":{
@@ -217,10 +225,19 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "IPCRefreshButton":{
-                if(alarm.GetAlarm("ipcRefresh") < 0 && moving.IsIPCInNeed()){
-                    moving.Ipcclient.Silent = true;
-                    moving.Ipcclient.Activated = false;
-                    alarm.TrySetAlarm("ipcRefresh", 2.0f, out _);
+                if(moving.IsIPCInNeed()){
+                    if(alarm.GetAlarm("ipcRefresh") < 0 && alarm.GetAlarm("checkIPCConnectStatus") < 0){
+                        moving.Ipcclient.Silent = true;
+                        moving.Ipcclient.Activated = false;
+                        alarm.TrySetAlarm("ipcRefresh", 1.0f, out _);
+                        SetButtonColor(elementsName, Color.green);
+                    }else{
+                        moving.Ipcclient.Silent = true;
+                        moving.Ipcclient.Activated = false;
+                        alarm.DeleteAlarm("ipcRefresh", forceDelete:true);
+                        alarm.DeleteAlarm("checkIPCConnectStatus", forceDelete:true);
+                        SetButtonColor(elementsName, setToPrevious:true);
+                    }
                 }
                 break;
             }
@@ -251,6 +268,11 @@ public class UIUpdate : MonoBehaviour
                     alarm.TrySetAlarm("setlogWindowDragingToZeorAfter5sec", 5f, out _);
                 }
                 PageNum.text = $"{logPage+1}/{logMessageList.Count+1}";
+                break;
+            }
+            case "BackgroundSwitch":{
+                string matName = backgroundSwitch.captionText.text;
+                moving.SetBackgroundMaterial(moving.Backgrounds.Find(m => m.name == matName));
                 break;
             }
             default:{
@@ -499,6 +521,7 @@ public class UIUpdate : MonoBehaviour
         buttons.Add(startButton);
         dropdowns.Add(modeSelect);
         dropdowns.Add(triggerModeSelect);
+        dropdowns.Add(backgroundSwitch);
         soundOptionsDict = new Dictionary<int, UnityEngine.UI.Button>();
         logScrollBar.GetComponent<ScrScrollBar>().ui_update = this;
 
@@ -516,6 +539,8 @@ public class UIUpdate : MonoBehaviour
                 }
             }
         }
+        
+        backgroundSwitch.AddOptions(moving.Backgrounds.Select(m => m.name).ToList());
 
         foreach(UnityEngine.UI.Slider slider in sliders){
             if(slider.GetComponent<ScrSlider>() != null){
@@ -605,6 +630,7 @@ public class UIUpdate : MonoBehaviour
             switch(alarmFinished){
                 case "ipcRefresh":{
                     moving.Ipcclient.Silent = false;
+                    alarm.TrySetAlarm("checkIPCConnectStatus", 3.0f, out _, force:true);
                     break;
                 }
                 case "OGStartToGrey":{
@@ -619,11 +645,23 @@ public class UIUpdate : MonoBehaviour
                     logWindowDraging = 0;
                     break;
                 }
+                case "checkIPCConnectStatus":{
+                    if(moving.Ipcclient.Activated){
+                        alarm.DeleteAlarm("checkIPCConnectStatus", forceDelete:true);
+                        SetButtonColor("IPCRefreshButton", setToPrevious:true);
+                    }else{
+                        moving.Ipcclient.Silent = true;
+                        moving.Ipcclient.Activated = false;
+                        alarm.TrySetAlarm("ipcRefresh", 0.5f, out _, force:true);
+                    }
+                    break;
+                }
                 default:{
                     if(alarmFinished.StartsWith("buttonTiming")){
-                        string timingButtonName = alarm.GetAlarmAddInfo(alarmFinished);//format:"{buttonName}"，暂时不需要stringArg传递
+                        string timingButtonName = alarmFinished[12..];
+                        string _args = alarm.GetAlarmAddInfo(alarmFinished);//format:"{buttonName}"，暂时不需要stringArg传递
                         SetButtonColor(timingButtonName, setToPrevious:true);
-                        ControlsParse(timingButtonName, 1);
+                        ControlsParse(timingButtonName, 1, _args);
                         alarm.DeleteAlarm(alarmFinished);
                     }
                     break;

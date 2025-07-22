@@ -15,6 +15,7 @@ using TMPro;
 using UnityEngine.Experimental.GlobalIllumination;
 using MatrixClaculator;
 using Unity.VisualScripting;
+// using System.Drawing;
 
 [System.Serializable]
 class ContextInfo{
@@ -35,7 +36,8 @@ class ContextInfo{
         barPosLs = new List<int>();
         barmatLs = new List<string>();
         materialsInfo = new List<string>();
-
+        
+        UnityEngine.Random.InitState(seed);
         string errorMessage = "";
         try{
             errorMessage = "avaliablePosArray";
@@ -708,7 +710,8 @@ class ContextInfo{
     }
 
     public int GetFinalBarPos(int trial){
-        return (GetBarPos(trial) + GetBarShift(trial) + GetBarOffset()) % 360;
+        return (GetDegInTrial(trial, raw:false, withoffset:true) + 360)  % 360;
+        // return (GetBarPos(trial) + GetBarShift(trial) + GetBarOffset()) % 360;
     }
 
     public int GetRightLickPosIndInTrial(int trial){
@@ -721,7 +724,7 @@ class ContextInfo{
         return pumpPosLs[barPosLs[trial]];
     }
 
-    public float GetDegInTrial(int trial, bool raw = false, bool withoffset = true){
+    public int GetDegInTrial(int trial, bool raw = false, bool withoffset = true){
         if(trial < 0 || trial >= barPosLs.Count){return -1;}
         return (avaliablePosDict[barPosLs[trial]] + (raw? 0: barShiftedLs[trial]) + (withoffset? barOffset: 0)) % 360;
     }
@@ -839,6 +842,7 @@ public class Moving : MonoBehaviour
     /// </summary>
     Dictionary<int, float[]> audioPlayTimes = new Dictionary<int, float[]>{};
     public List<string> TrialSoundPlayModeExplain = new List<string>{"Off", "BeforeTrial", "NearStart", "BeforeGoCue", "BeforeLickCue", "InPos", "EnableReward", "AtFail"};
+    public List<Material> Backgrounds = new List<Material>();
     float cueVolume;
 
     // float[] cueSoundPlayTime    {get{return audioPlayTimes.Count > 0? audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]]: new float[3];} set{if(audioPlayTimes.Count > 0){audioPlayTimes[TrialSoundPlayModeCorresponding["BeforeTrial"]] = value;}}}
@@ -884,6 +888,11 @@ public class Moving : MonoBehaviour
     public GameObject refseg;
     Material refSegementMat;
     public Dictionary<string, bool> DeviceEnableDict = new Dictionary<string, bool>{};
+    public Dictionary<string, int> ButtonTriggerDict = new Dictionary<string, int>{};
+    /// <summary>
+    /// 0:Optogenetics, 1:Miniscope, 2:PythonScript
+    /// </summary>
+    bool[] DeviceCloseOptionBeforeExits = new bool[3]{true, true, false};
 
     /// <summary>
     /// DeviceTriggerMethod = new List<string>() {"certainTrialStart", "everyTrialStart", "randomTrialStart", "certainTrialEnd", "everyTrialEnd"};
@@ -964,10 +973,12 @@ public class Moving : MonoBehaviour
                 if(!UnityEngine.ColorUtility.TryParseHtmlString(_mat, out color)){
                     return this;
                 }
-                if(name.Contains("background")){
+                if(name == "backgroundMat"){
                     color = new Color(Math.Max(backgroundLight, color.r)/255, Math.Max(BackgroundLightRedMode? 0: backgroundLight, color.g)/255, Math.Max(BackgroundLightRedMode? 0: backgroundLight, color.b)/255);
                 }
                 material = new Material(Shader.Find("Unlit/Color")){color = color};
+                material.name = name == "backgroundMat"? "Main background": material.name;
+
             }else{
                 #if UNITY_EDITOR
                 string tempPath = $"Assets/Resources/{_mat}.png";
@@ -975,32 +986,23 @@ public class Moving : MonoBehaviour
                 string tempPath = Application.dataPath + $"/Resources/{_mat}.png";
                 #endif
                 if(System.IO.File.Exists(tempPath)){
-                    //创建文件读取流
-                    FileStream fileStream = new FileStream(tempPath, FileMode.Open, FileAccess.Read);
-                    fileStream.Seek(0, SeekOrigin.Begin);
-                    //创建文件长度缓冲区
-                    byte[] bytes = new byte[fileStream.Length]; 
-                    //读取文件
-                    fileStream.Read(bytes, 0, (int)fileStream.Length);
-                    //释放文件读取流
-                    fileStream.Close();
-                    fileStream.Dispose();
-                    fileStream = null;
-
-                    Texture2D texture = new Texture2D(100, 100);
-                    texture.LoadImage(bytes);
-                    material.SetTexture("_MainTex", texture);
+                    LoadMaterialFromPath(tempPath, ref material);
                     material.mainTextureScale = new Vector2(width/400, 1);
+                    if(name == "backgroundMat"){material.name = "Main background";}
                 }else{
                     Debug.LogWarning($"No such Material named {_mat}.png");
                 }
             }
 
             return this;
-
         }
-        public void SetMaterial(GameObject gameObject){
+
+        public void SetMaterialToObject(GameObject gameObject){
             gameObject.GetComponent<MeshRenderer>().material = material;
+        }
+
+        public Material GetMaterial(){
+            return material;
         }
 
         public string PrintArgs(){
@@ -1051,31 +1053,36 @@ public class Moving : MonoBehaviour
         return values;
     }
 
-    // void SetMaterial(List<GameObject> goList, string _mat){
-    // void SetMaterial(List<GameObject> goList, MaterialStruct _mat){
-        
-    //     foreach(GameObject go in goList){
-    //         // go.GetComponent<MeshRenderer>().material = tempMaterial;
-    //         _mat.SetMaterial(go);
-    //     }
-    // }
+    public static void LoadMaterialFromPath(string path, ref Material material){
+            FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            fileStream.Seek(0, SeekOrigin.Begin);
+            //创建文件长度缓冲区
+            byte[] bytes = new byte[fileStream.Length]; 
+            //读取文件
+            fileStream.Read(bytes, 0, (int)fileStream.Length);
+            //释放文件读取流
+            fileStream.Close();
+            fileStream.Dispose();
 
-    // // void SetMaterial(GameObject go, string _mat){
-    // void SetMaterial(GameObject go, MaterialStruct _mat){
-    //     SetMaterial(new List<GameObject>(){go}, _mat);
-    // }
-
-    // void SetBarMaterial(bool isDriftGrating, float _speed = 1, float _frequency = 5, int _direction = 1, int _horizontal = 0, string _mat = "#000000", float _backgroundLight = 0, GameObject otherBar = null){
+            Texture2D texture = new Texture2D(100, 100);
+            texture.LoadImage(bytes);
+            material.SetTexture("_MainTex", texture);
+        }
+    
     void SetBarMaterial(MaterialStruct _mat, GameObject otherBar = null){
         GameObject tempBar = otherBar == null? bar: otherBar;
         if(tempBar.GetComponent<MeshRenderer>().material.name == _mat.Name+" (Instance)"){return;}
         // Debug.Log(tempBar.name);
         // Debug.Log(bar.GetComponent<MeshRenderer>().material.shader.name);
-        _mat.SetMaterial(tempBar);
+        _mat.SetMaterialToObject(tempBar);
         if(isRing && otherBar == null){
-            _mat.SetMaterial(barChild);
-            _mat.SetMaterial(barChild2);
+            _mat.SetMaterialToObject(barChild);
+            _mat.SetMaterialToObject(barChild2);
         }
+    }
+
+    public void SetBackgroundMaterial(Material _mat){
+        background.GetComponent<MeshRenderer>().material = _mat;
     }
     
     MaterialStruct GetMaterialStruct(string matName){
@@ -1093,7 +1100,8 @@ public class Moving : MonoBehaviour
             tempPos = contextInfo.GetDeg(pos);
             SetBarPos(DegToPos(tempPos));
         }else if(trial != -1){
-            tempPos = contextInfo.GetDegInTrial(trial);
+            // tempPos = contextInfo.GetDegInTrial(trial);
+            tempPos = contextInfo.GetFinalBarPos(trial);
             SetBarPos(DegToPos(tempPos));
         }else{
             return (int)tempPos;
@@ -1189,7 +1197,8 @@ public class Moving : MonoBehaviour
         // }else{
         //     SetMaterial(background, _backgroundMatName);
         // }
-        backgroundMat.SetMaterial(background);
+        backgroundMat.SetMaterialToObject(background);
+        Backgrounds.Insert(0, backgroundMat.GetMaterial());
         // MaterialDict["backgroundMat"].SetMaterial(background);
         DeactivateBar();
 
@@ -1558,12 +1567,12 @@ public class Moving : MonoBehaviour
             if(rightMark >= 0 && contextInfo.destAreaFollow){
                 int[] CertainAreaNowTrial = DestinationAreas.Find(area => area[0] % markCountPerType == rightMark);
                 if(CertainAreaNowTrial != null){//ipcclient绘制部分
-                    ipcclient.SetCurrentDestArea(contextInfo.GetBarShift(nowTrial)+ contextInfo.GetBarPos(nowTrial), circle:true);
+                    ipcclient.SetCurrentDestArea(contextInfo.GetDegInTrial(nowTrial, withoffset:false), circle:CertainAreaNowTrial[1] == 0);
                     List<int[]> areas = ipcclient.GetCurrentSelectArea();
                     if(trialStartTriggerMode == 3){
                         foreach(int[] tarea in TriggerAreas){areas.Add(tarea);}
                     }
-                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});
+                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});//矩形绘制bar所在位置
                 }else{
                     Debug.Log("No selected area match the pos now");
                 }
@@ -1579,6 +1588,8 @@ public class Moving : MonoBehaviour
                 }else{
                     Debug.Log("No selected area match the pos now");
                 }
+            }else{
+                ui_update.MessageUpdate("No selected area match the pos now");
             }
         }
 
@@ -1730,7 +1741,7 @@ public class Moving : MonoBehaviour
 
     public bool IsIPCInNeed(){
         bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3;
-        ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
+        // ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
         return res;
     }
 
@@ -1755,12 +1766,7 @@ public class Moving : MonoBehaviour
                 trialMode = _mode;
 
                 SetIPCAvtive(IsIPCInNeed());
-                // if(IPCInNeed()){
-                //     ipcclient.Silent = false;
-                // }else{
-                //     ipcclient.Silent = true;
-                //     ipcclient.Activated = false;
-                // }
+
                 nowTrial = -1;
                 forceWaiting = true;
                 int temp_sync_result = ContextInitSync();
@@ -2158,8 +2164,8 @@ public class Moving : MonoBehaviour
     }
     
     void CloseDevices(){
-        OGSet(0);
-        MSSet(0);
+        if(DeviceCloseOptionBeforeExits[0]){OGSet(0);}
+        if(DeviceCloseOptionBeforeExits[1]){MSSet(0);}
         // serialSync = false;
         // serialSyncThread.Join();
     }
@@ -2197,6 +2203,7 @@ public class Moving : MonoBehaviour
         // if (triggerType < 2){
         var OGTrigger = contextInfo.OGTriggerSortedInType[triggerType];
         var MSTrigger = contextInfo.MSTriggerSortedInType[triggerType];
+        var ButtonTrigger = ButtonTriggerDict.ContainsValue(nowTrial) ? ButtonTriggerDict.Keys.Where(x => ButtonTriggerDict[x] == nowTrial).ToList() : new List<string>();
         if(DeviceEnableDict.TryGetValue("OG", out bool _enable) && _enable){
             foreach(var _trigger in OGTrigger){
                 int _mills = ui_update.TryGetDeviceSetTime("OGTime", out int _mills_temp)? _mills_temp: -1;
@@ -2244,13 +2251,13 @@ public class Moving : MonoBehaviour
                 }
             }
         }
-            // return true;
         
-        // }else if(triggerType == 2){
-            
-        // }
+        foreach(string buttonName in ButtonTrigger){
+            ui_update.ControlsParsePublic(buttonName, 1);
+            ButtonTriggerDict.Remove(buttonName);
+        }
 
-        return false;
+        return true;
     }
 
     #endregion context generate end
@@ -2920,8 +2927,8 @@ public class Moving : MonoBehaviour
         try{
             contextInfo = new ContextInfo(
                 iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
-                iniReader.ReadIniContent(                   "settings", "available_pos"     ,   "0, 90, 180, 270, 360"  ),                 // string _available_pos_array
-                iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "0, 90, 180, 270, 360"  ),                 // string _assigned_pos
+                iniReader.ReadIniContent(                   "settings", "available_pos"     ,   "0, 90, 180, 270"  ),                 // string _available_pos_array
+                iniReader.ReadIniContent(                   "settings", "assign_pos"        ,   "(0+1+2+3)*100.."  ),                 // string _assigned_pos
                 iniReader.ReadIniContent(                   "settings", "MatStartMethod"    ,   "assign"                ),
                 iniReader.ReadIniContent(                   "settings", "MatAvailable"      ,   "default"               ),               
                 iniReader.ReadIniContent(                   "settings", "MatAssign"         ,   "default.."             ),              
@@ -2942,7 +2949,7 @@ public class Moving : MonoBehaviour
                 iniReader.ReadIniContent(                   "settings", "barShiftLs"        ,   "0"                     ),                // string _f_wait_sec
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings", "trialExpireTime"   ,   "9999"                  )),                // float trialExpireTime
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
-                Convert.ToInt16(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
+                Convert.ToInt32(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
             );
             contextInfo.ContextInfoAdd(
                 Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "soundLength"             ,   "0.2"                   )),                // float 
@@ -2969,6 +2976,14 @@ public class Moving : MonoBehaviour
             if(File.Exists(_path)){
                 iniReader.WriteIniContent("settings", "logEventPath", _path);
             }
+        }
+        if(iniReader.ReadIniContent("settings", "openPythonScript", "false") == "true"){
+            string _command = iniReader.ReadIniContent("settings", "PythonScriptCommand", "");
+            List<string> options = exeLauncher.CommandParser(_command);
+            exeLauncher.LaunchPython(
+                options[0], options[1], options[2], options[3]
+            );
+            DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
         }
 
         lickPosLsCopy = contextInfo.lickPosLs;
@@ -2999,19 +3014,47 @@ public class Moving : MonoBehaviour
         }
                 
         foreach(string _option in iniReader.ReadIniContent("soundSettings" , "TrialSoundPlayMode", "").Split(";")){
-            List<string> _optionList = _option.Split(":").ToList();
-            try{
-                int mode = _optionList.Count > 0 ? Convert.ToInt16(_optionList[0]): -1;
-                string _audioName =  _optionList.Count > 1 ? _optionList[1]: audioClips.Keys.First();
-                ChangeSoundPlayMode(mode, audioPlayModeNow.Contains(mode)? 2: 1, _audioName);
-            }
-            catch(Exception e){
-                Debug.LogError(e.Message);
+            List<string> _optionList = _option.Split(":").Where(x => x!= "").ToList();
+            if(_optionList.Count>0){
+                try{
+                    int mode = Convert.ToInt16(_optionList[0]);
+                    string _audioName =  _optionList.Count > 1 ? _optionList[1]: audioClips.Keys.First();
+                    ChangeSoundPlayMode(mode, audioPlayModeNow.Contains(mode)? 2: 1, _audioName);
+                }
+                catch(Exception e){
+                    Debug.LogError(e.Message);
+                }
             }
         }
 
         alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
+        foreach(Texture2D _background in Resources.LoadAll("Backgrounds")){
+            Material material = new Material(materialMissing);
+            material.SetTexture("_MainTex", _background);
+            material.name = _background.name;
+            Backgrounds.Add(material);
+        }
+        // #if UNITY_EDITOR
+        // string tempPath = $"Assets/Resources/Backgrounds";
+        // #else
+        // string tempPath = Application.dataPath + $"/Resources/Backgrounds";
+        // #endif
+        if(InApp){
+            string tempPath = Application.dataPath + $"/Backgrounds";
+            if(Directory.Exists(tempPath)){
+                List<string> availableBackgroundPicExtensions = new List<string>{".jpg", ".png", ".jpeg"};
+                foreach(FileInfo _backgroundFile in new DirectoryInfo(tempPath).GetFiles()){
+                        if(availableBackgroundPicExtensions.Contains(_backgroundFile.Extension)){
+                        Material material = new Material(materialMissing);
+                        LoadMaterialFromPath(_backgroundFile.FullName, ref material);
+                        material.name = _backgroundFile.Name.Split('.')[0];
+                        Backgrounds.Add(material);
+                    }
+                }
+            }
+        }
+        
         MaterialStruct defaultMat = new MaterialStruct();
         MaterialDict.Add("default", defaultMat.Init("default", "", materialMissing));
         
@@ -3271,6 +3314,10 @@ public class Moving : MonoBehaviour
                     OGSet(0);
                     break;
                 }
+                case "ClosePythonScript":{
+                    ipcclient.ClosePythonScript();
+                    break;
+                }
                 default:{
                     break;
                 }
@@ -3407,6 +3454,12 @@ public class Moving : MonoBehaviour
                 LickingCheck(-1);
             }
 
+        }
+    }
+
+    public void PreExit(){
+        if(DeviceCloseOptionBeforeExits[2]){
+            alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 10);
         }
     }
 

@@ -45,21 +45,17 @@ public class IPCClient : MonoBehaviour
     /// </summary>
     /// <value></value>
     long[] pos = new long[]{-1, -1, -1, -1, -1};
-    Dictionary<int, int[]> circledAreas = new Dictionary<int, int[]>();//key: 0~359, value:pos array
+    Dictionary<int, int[]> circledDestAreas = new Dictionary<int, int[]>();//key: 0~359, value:pos array
+    Dictionary<int, int[]> circledTriggerAreas = new Dictionary<int, int[]>();//key: 0~359, value:pos array
     List<int[]> currentArea = new List<int[]>();//0:destarea, 1:triggerarea
     
-    /// <summary>    selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; x/centerx ; y/centery ; w/rad ; h/inner
-    /// 
-    /// </summary> <summary>
-    /// 
+    /// <summary>    selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; x/centerx ; y/centery ; w/rad ; h/0:in,1:out
     /// </summary>
-    /// <typeparam name="int[]"></typeparam>
-    /// <returns></returns>
     List<int[]> selectedAreas = new List<int[]>();
     int selectAreaCount = -1;
 
     /// <summary>
-    /// 0-markType(0:dest, 1:trigger); 1-radius; 2-distance to center
+    /// elements: float[] -- 0-markType(0:dest, 1:trigger); 1-radius; 2-distance to center
     /// </summary>
     /// <typeparam name="float[]"></typeparam>
     /// <returns></returns>
@@ -107,44 +103,60 @@ public class IPCClient : MonoBehaviour
         for(int i = 0; i < tempPos.Count(); i++){
             List<int[]> rightArea = selectedAreas.Where(arr => arr[0] - 32 == i).ToList();
             if(rightArea.Count() > 0){
-                if(circledAreas.TryGetValue(tempPos[i], out _)){circledAreas.Remove(tempPos[i]);}
-                circledAreas.Add(tempPos[i], rightArea[0]);
+                if(!circledDestAreas.ContainsKey(tempPos[i])){circledDestAreas.Add(tempPos[i], rightArea[0]);}
             }
         }
         return 1;
     }
 
-    public int[] GetCircledShiftArea(int angle){
-        if (circledAreas.ContainsKey(angle)){
-            return circledAreas[angle];
+    public int[] GetCircledShiftDestArea(int angle){
+        if (circledDestAreas.ContainsKey(angle)){
+            return circledDestAreas[angle];
         }else{
             return new int[]{};
         }
     }
 
-    public int[] CreateShiftedSelectedCircle(int[] _selectedPos, int shiftAngle){
+    /// <summary>
+    /// math caculation, argument need sceneInfo angle added for formatting
+    /// </summary>
+    /// <param name="_selectedPos"></param>
+    /// <param name="radiusToCenter"></param>
+    /// <param name="targetAngle"></param>
+    /// <returns></returns> <summary>
+    /// 
+    /// </summary>
+    /// <param name="_selectedPos"></param>
+    /// <param name="radiusToCenter"></param>
+    /// <param name="targetAngle"></param>
+    /// <returns></returns>
+    public int[] CreateShiftedSelectedCircle(int[] _selectedPos, float radiusToCenter = -1, int targetAngle = -1){
         if(_selectedPos.Count() == 0){return new int[]{};}
         if(_selectedPos[1] != 0){Debug.Log("wrong arg of selectedPos"); return new int[]{};}
-        // int oAngle = (int)sceneInfo[3];
-        // if(shiftAngle == 0){
-        //     circledAreas.TryAdd(oAngle, _selectedPos);
-        // }
-        int tempangle = shiftAngle % 360;
-        circledAreas.TryAdd(tempangle, GetShiftedSelectedCircle(_selectedPos, shiftAngle));
-        return circledAreas[tempangle];
+        int tempangle = (targetAngle + 360) % 360;
+        int[] tempArea = GetShiftedSelectedCircle(_selectedPos, radiusToCenter, targetAngle:tempangle);
+        return tempArea;
     }
 
-    int[] GetShiftedSelectedCircle(int[] _selectedPos, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
-        return GetShiftedSelectedCircle(_selectedPos, new int[]{(int)sceneInfo[0], (int)sceneInfo[1]}, (int)sceneInfo[2], shiftAngle);
+    /// <summary>
+    /// if shiftAngle given, shift selectedPos, if targetAngle given, rotate selectedPos to targetAngle and ignore shiftAngle
+    /// //selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
+    /// </summary>
+    /// <returns></returns>
+    int[] GetShiftedSelectedCircle(int[] _selectedPos, float radiusToCenter = -1, float shiftAngle = -1, float targetAngle = -1){
+        return GetShiftedSelectedCircle(_selectedPos, new int[]{(int)sceneInfo[0], (int)sceneInfo[1]}, radiusToCenter, shiftAngle, targetAngle);
     }
 
-    int[] GetShiftedSelectedCircle(int[] _selectedPos, int[] center, float radius, float shiftAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
+    int[] GetShiftedSelectedCircle(int[] _selectedPos, int[] center, float radiusToCenter, float shiftAngle, float targetAngle){//selectPlace: list[int] = [-1, -1, -1, -1, -1, -1]#type: mark; type(check pos region), 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner
         if(_selectedPos.Length != 6 || _selectedPos[1] != 0){Debug.Log("wrong arg of selectedPos"); return _selectedPos;}
+        if(shiftAngle < 0 && targetAngle < 0){Debug.Log("invalid angle input"); return _selectedPos;}
         int[] selectedCircle = new int[_selectedPos.Length];
         _selectedPos.CopyTo(selectedCircle, 0);
+        if(radiusToCenter < 0){radiusToCenter = Vector2.Distance(new Vector2(center[0], center[1]), new Vector2(_selectedPos[2], _selectedPos[3]));}
         double tempangle = Math.Atan2(_selectedPos[2]-center[0], _selectedPos[3]-center[1]);
-        selectedCircle[2] = center[0] + (int)(radius * Math.Sin(shiftAngle * Math.PI / 180 + tempangle));
-        selectedCircle[3] = center[1] - (int)(radius * Math.Cos(shiftAngle * Math.PI / 180 + tempangle));
+        if(targetAngle > 0){shiftAngle = 0; tempangle = targetAngle;}
+        selectedCircle[2] = center[0] + (int)(radiusToCenter * Math.Sin((shiftAngle + tempangle) * Math.PI / 180));
+        selectedCircle[3] = center[1] - (int)(radiusToCenter * Math.Cos((shiftAngle + tempangle) * Math.PI / 180));
         return selectedCircle;
     }
 
@@ -207,24 +219,36 @@ public class IPCClient : MonoBehaviour
         return 0;
     }
 
-    public int SetCurrentDestArea(int shiftAngle, bool circle, List<int[]> _selectedPoses = null){
+    public int SetCurrentDestArea(int targetAngle, bool circle, List<int[]> _selectedPoses = null){
         if(!circle){return -1;}
         if(currentArea.Count == 0){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
-        if(circledAreas.ContainsKey(shiftAngle)){
-            currentArea[0] = circledAreas[shiftAngle];
+        if(circledDestAreas.ContainsKey(targetAngle)){
+            currentArea[0] = circledDestAreas[targetAngle];
             return 1;
         }
         
         if(_selectedPoses == null){
-            int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
-            int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
-            int[] tempArea = new int[]{64, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
-            circledAreas.TryAdd(shiftAngle, tempArea);
+            int[] tempArea = CreateShiftedSelectedCircle(new int[]{64, 0, -1, -1, (int)meanSelectArea[0][1], -1}, (int)meanSelectArea[0][2], targetAngle:(targetAngle + (int)sceneInfo[3]));
+            // int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            // int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            // int[] tempArea = new int[]{64, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
+            circledDestAreas.TryAdd(targetAngle, tempArea);
             currentArea[0] = tempArea;
         }else{
-            foreach(int[] _selectedPos in _selectedPoses){
-                currentArea[0] = CreateShiftedSelectedCircle(_selectedPos, shiftAngle);
+            int tempradius = 0;
+            double tempdisttocenter = 0;
+            foreach(int[] area in _selectedPoses){
+                if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
+                else{tempradius = -1;}
+
+                double tempDistance = Math.Sqrt(Math.Pow(area[2] - sceneInfo[0], 2) + Math.Pow(area[3] - sceneInfo[1], 2));
+                if(tempdisttocenter == 0 || Math.Abs(1 - tempdisttocenter/tempDistance) <= 0.1){tempdisttocenter = tempDistance;}
+                else{tempdisttocenter = -1;}
             }
+            // int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            // int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            // currentArea[0] = new int[]{64, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
+            currentArea[0] = GetShiftedSelectedCircle(new int[]{64, 0, -1, -1, (int)meanSelectArea[0][2], -1}, meanSelectArea[0][2], targetAngle:(targetAngle + sceneInfo[3]));
         }
         return 1;
     }
@@ -242,14 +266,26 @@ public class IPCClient : MonoBehaviour
         if(!circle){return -1;}
         while(currentArea.Count < 2){currentArea.Add(new int[]{-1, -1, -1, -1, -1, -1});}
 
-        
         if(_selectedPoses == null){
-            int[] tempArea = meanSelectArea.Find(area => area[0] == 0).Select(x => (int)x).ToArray();
-            currentArea[1] = CreateShiftedSelectedCircle(tempArea, shiftAngle);
+            int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            int[] tempArea = new int[]{0, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
+            circledTriggerAreas.TryAdd(shiftAngle, tempArea);
+            currentArea[1] = tempArea;
         }else{
-            foreach(int[] _selectedPos in _selectedPoses){
-                currentArea[1] = CreateShiftedSelectedCircle(_selectedPos, shiftAngle);
+            int tempradius = 0;
+            double tempdisttocenter = 0;
+            foreach(int[] area in _selectedPoses){
+                if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
+                else{tempradius = -1;}
+
+                double tempDistance = Math.Sqrt(Math.Pow(area[2] - sceneInfo[0], 2) + Math.Pow(area[3] - sceneInfo[1], 2));
+                if(tempdisttocenter == 0 || Math.Abs(1 - tempdisttocenter/tempDistance) <= 0.1){tempdisttocenter = tempDistance;}
+                else{tempdisttocenter = -1;}
             }
+            int tempx = (int)(sceneInfo[0] + (int)(meanSelectArea[0][2] * Math.Sin((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            int tempy = (int)(sceneInfo[1] - (int)(meanSelectArea[0][2] * Math.Cos((shiftAngle + sceneInfo[3]) * Math.PI / 180)));
+            currentArea[1] = new int[]{0, 0, tempx, tempy, (int)meanSelectArea[0][1], -1};
         }
         return 1;
     }
@@ -332,10 +368,10 @@ public class IPCClient : MonoBehaviour
             Silent = true;
             activited = false;
         }else{
-            List<int[]>DestinationAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
+            List<int[]>DestinationCircleAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
             int tempradius = 0;
             double tempdisttocenter = 0;
-            foreach(int[] area in DestinationAreas){
+            foreach(int[] area in DestinationCircleAreas){
                 if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
                 else{tempradius = -1;}
 
@@ -344,17 +380,17 @@ public class IPCClient : MonoBehaviour
                 else{tempdisttocenter = -1;}
             }
 
-            if(tempradius != -1 && tempdisttocenter != -1){
-                meanSelectArea.Clear();
+            meanSelectArea.Clear();
+            if(tempradius > 0 && tempdisttocenter > 0){
                 meanSelectArea.Add(new float[]{0, tempradius, (float)tempdisttocenter});
             }else{
                 meanSelectArea.Add(new float[]{0, 60, sceneInfo[2]});
             }
 
-            List<int[]>TriggerAreas = GetselectedArea().Where(area => area[0] / 32 == 0 && area[1] == 0).ToList();
+            List<int[]>TriggerCircleAreas = GetselectedArea().Where(area => area[0] / 32 == 0 && area[1] == 0).ToList();
             tempradius = 0;
             tempdisttocenter = 0;
-            foreach(int[] area in TriggerAreas){
+            foreach(int[] area in TriggerCircleAreas){
                 if(tempradius == 0 || area[4] == tempradius){tempradius = area[4];}
                 else{tempradius = -1;}
 
@@ -362,7 +398,7 @@ public class IPCClient : MonoBehaviour
                 if(tempdisttocenter == 0 || Math.Abs(1 - tempdisttocenter/tempDistance) <= 0.1){tempdisttocenter = tempDistance;}
                 else{tempdisttocenter = -1;}
             }
-            if(tempradius != -1 && tempdisttocenter != -1){
+            if(tempradius > 0 && tempdisttocenter > 0){
                 meanSelectArea.Add(new float[]{1, tempradius, (float)tempdisttocenter});
             }
 
@@ -373,9 +409,18 @@ public class IPCClient : MonoBehaviour
 
         }
     }
+
+    public void ClosePythonScript(){
+        if(sharedmm != null) {
+            for(int i = 0; i < 5; i++){sharedmm.WriteContent("cmd:quit", clear: false);}
+        }
+    }
   
     public void CloseSharedmm(){
-        if(sharedmm != null) {sharedmm.CloseSharedmm(manually:true);}
+        if(sharedmm != null) {
+            sharedmm.CloseSharedmm(manually:true);
+            sharedmm = null;
+        }
         activited = false;
         Silent = true;
     }
@@ -439,7 +484,8 @@ public class IPCClient : MonoBehaviour
             if(activited){
                 // string tempStr = $"From Unity-- Now Time:{Time.time}";
                 if(sharedmm != null){
-                    // sharedmm.WriteContent(tempStr, true);
+                    // sharedmm.WriteContent($"cmd:test{Time.time}", false);
+                    // Debug.Log($"time: {Time.time}");
                     List<string> readMsgs = sharedmm.ReadMsg(0, "new");
                     readMsgs.Reverse();
                     bool posUpdated = false;
@@ -449,10 +495,14 @@ public class IPCClient : MonoBehaviour
                             case "pos":{
                                 if(!posUpdated && msg.Split(";").Length == 5){
                                     string tempmsg = msg.Split(":")[1];
-                                    List<long> temppos =  new List<long>((from num in tempmsg.Split(';') select long.Parse(num)).ToList());
-                                    temppos.CopyTo(pos);
-                                    posUpdated = true;
-                                    MDUpdatePos(new int[]{(int)pos[0], (int)pos[1]});
+                                    try{
+                                        List<long> temppos =  new List<long>((from num in tempmsg.Split(';') select long.Parse(num)).ToList());
+                                        temppos.CopyTo(pos);
+                                        posUpdated = true;
+                                        MDUpdatePos(new int[]{(int)pos[0], (int)pos[1]});
+                                    }catch(Exception e){
+                                        Debug.Log($"msg:{msg}, {e.Message}");
+                                    }
 
                                 }else if(!posUpdated){
                                     Debug.Log($"Incomplete Pos data: {msg}, posUpdated:{posUpdated}, length:{msg.Split(";").Length}");
@@ -562,6 +612,7 @@ public class IPCClient : MonoBehaviour
                 Array.Fill(pos, -1);
                 sharedmm.CloseSharedmm(manually:true);
                 sharedmm = null;
+                uiUpdate.MessageUpdate($"failed to sync, no message received");
             }
         }
     }

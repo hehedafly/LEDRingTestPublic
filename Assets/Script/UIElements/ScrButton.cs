@@ -22,7 +22,7 @@ public class ScrButton : MonoBehaviour
             }
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParse(name, 1, ignoreKeyboard:false);
+            ui_update.ControlsParsePublic(name, 1, ignoreKeyboard:false);
         }
     }
 
@@ -30,9 +30,10 @@ public class ScrButton : MonoBehaviour
         if(setToDefault && setToPrevious){Debug.Log("Error: Both setToDefault and setToPrevious are true");return;}
 
         if(setToPrevious){GetComponent<Image>().color = previousColor;return;}
-        previousColor = GetComponent<Image>().color;
+        if(previousColor != GetComponent<Image>().color){previousColor = GetComponent<Image>().color;Debug.Log($"previous color changed to {previousColor}");}
         if(setToDefault){GetComponent<Image>().color = defaultColor;return;}
         GetComponent<Image>().color = color;
+        // Debug.Log($"color changed to {color}");
     }
 
     public void ChangeStatus(bool yesorno = false){
