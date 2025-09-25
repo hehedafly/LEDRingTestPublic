@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,7 +15,7 @@ public class ScrButton : MonoBehaviour
     public Sprite checkBoxNo;
     public int pressCount = 0;
     public Color defaultColor;
-    Color previousColor;
+    List<Color> previousColor;
     public void OnClick(){
         if(ui_update != null){
             if(!Input.GetKey(KeyCode.LeftControl) & !Input.GetKey(KeyCode.RightControl) & !Input.GetKey(KeyCode.LeftShift) & !Input.GetKey(KeyCode.RightShift)){
@@ -22,16 +23,28 @@ public class ScrButton : MonoBehaviour
             }
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParsePublic(name, 1, ignoreKeyboard:false);
+            ui_update.ControlsParsePublic(name, 1, ignoreTiming:false);
         }
     }
 
-    public void ChangeColor(Color color, bool setToDefault = false, bool setToPrevious = false){
+    public void ChangeColor(Color color, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate = false){
         if(setToDefault && setToPrevious){Debug.Log("Error: Both setToDefault and setToPrevious are true");return;}
 
-        if(setToPrevious){GetComponent<Image>().color = previousColor;return;}
-        if(previousColor != GetComponent<Image>().color){previousColor = GetComponent<Image>().color;Debug.Log($"previous color changed to {previousColor}");}
-        if(setToDefault){GetComponent<Image>().color = defaultColor;return;}
+        if(setToPrevious){
+            if(previousColor.Count > 1){
+                GetComponent<Image>().color = previousColor.Last();
+                previousColor.RemoveAt(previousColor.Count - 1);
+            }else{
+                //不变
+            }
+            return;
+        }else{
+            if(previousColor.Last() != GetComponent<Image>().color || forcePreviousUpdate){
+                previousColor.Add(GetComponent<Image>().color);
+                Debug.Log($"previous color changed to {previousColor}");
+            }
+        }
+        if(setToDefault){GetComponent<Image>().color = defaultColor;previousColor = new List<Color>{defaultColor};return;}
         GetComponent<Image>().color = color;
         // Debug.Log($"color changed to {color}");
     }
@@ -47,7 +60,7 @@ public class ScrButton : MonoBehaviour
             added = true;
         }
         defaultColor = GetComponent<Image>().color;
-        previousColor = defaultColor;
+        previousColor = new List<Color>{defaultColor};
     }
 
     void Start()

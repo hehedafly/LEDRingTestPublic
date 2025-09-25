@@ -111,7 +111,7 @@ public class MouseDrawer
         Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
         if (area.Length == 6){
                 if(area[1] == 1){
-                    DrawRectangle(texPixels, new Vector2(area[2], area[3]), new Vector2(area[2]+ area[4], area[3]+ area[5]), color, 2);
+                    DrawRectangle(texPixels, new Vector2(area[2], area[3]), new Vector2(area[4], area[5]), color, 2);
                 }else if(area[1] == 0){
                     DrawCircle(texPixels, new Vector2(area[2], area[3]), area[4], color, 2);
                 }

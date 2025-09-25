@@ -458,7 +458,7 @@ public class IPCClient : MonoBehaviour
     void FixedUpdate()
     {   
         if(activited){MDUpdate();}
-        else{MDInit(); mouseDrawer = null;EnableInitAfterConnection = -1;}
+        else if(EnableInitAfterConnection != -1){MDInit(); mouseDrawer = null;EnableInitAfterConnection = -1;}
 
         if(EnableInitAfterConnection >= 25){
             InitAfterConnection();

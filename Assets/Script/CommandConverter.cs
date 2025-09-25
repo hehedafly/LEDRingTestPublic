@@ -26,6 +26,7 @@ public class CommandConverter
 
 
     public byte[] ProcessSerialPortBytes(byte[] readBuffer){
+    
         for (int i = 0; i < readBuffer.Length; i++){
             if (IsStartOfMessage(readBuffer, i)){
                 int endIndex = FindMarkOfMessage(false, readBuffer, i);
@@ -142,13 +143,14 @@ public class CommandConverter
 
     public byte[] Read_buffer_concat(List<byte[]> serial_read_content_ls, int _start, int _end, byte[] _bytes){//cast bytes from _start to end. _end=-1||_end>=length: cast _bytes too
         int temp_end=_end;
-        if(_end==-1 || _end>serial_read_content_ls.Count()-1){temp_end=serial_read_content_ls.Count();}
+        if(_start < 0 || _start >= serial_read_content_ls.Count()){return _bytes;}
+        if(_end==-1 || _end>serial_read_content_ls.Count()){temp_end=serial_read_content_ls.Count();}
         if(temp_end-_start<1){return _bytes;}
         byte[] result = new byte[]{};
         for(int i=_start; i<temp_end; i++){
             result=result.Concat(serial_read_content_ls[i]).ToArray();
         }
-        if(_end==-1 || _end>serial_read_content_ls.Count()-1){result=result.Concat(_bytes).ToArray();}
+        if(_end==-1 || _end>=serial_read_content_ls.Count()){result=result.Concat(_bytes).ToArray();}
         return result;
     }
 

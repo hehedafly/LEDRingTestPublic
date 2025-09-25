@@ -286,7 +286,7 @@ class ContextInfo{
         standingSecInDest = _standingSecInDest;
         countAfterLeave = _countAfterLeave;
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
-        DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialFinish", "everyTrialFinish", "nextTrialStart", "nextTrialEnd", "nextTrialFinish"};
+        DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialInTarget", "everyTrialInTarget", "nextTrialStart", "nextTrialEnd", "nextTrialInTarget"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
         while(DeviceTriggerMethodLsSorted.Count() < DeviceTriggerMethodLs.Count()/2){DeviceTriggerMethodLsSorted.Add(new List<string>());}
         foreach(var triggerMethod in DeviceTriggerMethodLs){
@@ -294,7 +294,7 @@ class ContextInfo{
                 DeviceTriggerMethodLsSorted[0].Add(triggerMethod);
             }else if(triggerMethod.Contains("TrialEnd")){
                 DeviceTriggerMethodLsSorted[1].Add(triggerMethod);
-            }else if(triggerMethod.Contains("TrialFinish")){
+            }else if(triggerMethod.Contains("TrialInTarget")){
                 DeviceTriggerMethodLsSorted[2].Add(triggerMethod);
             }
         }
@@ -399,7 +399,7 @@ class ContextInfo{
         for(int i = 0; i < DeviceTriggerMethodLsSorted.Count(); i++){
             OGTriggerSortedInType.Add(
                                     OGTriggerMethodLs
-                                    .SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))  // 展开所有符合条件的键值对
+                                    .SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))
                                     .GroupBy(kvp => kvp.Key)  // 按原始Key分组
                                     .SelectMany(group => 
                                         group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
@@ -413,7 +413,7 @@ class ContextInfo{
                                     )
                                     .ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
             MSTriggerSortedInType.Add(
-                                    MSTriggerMethodLs.SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))  // 展开所有符合条件的键值对
+                                    MSTriggerMethodLs.SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))
                                     .GroupBy(kvp => kvp.Key)  // 按原始Key分组
                                     .SelectMany(group => 
                                         group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
@@ -862,6 +862,9 @@ public class Moving : MonoBehaviour
     IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
     List<string> portBlackList = new List<string>();
     SerialPort sp = null;
+    volatile bool StopSerialThread = false;
+    int serialSpeed = -1;
+    List<string> compatibleVersion = new List<string>(){"V2.1"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
@@ -870,16 +873,24 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <typeparam name="string"></typeparam>
     /// <returns></returns>
-    List<string> ls_types = new List<string>(){"lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay", "syncInfo", "miniscopeRecord"};//虚拟command从其他脚本实现
+    List<string> lsTypes = new List<string>(){
+        // "lick", "entrance", "press", "context_info", "log", "echo", "value_change", "command", "debugLog", "stay", "syncInfo", "miniscopeRecord"
+           "li",      "en",       "pr",     "ci",       "log", "echo", "vc",           "cmd",     "debugLog", "st",    "si",       "ms"
+    };//虚拟command从其他脚本实现
+    public List<string> LsTypes {get {return lsTypes;}}
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
     ManualResetEvent manualResetEventVerify = new ManualResetEvent(true);
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
+    ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_water_flush, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord".Replace(" ", "").Split(',').ToList();
-    List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count".Replace(" ", "").Split(',').ToList();
+    /// <summary>
+    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord
+    /// </summary>
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
+    List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
     bool debugMode = false; public bool DebugMode { get { return debugMode;} set{debugMode = value;}}
@@ -1019,7 +1030,7 @@ public class Moving : MonoBehaviour
 
     void Quit(){
         #if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
+        UnityEditor.EditorApplication.isPlaying = false;
         #else
             Application.Quit();
         #endif
@@ -1409,9 +1420,105 @@ public class Moving : MonoBehaviour
 
     }
 
+    int CreateSerialConnection(out SerialPort sp, ref List<string> portInfo){
+        string[] portLs = ScanPorts_API();
+        bool connected = false;
+        if (portLs.Length == 0) { portInfo.Add("No Port Found!"); }
+        foreach (string port in portLs){
+            if (!connected && port.Contains("COM") && !portBlackList.Contains(port)){
+                try{
+                    sp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
+                    sp.RtsEnable = true;
+                    sp.DtrEnable = true;
+                    sp.Open();
+                    Debug.Log("COM avaible: " + port);
+
+                    sp.ReadTimeout = 1000;
+                    int fail_count = 10;
+                    while (fail_count > 0){
+                        fail_count--;
+                        string temp_readline = sp.ReadLine();
+                        //Debug.Log(temp_readline);
+                        if (temp_readline.StartsWith("initialed")){
+                            if (temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
+                                string tempInfo = temp_readline[10..];
+                                if (compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
+                                    portInfo.Add($"Incompatible version in {port}: {tempInfo}, required version: {string.Join(", ", compatibleVersion)}");
+                                    break;
+                                }else{
+                                    connected = true;
+                                    return 1;
+                                }
+                            }
+                            break;
+                        }
+                        else
+                        {
+                            if (fail_count == 0)
+                            {
+                                throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
+                            }
+                            continue;
+                        }
+                    }
+
+                    //}
+                }
+                catch (Exception e){
+                    sp = new SerialPort();
+                    Debug.Log(e);
+                    // ui_update.MessageUpdate(e.Message+"\n");
+                    sp.Close();
+                    sp = null;
+                    if (e.Message.Contains("拒绝访问")){
+                        string strPortLs = string.Join(", ", portLs);
+                        portInfo.Add($"port {port} accssion Denied");
+                        // MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
+                        // Quit();
+                    }
+                    else{
+                        string strPortLs = string.Join(", ", portLs);
+                        portInfo.Add($"Can not connect to port {port} because: {e.Message}");
+                        // MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
+                        // Quit();
+                    }
+                }
+                finally{
+
+                }
+            }
+            Debug.Log(port);
+        }
+        sp = null;
+        return -1;
+    }
+
+    void RecreateSerialConnection(bool inMainThread = true){
+        if(sp != null){
+            sp.Close();
+            sp = null;
+        }
+        List<string> portInfo = new List<string>();
+        
+        if (CreateSerialConnection(out sp, ref portInfo) > 0){
+            Debug.Log("serial reconnected in trial start");
+        }else{
+            Debug.LogError("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
+            // Quit();
+            if(MessageBoxForUnity.YesOrNo("Fatal error occured, failed connecting to Arduino, Stay?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
+                if(inMainThread){
+                    Quit();
+                }else{
+                    StopSerialThread = true;
+                    buildinCommandQueue.Enqueue("exit");
+                }
+            }
+        }
+    }
+
     int ContextInitSync(){
-        List<string> names = new List<string>(){"p_lick_mode", "p_trial"};
-        List<int> values = new List<int>(){trialMode % 0x10, 0};
+        List<string> names = new List<string>(){Arduino_var_list[0], Arduino_var_list[1]};
+        List<int> values = new List<int>(){trialMode % 0x10, Math.Max(0, nowTrial)};
         DataSend("forceinit");
         int res = CommandVerify(names, values);
         //DataSend("p_trial_set=1", true);
@@ -1419,7 +1526,7 @@ public class Moving : MonoBehaviour
     }
 
     int ContextStartSync(){
-        List<string> names = new List<string>(){"p_trial", "p_now_pos", "p_trial_set"};
+        List<string> names = new List<string>(){Arduino_var_list[1], Arduino_var_list[3], Arduino_var_list[2]};
         List<int> values = new List<int>(){nowTrial, contextInfo.GetPumpPosInTrial(nowTrial), 1};
         int res = CommandVerify(names, values);
         // DataSend("_");
@@ -1534,23 +1641,26 @@ public class Moving : MonoBehaviour
 
     int ServeWaterInTrial(){
         int fail = 0;
-        while(CommandVerify("p_trial_set", 2) == -1){
+        while(CommandVerify(Arduino_var_list[2], 2) == -1){
             fail += 1;
             if (fail > 10){
                 Debug.Log("ServeWaterInTrial failed for 10 times");
                 return -10;
             }
         };
-        Debug.Log($"ServeWaterInTrial {(fail == 0? "succes": $"failed for {fail} time")}");
+        // Debug.Log($"ServeWaterInTrial {(fail == 0? "succes": $"failed for {fail} time")}");
         return 0 - fail;
     }
 
-    int StartTrial(bool isInit = false){//根据soundCueLeadTime在alarm中设置waiting
+    int StartTrial(){//根据soundCueLeadTime在alarm中设置waiting
  
         nowTrial++;
         trialStatus = 1;
         trialStartTime = Time.fixedUnscaledTime;
-        ContextStartSync();
+        while (!DebugWithoutArduino && ContextStartSync() < 0){
+            RecreateSerialConnection();
+            ContextInitSync();
+        }
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
         MaterialStruct tempMs = GetMaterialStruct(tempMatName);
         // Debug.Log(tempMs.PrintArgs());
@@ -1639,7 +1749,8 @@ public class Moving : MonoBehaviour
     /// <param name="rightLickSpout"></param>
     /// <param name="trialReadyWaitSec"></param>
     /// <returns></returns>
-    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1){
+    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false){
+        // Debug.Log($"End Trial {nowTrial}");
         ContextEndSync();
         trialStatus = 0;
         if(isInit || !trialSuccess){DeactivateBar();}
@@ -1662,6 +1773,7 @@ public class Moving : MonoBehaviour
 
         if(!isInit){
             DeviceTriggerExecute(1);
+            if(serveWater){ServeWaterInTrial();}//20ms左右，如果放在DeviceTriggerExecute后能正常运行，说明串口影响了定时器中断
             waitSecRec = Time.fixedUnscaledTime;
             
             //lickCount.Clear();
@@ -1677,7 +1789,7 @@ public class Moving : MonoBehaviour
 
                 if(_temp_waitSec > 0){
                     ui_update.MessageUpdate($"Interval: {_temp_waitSec}", attachToLastLine:true);
-                    // Debug.Log($"Interval: {_temp_waitSec}");
+                    Debug.Log(Time.fixedUnscaledTime);
                 }
                 waitSec = _temp_waitSec;
             }else{
@@ -1728,7 +1840,7 @@ public class Moving : MonoBehaviour
         }
 
         if(Time.fixedUnscaledTime - waitSecRec >= waitSec){
-            // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+            Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
         else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
@@ -1816,12 +1928,16 @@ public class Moving : MonoBehaviour
     }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
-        if(lickInd < 0 || lickTrial < 1){return -1;}
+        if(lickTrial < 0){return -1;}
+        if(lickInd < 0){
+            lickCount.Add(new int[8].ToList());
+            return 0;
+        }
 
         if(getOrSet == "set"){
             if(lickCount.Count <= lickTrial){
                 while(lickCount.Count <= lickTrial){
-                    if(lickCount.Count == lickTrial){
+                    if(lickCount.Count ==  + 1){
                         List<int> ints = new int[8].ToList();
                         ints[lickInd] ++;
                         lickCount.Add(ints);
@@ -1889,7 +2005,7 @@ public class Moving : MonoBehaviour
     /// <param name="lickTypeMark"></param>
     /// <returns></returns>
     int LickingCheck(int lickInd, int lickTypeMark = 1){
-
+        // Debug.Log($"LickingCheck: lickInd {lickInd}, lickTypeMark {lickTypeMark} in trial {nowTrial}");
         int rightLickInd = contextInfo.GetRightLickPosIndInTrial(nowTrial);
         
         if(lickInd >= 0 && trialMode >> 4 == 3){
@@ -1956,10 +2072,10 @@ public class Moving : MonoBehaviour
                     if(result && trialMode == 0x11){
                         ServeWaterInTrial();
                     }
-                    else{CommandVerify("p_trial_set", 0);}
+                    else{CommandVerify(Arduino_var_list[2], 0);}
                     if(lickInd < 0){
                         ui_update.MessageUpdate($"Trial {(result? "skipped manually": "expired")} at pos {lickInd}, right place: {rightLickInd}");
-                    }else{
+                    }else if(lickInd >= 0){
                         ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {lickInd}, right place: {rightLickInd}");
                     }
                     EndTrial(trialSuccess: result, rightLickSpout: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
@@ -1970,25 +2086,23 @@ public class Moving : MonoBehaviour
                     }
 
                     if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
-                        if(trialMode % 0x10 == 2){ServeWaterInTrial();}
-                        // else{
-                        //     // CommandVerify("p_trial_set", 0);
-                        // }//结束时已经给了水，只用结束trial
-                        EndTrial(trialSuccess:trialResult[nowTrial] == 1);
+                        // if(trialMode % 0x10 == 2){ServeWaterInTrial();}
+                        ui_update.MessageUpdate("Trial end");
+                        EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
                         TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
                         if(result){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             DeactivateBar();
-                            ui_update.MessageUpdate("Trial finished");
+                            ui_update.MessageUpdate("Target arrived.");
                             DeviceTriggerExecute(2);
                             TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial);
                             PlaySound("EnableReward");
 
                             trialStatus = 2;
                         }else{//手动跳过
-                            EndTrial(trialSuccess: false);
                             ui_update.MessageUpdate("Trial skipped");
+                            EndTrial(trialSuccess: false);
                         }
                     }
                 }
@@ -2106,7 +2220,7 @@ public class Moving : MonoBehaviour
         bool _on = _mills > 0 || _mills == -1;
         int res = 0;
         if(_mills < 30000){
-            res = CommandVerify("p_OGActiveMills", _mills);
+            res = CommandVerify(Arduino_var_list[6], _mills);
             if(res == 1 || res == -3){
                 WriteInfo(recType: 10, _lickPos: _mills);
                 Debug.Log($"OG set {_mills}");
@@ -2120,7 +2234,7 @@ public class Moving : MonoBehaviour
             alarm.StartAlarmAfter("ogStart", "ogEnd");
             alarm.TrySetAlarm("ogEnd", 1, out _);
         }else{
-            res = CommandVerify("p_OGActiveMills", _on? -1: 0);
+            res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
             if(res == 1 || res == -3){
                 WriteInfo(recType:12, _lickPos:_mills);
                 Debug.Log($"OG {(_on? "on": "off")}");
@@ -2148,7 +2262,7 @@ public class Moving : MonoBehaviour
             alarm.StartAlarmAfter("miniscopeStart", "miniscopeEnd");
             alarm.TrySetAlarm("miniscopeEnd", 1, out _);
         }else{
-            res = CommandVerify("p_miniscopeRecord", (_sec > 0 || _sec == -1)? 1: 0);
+            res = CommandVerify(Arduino_var_list[7], (_sec > 0 || _sec == -1)? 1: 0);
             if(res == 1 || res == -3){
                 WriteInfo(recType:12, _lickPos:_sec);
                 Debug.Log($"MS {(_on? "on": "off")}");
@@ -2175,7 +2289,7 @@ public class Moving : MonoBehaviour
             bool incircle = Math.Sqrt(Math.Pow(Math.Abs(_pos[0] - selectedPos[2]), 2) + Math.Pow(Math.Abs(_pos[1] - selectedPos[3]), 2)) < selectedPos[4];
             return incircle == (Math.Abs(selectedPos[5]) == 1);
         }else if(selectedPos[1] == 1){//矩形
-            return (selectedPos[2] > _pos[0] &&  _pos[0] > selectedPos[4]) && (selectedPos[3] > _pos[1] &&  _pos[1] > selectedPos[5]);
+            return (selectedPos[4] > _pos[0] &&  _pos[0] > selectedPos[2]) && (selectedPos[5] > _pos[1] &&  _pos[1] > selectedPos[3]);
         }else{
             return false;
         }
@@ -2253,7 +2367,8 @@ public class Moving : MonoBehaviour
         }
         
         foreach(string buttonName in ButtonTrigger){
-            ui_update.ControlsParsePublic(buttonName, 1);
+            // ui_update.ControlsParsePublic(buttonName, 1, stringArg:"FromTiming");
+            ui_update.SetButtonTiming(buttonName);
             ButtonTriggerDict.Remove(buttonName);
         }
 
@@ -2283,38 +2398,22 @@ public class Moving : MonoBehaviour
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置，miniscope控制
+    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置
         string tempHead = limitedCommand.Split(":")[0];
-        switch(tempHead){
-            case "lick":{
-                break;
-            }
-            case "entrance":{
-                break;
-            }
-            case "press":{
-                break;
-            }
-            case "stay":{
-                break ;
-            }
-            case "miniscopeRecord":{
-                break;
-            }
-            // case "sw":{
-            //     return;
-            // }
-            default:{
-                return;
-            }
-        }
+        //   "li",      "en",       "pr",     "ci",       "log", "echo", "vc",           "cmd",     "debugLog", "st",    "si",       "ms"
+        string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9] };
+        if(!availableHead.Contains(tempHead)){return;}
         if(urgent){
             CommandParse(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
         }else{
             commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
         }
     }
-    void CommandParse(byte[] _command){//在主线程调用时内容不能有锁,目前全部在主线程调用
+
+    /// <summary>
+    /// 在主线程调用时内容不能有锁,目前全部在主线程调用
+    /// </summary>
+    void CommandParse(byte[] _command){
         //看注释！
         //看注释！
         //看注释！
@@ -2436,60 +2535,80 @@ public class Moving : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 仅处理Exit等直接固定信息，处理字符串形式模拟串口信息使用CommandParsePublic
+    /// </summary>
+    void CommandParse(string _buildinCmd){
+        switch(_buildinCmd){
+            case "Exit":{
+                Quit();
+                break;
+            }
+            default:{
+                break;
+            }
+        }
+    }
+
     void SerialCommunicating(){
-        while (true){
+        while (!StopSerialThread){
             manualResetEventVerify.WaitOne();
             if (sp!= null && sp.IsOpen){
-                int count = sp.BytesToRead;
-                if (count > 0){
-                    byte[] readBuffer = new byte[count];
-                    try{
-                        sp.Read(readBuffer, 0, count);
-                        //Debug.Log("received in second tread"+string.Join(",", readBuffer));
-                    }
-                    catch (Exception ex){
-                        Debug.Log(ex.Message);
-                        continue;
-                    }
-                    serial_read_content_ls.Add(readBuffer);
-                    if(commandConverter.FindMarkOfMessage(true, readBuffer, 0)!=-1){
-                        serialReadContentLsMark=serial_read_content_ls.Count()-1;
-                    }
-                    int temp_end=-1;
-                    if(serialReadContentLsMark!=-1){
-                        temp_end=commandConverter.FindMarkOfMessage(false, readBuffer, 0);
-                        //if(temp_end==-1){serial_read_content_ls.Add(readBuffer);}
-                    }
-
-                    if(serialReadContentLsMark!=-1 && temp_end!=-1){
-                        byte[] temp_complete_msg;
-                        temp_complete_msg = commandConverter.ProcessSerialPortBytes(commandConverter.Read_buffer_concat(serial_read_content_ls, serialReadContentLsMark, -1));
-                        //Debug.Log("process: "+string.Join(",", temp_complete_msg));
-                        if(temp_complete_msg.Length>0){
-                            if (commandConverter.GetCommandType(temp_complete_msg, out _) ==  ls_types.IndexOf("syncInfo")){
-                                //Debug.Log(string.Join(",", temp_complete_msg));
-                                // syncWriteQueue.Enqueue(UnscaledfixedTime);
-                            }else{
-                                commandQueue.Enqueue(temp_complete_msg);
-                            }
+                try{
+                    int count = sp.BytesToRead;
+                    if (count > 0){
+                        byte[] readBuffer = new byte[count];
+                        try{
+                            sp.Read(readBuffer, 0, count);
+                            //Debug.Log("received in second tread"+string.Join(",", readBuffer));
+                        }
+                        catch (Exception ex){
+                            Debug.Log(ex.Message);
+                            continue;
+                        }
+                        serial_read_content_ls.Add(readBuffer);
+                        if (commandConverter.FindMarkOfMessage(true, readBuffer, 0) != -1){
+                            serialReadContentLsMark = serial_read_content_ls.Count() - 1;
+                        }
+                        int temp_end = -1;
+                        if (serialReadContentLsMark != -1){
+                            temp_end = commandConverter.FindMarkOfMessage(false, readBuffer, 0);
+                            //if(temp_end==-1){serial_read_content_ls.Add(readBuffer);}
                         }
 
-                        serial_read_content_ls.Clear();
-                        if(readBuffer.Length-temp_end>0){
-                            byte[] temp_readBuffer=new byte[readBuffer.Length-temp_end];
-                            Array.Copy(readBuffer, temp_end ,temp_readBuffer, 0, temp_readBuffer.Length);
-                            if(commandConverter.FindMarkOfMessage(true, temp_readBuffer, 0)!=-1){
-                                serial_read_content_ls.Add(temp_readBuffer);
-                                serialReadContentLsMark=0;
+                        if (serialReadContentLsMark != -1 && temp_end != -1){
+                            byte[] temp_complete_msg;
+                            temp_complete_msg = commandConverter.ProcessSerialPortBytes(commandConverter.Read_buffer_concat(serial_read_content_ls, serialReadContentLsMark, -1));
+                            //Debug.Log("process: "+string.Join(",", temp_complete_msg));
+                            if (temp_complete_msg.Length > 0){
+                                if (commandConverter.GetCommandType(temp_complete_msg, out _) == lsTypes.IndexOf("syncInfo")){
+                                    //Debug.Log(string.Join(",", temp_complete_msg));
+                                    // syncWriteQueue.Enqueue(UnscaledfixedTime);
+                                }else{
+                                    commandQueue.Enqueue(temp_complete_msg);
+                                }
+                            }
+
+                            serial_read_content_ls.Clear();
+                            if (readBuffer.Length - temp_end > 0){
+                                byte[] temp_readBuffer = new byte[readBuffer.Length - temp_end];
+                                Array.Copy(readBuffer, temp_end, temp_readBuffer, 0, temp_readBuffer.Length);
+                                if (commandConverter.FindMarkOfMessage(true, temp_readBuffer, 0) != -1){
+                                    serial_read_content_ls.Add(temp_readBuffer);
+                                    serialReadContentLsMark = 0;
+                                }
                             }
                         }
+                    }else{
+                        Thread.Sleep(1);
                     }
+                }catch(System.IO.IOException e){
+                    Debug.Log(e.Message);
+                    sp = null;
                 }
-                else{
-                    Thread.Sleep(1);
-                }
+            }else{
+                RecreateSerialConnection(false);
             }
-            else{break;}
         }
     }
 
@@ -2499,7 +2618,7 @@ public class Moving : MonoBehaviour
         return 1;
     }
     public int DataSend(string message, bool needParse = false, bool inVerifyOrVerifyNeedless=false){
-        Debug.Log("Data sent: " + message);
+        // Debug.Log("Data sent: " + message);
         if(sp!= null && sp.IsOpen){
             if(needParse){//form: p_.... = 1
                 // if(simple_mode){
@@ -2522,7 +2641,7 @@ public class Moving : MonoBehaviour
                         if(!inVerifyOrVerifyNeedless){
                             commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
                         }
-                        byte[] temp_msg = commandConverter.ConvertToByteArray("value_change:"+temp_command);
+                        byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
                         sp.Write(temp_msg, 0, temp_msg.Length);
                         // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
                         return 2;
@@ -2530,7 +2649,7 @@ public class Moving : MonoBehaviour
                     else{
                         if(Int16.TryParse(temp_var_name, out short temp_id) && temp_id<255){//重发int=int
                             string temp_command=temp_var_name+"="+message.Split('=')[1];
-                            byte[] temp_msg = commandConverter.ConvertToByteArray("value_change:"+temp_command);
+                            byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
                             sp.Write(temp_msg, 0, temp_msg.Length);
                             //Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
                             return 2;
@@ -2539,7 +2658,7 @@ public class Moving : MonoBehaviour
                     }
                 //}
             }else{
-                byte[] temp_msg = commandConverter.ConvertToByteArray("command:"+message);
+                byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[7]}:{message}");
                 sp.Write(temp_msg, 0, temp_msg.Length);
                 //Debug.Log("Data sent: "+message);
             }
@@ -2550,40 +2669,45 @@ public class Moving : MonoBehaviour
             return -2;
         }
     }
-    
-    public int CommandVerify(List<string> messages, List<int> values){
-        if(sp == null){return -3;}
+
+    /// <summary>
+    /// return: 1:success, -1:fail, -2:port not open, -3:no port
+    /// </summary>
+    public int CommandVerify(List<string> messages, List<int> values)
+    {
+        if (sp == null) { return -3; }
         manualResetEventVerify.Reset();
-        sp.ReadTimeout = 200;
+        sp.ReadTimeout = 100;
         int fail_count = 0;
         bool succes = false;
-        int fail_countMax = 20;
+        int fail_countMax = 10;
         int tempMsgInd = 0;//记录已经同步完成的内容
 
-        Debug.Log("verify start");
-        while(!succes && fail_count < fail_countMax){
+        // Debug.Log("verify start");
+        while (!succes && fail_count < fail_countMax){
             try{
-                for(int i=tempMsgInd; i<messages.Count; i++){
+                for (int i = tempMsgInd; i < messages.Count; i++){
                     string temp_echo = "error";
-                    DataSend("ping", inVerifyOrVerifyNeedless:true); 
-                    DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
-                    while(true){
+                    DataSend("ping", inVerifyOrVerifyNeedless: true);
+                    DataSend(messages[i] + "=" + values[i].ToString(), true, inVerifyOrVerifyNeedless: true);
+                    while (true){
                         temp_echo = sp.ReadLine();
-                        
-                        Debug.Log("echo received: "+temp_echo);
-                        if(temp_echo.StartsWith("echo:")){
-                            temp_echo=temp_echo[5..temp_echo.IndexOf(":echo")];
+
+                        // Debug.Log($"echo received: {temp_echo}");
+                        if (temp_echo.StartsWith("echo:")){
+                            temp_echo = temp_echo[5..temp_echo.IndexOf(":echo")];
                             break;
-                        }else{
-                            serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[]{0xDD}).ToArray());
+                        }
+                        else if(temp_echo.Length > 3){
+                            serial_read_content_ls.Add(new byte[] { 0xAA }.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[] { 0xDD }).ToArray());
                         }
                     }
-                    string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
-                    if(temp_echo.Replace(" ", "")==temp_aim){
-                        Debug.Log("verified:"+temp_aim);
-                        tempMsgInd = i+1;
+                    string temp_aim = Arduino_var_list.FindIndex(str => str == messages[i]).ToString() + "=" + values[i].ToString();
+                    if (temp_echo.Replace(" ", "") == temp_aim){
+                        // Debug.Log("verified:" + temp_aim);
+                        tempMsgInd = i + 1;
 
-                        if(tempMsgInd == messages.Count){
+                        if (tempMsgInd == messages.Count){
                             succes = true;
                             manualResetEventVerify.Set();
                             return 1;
@@ -2598,9 +2722,9 @@ public class Moving : MonoBehaviour
                     // return -1;
                 }
             }
-            catch(Exception e){
+            catch (Exception e){
                 Debug.Log(e.Message);
-                if(e.Message.Contains("not open")){
+                if (e.Message.Contains("not open")){
                     manualResetEventVerify.Set();
                     return -2;
                 }
@@ -2608,19 +2732,20 @@ public class Moving : MonoBehaviour
                 // return -1;
             }
             finally{
-                if(serial_read_content_ls.Count() > 0){
+                if (serial_read_content_ls.Count() > 0){
                     byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
-                    int temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
-                    while(temp_end != -1){
+                    int temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                    while (temp_end != -1){
                         byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
-                        Debug.Log("process: "+string.Join(",", tempCompleteMsgInVerify));
-                        if(tempCompleteMsgInVerify.Length>0){
+                        // Debug.Log("process: " + string.Join(",", tempCompleteMsgInVerify));
+                        if (tempCompleteMsgInVerify.Length > 0){
                             commandQueue.Enqueue(tempCompleteMsgInVerify);
-                        }else{
+                        }
+                        else{
                             serial_read_content_ls.Clear();
                         }
-                        totalMsgInVerify = totalMsgInVerify[(temp_end+1)..].ToArray();
-                        temp_end=commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                        totalMsgInVerify = totalMsgInVerify[(temp_end + 1)..].ToArray();
+                        temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
 
                     }
                 }
@@ -2845,7 +2970,7 @@ public class Moving : MonoBehaviour
         #endif
 
         time_rec_for_log[0] = Time.realtimeSinceStartup;
-        commandConverter = new CommandConverter(ls_types);
+        commandConverter = new CommandConverter(lsTypes);
         alarm = new Alarm();
         string errorMessage = $"no config file: {config_path}";
         try{
@@ -2861,10 +2986,9 @@ public class Moving : MonoBehaviour
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
 
-        string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
-        trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
         barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barWidth", "100"));
         barHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barHeight", "1080"));
+        bool disableMainDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMainDisplay", "false") == "true";
         displayPixelsLength = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsLength", "1920"));
         displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
         displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
@@ -2890,40 +3014,86 @@ public class Moving : MonoBehaviour
         Screen.fullScreen = false;
 
         if(InApp){
-            if(separate){
-                try{
-                    for (int i = 2; i < Math.Min(4, Display.displays.Length); i++){
-                        Display.displays[i].Activate();
-                        Screen.fullScreen = false;
-                        Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
-                        //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
-                    }
-                    if(Display.displays.Length == 4){
+            if(!disableMainDisplay){
+                if(separate){
+                    try{
+                        
+                        for (int i = 2; i < Math.Min(4, Display.displays.Length); i++){
+                            Display.displays[i].Activate();
+                            Screen.fullScreen = false;
+                            Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                        }
+                        
                         SecondCamera.enabled = true;
-                        CameraMonitor.targetDisplay = 1;
-                        Display.displays[1].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
-                        Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                        tempChildTs.targetDisplay = 1;
+                        MainCamera.targetDisplay = 2;
+                        MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
+                        SecondCamera.targetDisplay = 3;
+                        SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
-
-                    MainCamera.targetDisplay = 2;
-                    MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
-                    SecondCamera.targetDisplay = 3;
-                    SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
-                }
-                catch(Exception e){
-                    Debug.LogError(e.Message);
+                    catch(Exception e){
+                        Debug.LogError(e.Message);
+                    }
+                }else{
+                    try{
+                            Display.displays[2].Activate();
+                            Screen.fullScreen = false;
+                            Display.displays[2].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                            SecondCamera.enabled = false;
+                    }
+                    catch (Exception e){
+                        Debug.LogError(e.Message);
+                    }
                 }
             }else{
-                for (int i = 1; i < Math.Min(3, Display.displays.Length); i++){
-                    Display.displays[i].Activate();
-                    Screen.fullScreen = false;
-                    Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
-                    //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
-                }
+                MainCamera.enabled = false;
                 SecondCamera.enabled = false;
             }
+            if (Display.displays.Length > 1){
+                CameraMonitor.targetDisplay = 1;
+                Display.displays[1].Activate(1440, 1080, new RefreshRate() { numerator = 60, denominator = 1 });
+                Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                tempChildTs.targetDisplay = 1;
+            }
         }
+            else{
+                if (!disableMainDisplay){
+                    if (separate){
+                        try{
+                            SecondCamera.enabled = true;
+                            MainCamera.targetDisplay = 2;
+                            MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
+                            SecondCamera.targetDisplay = 3;
+                            SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError(e.Message);
+                        }
+                    }
+                    else
+                    {
+                        try
+                        {
+                            SecondCamera.enabled = false;
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError(e.Message);
+                        }
+                    }
+                }
+                else
+                {
+                    MainCamera.enabled = false;
+                    SecondCamera.enabled = false;
+                }
+                CameraMonitor.targetDisplay = 1;
+                Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                tempChildTs.targetDisplay = 1;
+            }
+
+        string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
+        trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
         try{
             contextInfo = new ContextInfo(
                 iniReader.ReadIniContent(                   "settings", "start_method"      ,   "assign"                ),                 // string _start_method
@@ -2951,6 +3121,7 @@ public class Moving : MonoBehaviour
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings", "triggerMode"       ,   "0"                     )),                // int triggerMode
                 Convert.ToInt32(iniReader.ReadIniContent(   "settings", "seed"              ,   "-1"                     ))                 // int _seed
             );
+
             contextInfo.ContextInfoAdd(
                 Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "soundLength"             ,   "0.2"                   )),                // float 
                 Convert.ToSingle(iniReader.ReadIniContent(  "soundSettings" , "cueVolume"               ,   "0.5"                   )),                // float 
@@ -3027,6 +3198,8 @@ public class Moving : MonoBehaviour
             }
         }
 
+        ui_update.IFContentLoaded = iniReader.ReadIniContent("defaultOptionSettings" , "InputfieldContent", "");
+
         alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 
         foreach(Texture2D _background in Resources.LoadAll("Backgrounds")){
@@ -3041,7 +3214,7 @@ public class Moving : MonoBehaviour
         // string tempPath = Application.dataPath + $"/Resources/Backgrounds";
         // #endif
         if(InApp){
-            string tempPath = Application.dataPath + $"/Backgrounds";
+            string tempPath = Application.dataPath + "/Resources/Backgrounds";
             if(Directory.Exists(tempPath)){
                 List<string> availableBackgroundPicExtensions = new List<string>{".jpg", ".png", ".jpeg"};
                 foreach(FileInfo _backgroundFile in new DirectoryInfo(tempPath).GetFiles()){
@@ -3107,7 +3280,6 @@ public class Moving : MonoBehaviour
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
-        List<string> compatibleVersion = new List<string>();
         foreach(string matchVersion in iniReader.ReadIniContent("serialSettings", "compatibleVersion", "").Split(",")){
             if(matchVersion.Length > 0){
                 compatibleVersion.Add(matchVersion);
@@ -3133,75 +3305,14 @@ public class Moving : MonoBehaviour
         }
         
         int[] availableSerialSpeed = new int[]{115200, 230400, 250000, 460800, 500000, 921600};
-        if(!int.TryParse(iniReader.ReadIniContent("serialSettings", "serialSpeed", "115200"), out int serialSpeed) || !availableSerialSpeed.Contains(serialSpeed)){
+        if(!int.TryParse(iniReader.ReadIniContent("serialSettings", "serialSpeed", "115200"), out serialSpeed) || !availableSerialSpeed.Contains(serialSpeed)){
             serialSpeed = 115200;
         }
-        string[] portLs = ScanPorts_API();
-        bool connected = false;
+
         List<string> portInfo = new List<string>();
-        if (portLs.Length == 0){portInfo.Add("No Port Found!");}
-        foreach(string port in portLs){
-            if(!connected && port.Contains("COM") && !portBlackList.Contains(port)){
-                try{
-                    sp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
-                    sp.RtsEnable = true;
-                    sp.DtrEnable = true;
-                    sp.Open();
-                    Debug.Log("COM avaible: "+port);
+        CreateSerialConnection(out sp, ref portInfo);
 
-                    sp.ReadTimeout = 1000;
-                    int fail_count = 10;
-                    while(fail_count > 0){
-                        fail_count--;
-                        string temp_readline=sp.ReadLine();
-                        //Debug.Log(temp_readline);
-                        if(temp_readline.StartsWith("initialed")){
-                            if(temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
-                                string tempInfo = temp_readline[10..];
-                                if(compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
-                                    continue;
-                                }else{
-                                    connected = true;
-                                }
-                            }
-                            break;
-                        }
-                        else{
-                            if(fail_count == 0){
-                                throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
-                            }
-                            continue;
-                        }
-                    }
-                        
-                    //}
-                }
-                catch (Exception e){
-                    sp = new SerialPort();
-                    Debug.Log(e);
-                    // ui_update.MessageUpdate(e.Message+"\n");
-                    sp.Close();
-                    sp = null;
-                    if(e.Message.Contains("拒绝访问")){
-                        string strPortLs = string.Join(", ", portLs);
-                        portInfo.Add($"port {port} accssion Denied");
-                        // MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
-                        // Quit();
-                    }else{
-                        string strPortLs = string.Join(", ", portLs);
-                        portInfo.Add($"Can not connect to port {port}");
-                        // MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
-                        // Quit();
-                    }
-                }
-                finally{
-                    
-                }
-            }
-            Debug.Log(port);
-        }
-
-        if(sp!= null){
+        if (sp != null){
             InitializeStreamWriter();
             string data_write = WriteInfo(returnTypeHead: true);
             logWriteQueue.Enqueue(data_write);
@@ -3211,13 +3322,16 @@ public class Moving : MonoBehaviour
             Debug.Log(" serial thread started");
         }else{
             Debug.LogWarning("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
-            if(MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+            if (MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES)
+            {
                 DebugWithoutArduino = true;
                 InitializeStreamWriter();
                 string data_write = WriteInfo(returnTypeHead: true);
                 logWriteQueue.Enqueue(data_write);
-                
-            }else{
+
+            }
+            else
+            {
                 Quit();
             }
         }
@@ -3247,7 +3361,7 @@ public class Moving : MonoBehaviour
         foreach (string alarmFinished in tempFInishedLs){
             switch(alarmFinished){
                 case "StartTrialWaitSoundCue":{
-                    StartTrial(false);
+                    StartTrial();
                     break;
                 }
                 case "DeactivateBar":{
@@ -3343,6 +3457,10 @@ public class Moving : MonoBehaviour
             commandQueue.TryDequeue(out byte[] _command);
             CommandParse(_command);
         }
+        while(buildinCommandQueue.Count()>0){
+            buildinCommandQueue.TryDequeue(out string _command);
+            CommandParse(_command);
+        }
         if(commandVerifyDict.Count>0){//重新发送之前未能同步成功的内容
             List<float> temp_keys = commandVerifyDict.Keys.ToList();
             temp_keys.Sort();
@@ -3380,7 +3498,7 @@ public class Moving : MonoBehaviour
                         if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
                             standingSecNowInTrigger = -1;
                             WriteInfo(recType:8);
-                            CommandParsePublic("stay:0", urgent:true);
+                            CommandParsePublic($"{lsTypes[9]}:0", urgent:true);
                         }
                     }else{
                         StopSound("InPos");
@@ -3402,7 +3520,7 @@ public class Moving : MonoBehaviour
                                     standingSecNowInDest = -1;
                                     pos[0..2].CopyTo(standingPos, 0);
                                     WriteInfo(recType:8);
-                                    CommandParsePublic("stay:1", urgent:true);
+                                    CommandParsePublic($"{lsTypes[9]}:1", urgent:true);
                                     // PlaySound("EnableReward");//已挪至lickingCheck
                                 }
                             }
@@ -3422,7 +3540,8 @@ public class Moving : MonoBehaviour
 
                 if(waitSec != -1 && IntervalCheck() == 0){
                     if(trialStartTriggerMode == 0){
-                        StartTrial(isInit:false);
+                        Debug.Log(Time.fixedUnscaledTime);
+                        StartTrial();
                         contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
                         waitSec = -1;
                         if(nowTrial >= contextInfo.maxTrial){
@@ -3457,16 +3576,16 @@ public class Moving : MonoBehaviour
         }
     }
 
-    public void PreExit(){
+    public void PreExit(bool timing = true){
         if(DeviceCloseOptionBeforeExits[2]){
-            alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 10);
+            if(timing){alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 10);}
+            else{ipcclient.ClosePythonScript();}
         }
     }
 
     public void Exit(){
         try{
-            CloseDevices();
-            
+            StopSerialThread = true;
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);
@@ -3484,8 +3603,10 @@ public class Moving : MonoBehaviour
                 ipcclient.CloseSharedmm();
             }
             if(sp!= null){
+                CloseDevices();
+                if (serialThread != null && serialThread.IsAlive) { serialThread.Join(100); }
                 sp.Close();
-                serialThread.Join(100);
+                sp = null;
                 Debug.Log("serial closed");
             }
         }
@@ -3497,10 +3618,7 @@ public class Moving : MonoBehaviour
 
     void OnDestroy()
     {
-        if(sp!= null && sp.IsOpen){
-            //sp.WriteLine("init");
-            sp.Close();
-        }
+        // Exit();从ui_update中已调用
         CleanupStreamWriter();
     }
 }

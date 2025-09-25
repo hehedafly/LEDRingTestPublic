@@ -192,6 +192,10 @@ public class Alarm
         //return -1;
     }
 
+    public string[] GetAlarmNames(bool onlyActive = false){
+        return alarmNameIndDic.Keys.Where(s => onlyActive || GetAlarm(s) > 0).ToArray();
+    }
+
     public string GetAlarmAddInfo(int ind){
         if(ind < 0 || ind >= alarm.Count()){
             return "//invalid ind";
