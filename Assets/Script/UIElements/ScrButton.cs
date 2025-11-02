@@ -19,11 +19,11 @@ public class ScrButton : MonoBehaviour
     public void OnClick(){
         if(ui_update != null){
             if(!Input.GetKey(KeyCode.LeftControl) & !Input.GetKey(KeyCode.RightControl) & !Input.GetKey(KeyCode.LeftShift) & !Input.GetKey(KeyCode.RightShift)){
-                pressCount ++;
+                pressCount++;
             }
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParsePublic(name, 1, ignoreTiming:false);
+            ui_update.ControlsParsePublic(name, 1, stringArg:"type_button", ignoreTiming:false);
         }
     }
 
@@ -56,7 +56,7 @@ public class ScrButton : MonoBehaviour
 
     void Awake(){
         if(ui_update != null){
-            ui_update.AddSelf(this.GetComponent<UnityEngine.UI.Button>());
+            ui_update.ButtonAddSelf(this.GetComponent<UnityEngine.UI.Button>());
             added = true;
         }
         defaultColor = GetComponent<Image>().color;
@@ -72,7 +72,7 @@ public class ScrButton : MonoBehaviour
     void Update()
     {
         if(!added && ui_update != null){
-            if(ui_update.AddSelf(this.GetComponent<UnityEngine.UI.Button>()) == 0){
+            if(ui_update.ButtonAddSelf(this.GetComponent<UnityEngine.UI.Button>()) == 0){
                 added = true;
             }
         }

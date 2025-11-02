@@ -40,27 +40,236 @@ public class UIUpdate : MonoBehaviour
     InputField focus_input_field;
     Alarm alarm;
     float manualWaitSec = 5;
-    List<string> buttonTimingList = new List<string>();
-    public Dropdown buttonTimingBaseDropdown;
-    ScrDropDown buttonTimingBaseScrDropdown;
+    public Dropdown TimingBaseDropdown;
+    ScrDropDown TimingBaseScrDropdown;
     /// <summary>
     /// 包含不同层级定时字典，字典键为alarm名称，值以“;”分割，包含一个或多个定时方式（按钮名称:定时方式:具体值）
     /// </summary> 
-    List<Dictionary<string, string>> buttonTimingBasedOnPreviousTimingDicts = new List<Dictionary<string, string>>();
+    TimingCollection timings = null;
     /// <summary>
     /// like {"delete", "spread"} or...
     /// </summary>
     public List<string> buttonFunctionsLs = new List<string>{"delete", "spread"};
     bool[] buttonFunctionsEnableDefault = new bool[]{true, false};
     public GameObject pref_buttonTimingBaseSubDropdown;
-    List<GameObject> createdButtonTimingBaseSubDropdowns = new List<GameObject>();
+    List<GameObject> createdTimingBaseSubDropdowns = new List<GameObject>();
     public string IFContentLoaded = "";
     
     private int _FrameCount = 0; private float _TimeCount = 0; private float _FrameRate = 0;
 
     //public Image LineChartImage;
-    public int AddSelf(UnityEngine.UI.Button button){
-        if(buttons.Contains(button)){return 0;}
+
+    struct Timing {
+        public string type;//button, dropdown...
+        public string name;//pass to ControlsParse
+        public int hierarchy;
+        public float time;//time been set in seconds in unity time
+        public string timingMethod;
+        public int Id;//unique id for each timingcollection
+        public int parentId;
+        public string parentName;
+
+        public Timing SetLowerHierarchy() {
+            hierarchy--;
+            return this;
+        }
+        // public Timing(string _type, string _name, int _hierarchy, float _time, string _timingMethod, int _Id, int _parentId) {
+        //     type = _type;
+        //     name = _name;
+        //     hierarchy = _hierarchy;
+        //     time = _time;
+        //     timingMethod = _timingMethod;
+        //     Id = _Id;
+        //     parentId = _parentId;
+
+        // }
+    }
+
+    class TimingCollection{
+
+        public TimingCollection(List<Timing> _timings = null){
+            if (_timings == null){
+                return;
+            }
+            _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
+            foreach (Timing timing in _timings){
+                timings.Add(timing.Id, timing);
+                maxId = Math.Max(maxId, timing.Id);
+            }
+        }
+
+        public Timing? this[int hierarchy, string name]{
+
+            get{
+                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.hierarchy == hierarchy);
+                if (_timings.Count == 0){
+                    return null;
+                }
+                foreach (Timing timing in _timings){
+                    if (timing.name == name){
+                        return timing;
+                    }
+                }
+                return null;
+            }
+
+            set{
+                if (value.HasValue){
+                    Remove(name, hierarchy);
+                }
+                else{
+                    timings[GetId(hierarchy, name)] = value.Value;
+                }
+            }
+        }
+
+        public TimingCollection this[int hierarchy]{
+            get{
+                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.hierarchy == hierarchy);
+                if (_timings.Count == 0){
+                    return new TimingCollection();
+                }
+                return new TimingCollection(_timings);
+            }
+        }
+
+        // public string this[string name]
+        public TimingCollection this[string name]
+        {//不强制但建议在仅有一阶选项时使用
+            get{
+                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.name == name);
+                // _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
+                if (_timings.Count == 0){
+                    return null;
+                }
+                // return _timings[0].timingMethod;
+                return new TimingCollection(_timings);
+            }
+        }
+
+        public List<string> Names(){
+            return timings.Values.Select(t => t.name).ToList();
+        }
+
+        public List<int> Keys(){
+            return timings.Values.Select(t => t.Id).ToList();
+        }
+
+        public Dictionary<int, string> Values() {
+            return timings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.name);
+        }
+
+        public bool ContainsKey(string key) {
+            return timings.Values.Where(t => t.name == key).Any();
+        }
+
+        public List<int> Hierarchies(){
+            return timings.Values.Select(t => t.hierarchy).ToList();
+        }
+
+        public Timing Add(string name, string timingMethod, string type, int hierarchy = 0, int parentId = -1, float time = -1, string parentName = "") {//hierarchy默认为一阶选项，当parentId不为-1时，hierarchy自动指定为父项hierarchy+1
+            int Id = ++maxId;
+            if (parentId != -1) {
+                Timing? parentTiming = GetTiming(parentId);
+                if (parentTiming != null) {
+                    hierarchy = parentTiming.Value.hierarchy + 1;
+                }
+            }
+            if (time == -1) { time = Time.fixedUnscaledTime; }
+            Timing timing = new Timing { type = type, name = name, hierarchy = hierarchy, time = time, timingMethod = timingMethod, Id = Id, parentId = parentId, parentName = parentName };
+            timings.Add(Id, timing);
+            return timing;
+        }
+        
+        List<Timing> GetTimingsByHierarchyAndName(int hierarchy, string name) {
+            int maxHierarchy = hierarchy == -1 ? 999 : hierarchy;
+            var res = timings.Values.ToList().Where(t => t.name == name && t.hierarchy >= hierarchy && t.hierarchy <= maxHierarchy).ToList();
+            res.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
+
+            return res;
+        }
+
+        public List<Timing> Remove(string name, int hierarchy = -1, bool iterate = false) {//如未指定hierarchy，则删除第一个hierarchy下第一个对应name的定时
+            var selectedTiming = GetTimingsByHierarchyAndName(hierarchy, name);
+            if (selectedTiming.Count == 0) { return new List<Timing>(); }
+            return Remove(selectedTiming[0].Id, iterate);
+        }
+        public List<Timing> Remove(int timingId, bool iterate = false) {
+            List<int> keysInOrder = timings.Keys.ToList();
+            keysInOrder.Sort((t1, t2) => timings[t1].hierarchy.CompareTo(timings[t2].hierarchy));
+            List<int> removedId = new List<int>{timingId};
+            List<Timing> removedTiming = new List<Timing>();
+            List<int> childId = new List<int>();
+            foreach (int key in keysInOrder) {
+                if (removedId.Contains(key)) {
+                    removedTiming.Add(timings[key]);
+                    timings.Remove(key);
+                }
+                else if (removedId.Contains(timings[key].parentId)) {
+                    if (iterate) {
+                        removedTiming.Add(timings[key]);
+                        removedId.Add(timings[key].Id);
+                        timings.Remove(key);
+                    }
+                    else {
+                        childId.Add(key);
+                        timings[key] = timings[key].SetLowerHierarchy();
+                    }
+                }
+                else if (childId.Contains(key)) {
+                    childId.Add(key);
+                    timings[key] = timings[key].SetLowerHierarchy();
+                }
+            }
+            while (maxId > 100 && removedId.Contains(maxId)) {
+                maxId--;
+            }
+            return removedTiming;
+        }
+
+        public List<Timing> Clear() {
+            if (timings.Count == 0) { return new List<Timing>(); }
+            var res = timings.Values.ToList();
+            timings.Clear();
+            maxId = 0;
+            return res;
+        }
+
+        public Timing? GetTiming(int id) {
+            if (timings.ContainsKey(id)) {
+                return timings[id];
+            }
+            return null;
+        }
+        
+
+        public int GetId(int hierarchy, string name){
+            var _timings = GetTimingsByHierarchyAndName(hierarchy, name);
+            if (_timings.Count == 0){
+                return -1;
+            }
+            return _timings[0].Id;
+        }
+
+        public string GetTimingMethod(int hierarchy, string name) {
+            var _timings = GetTimingsByHierarchyAndName(hierarchy, name);
+            var _timingMethods = _timings.Select(t => t.timingMethod).ToList();
+            if (_timingMethods.Count == 0) { return ""; }
+            else { return _timingMethods[0].ToString(); }
+        }
+
+        public List<Timing> GetTimingChildren(int parentId) {
+            List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.parentId == parentId);
+            return _timings.OrderBy(t => t.Id).ToList();
+        }
+
+        Dictionary<int, Timing> timings = new Dictionary<int, Timing>();
+        int maxId = -1;
+        public int Count { get { return timings.Count; } }
+    }
+
+    public int ButtonAddSelf(UnityEngine.UI.Button button){
+        if (buttons.Contains(button)) { return 0; }
 
         buttons.Add(button);
         return 1;
@@ -77,71 +286,53 @@ public class UIUpdate : MonoBehaviour
         return -1;
     }
     void SetButtonColor(UnityEngine.UI.Button _button, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate = false, bool ignoreTiming = false){
-        // if(_button == null || (!ignoreTiming && buttonTimingList.Contains(_button.name))){return;}
-        if(_button == null){return;}
+        if(_button == null || (!ignoreTiming && timings.ContainsKey(_button.name))){return;}
         _button.GetComponent<ScrButton>().ChangeColor(color, setToDefault, setToPrevious, forcePreviousUpdate);
         Debug.Log($"SetButtonColor {_button.name} to {color}");
     }
+    
+    bool GetButtonColor(string buttonName, out Color color){
+        UnityEngine.UI.Button button = buttons.Find(button => button.name == buttonName);
+        if(button != null){
+            color = button.GetComponent<Image>().color;
+            return true;
+        }
+        color = Color.white;
+        return false;
+    }
 
     public void SetButtonTiming(string _buttonNameWithInd){
-        alarm.TrySetAlarm(_buttonNameWithInd, 1, out _, addInfo:"FromTiming", force:true);
+        alarm.TrySetAlarm(_buttonNameWithInd, 1, out _, addInfo: "FromTiming", force: true);
     }
 
-    public void ControlsParsePublic(string elementsName,float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false){//scrButton中调用时ignoreTiming为false
-        ControlsParse(elementsName, value, stringArg, ignoreTiming, forceTiming);
+    int ClearComingButtonTiming(int timingId = -1) {
+        if (timingId == -1) {
+            foreach (Timing timing in timings.Clear()) {
+                MessageUpdate($"button timing:{timing.timingMethod} removed");
+            }
+            return 1;
+        }
+
+        var removedTimings = timings.Remove(timingId, true);
+        foreach (Timing timing in removedTimings) {
+            MessageUpdate($"button timing:{timing.timingMethod} removed");
+        }
+        UpdateOptions();
+        return 1;
     }
     
-    void ClearComingButtonTiming(string buttonName, int hierarchy){
-        string[] buttonsForSearch = new string[]{buttonName};
-        List<string> buttonsForSearchNext = new List<string>{};
-
-        for(int _hierarchy = hierarchy; _hierarchy <= buttonTimingBasedOnPreviousTimingDicts.Count; _hierarchy++){
-            List<string> timingDicKeys = _hierarchy > 0? buttonTimingBasedOnPreviousTimingDicts[_hierarchy - 1].Keys.ToList(): (from option in buttonTimingBaseDropdown.options where option.text != "None" select option.text).ToList();
-            foreach(string button in buttonsForSearch){
-                foreach(string key in timingDicKeys){
-
-                    string[] relatedButtons = _hierarchy > 0? buttonTimingBasedOnPreviousTimingDicts[_hierarchy - 1][key].Trim(';').Split(';'): new string[]{""};
-                    buttonsForSearchNext = (buttonTimingBasedOnPreviousTimingDicts.Count > _hierarchy && buttonTimingBasedOnPreviousTimingDicts[_hierarchy].ContainsKey(button))? (from timing in buttonTimingBasedOnPreviousTimingDicts[_hierarchy][button].Trim(';').Split(";") select timing.Split(':')[0]).ToList(): new List<string>{};
-                    string _tempRelatedButtonInValue = "";
-                    for(int i = 0; i < relatedButtons.Length; i++){
-                        string relatedButtonsInValue = relatedButtons[i].Split(':')[0];
-                        if(relatedButtons[i].StartsWith(button)){
-                            // buttonTimingBasedOnPreviousTimingDicts[_hierarchy - 1].Remove(key);
-                            // buttonTimingBaseScrDropdown.higherHierarchyOptions[_hierarchy - 1].Remove(button);
-                            Debug.Log($"deleted {button}");
-                            if(_hierarchy >= hierarchy){
-                                if(buttonTimingBaseScrDropdown.nowSelectedHierarchy == _hierarchy && buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy == button){
-                                    buttonTimingBaseScrDropdown.nowSelectedHierarchy = 0;
-                                    buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = "None";
-                                    buttonTimingBaseDropdown.value = 0;
-                                    buttonTimingBaseScrDropdown.UpdateCaptionText();
-                                }
-                            }
-                            // buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(_hierarchy, timingDicKeys.IndexOf(key));
-                        }else if(relatedButtons[i].Length > 0){
-                            _tempRelatedButtonInValue += relatedButtons[i] + ";";
-                        }
-                    }
-                    if(_tempRelatedButtonInValue.Length > 0){
-                        buttonTimingBasedOnPreviousTimingDicts[_hierarchy - 1][key] = _tempRelatedButtonInValue;
-                    }else{
-                        if(hierarchy > 0){
-                            buttonTimingBasedOnPreviousTimingDicts[_hierarchy - 1].Remove(key);
-                        }
-                    }
-                }
-            }
-
-            buttonsForSearch = buttonsForSearchNext.ToArray();
-            buttonsForSearchNext.Clear();
+    int UpdateOptions(int hierarchy = 0) {
+        int _timingCount = timings[0].Count;
+        if (_timingCount > 0) {
+            return TimingBaseScrDropdown.UpdateOptions(timings[hierarchy].Values(), timings[hierarchy].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList());
         }
-        
+        else {
+            return TimingBaseScrDropdown.UpdateOptions();
+        }
     }
 
-    List<string> GetRelatedButtonTimingInPreviousTiming(int _hierarchy, string _button){
-        if(buttonTimingBasedOnPreviousTimingDicts.Count < _hierarchy || _hierarchy < 0){return new List<string>();}
-        if(!buttonTimingBasedOnPreviousTimingDicts[_hierarchy].ContainsKey(_button)){return new List<string>();}
-        return (from timing in buttonTimingBasedOnPreviousTimingDicts[_hierarchy][_button].Trim(';').Split(";") select timing.Split(':')[0]).ToList();
+    public void ControlsParsePublic(string elementsName, float value, string stringArg = "", bool ignoreTiming = true, bool forceTiming = false) {//scrButton中调用时ignoreTiming为false
+        ControlsParse(elementsName, value, stringArg, ignoreTiming, forceTiming);
     }
     
     /// <summary>
@@ -151,109 +342,73 @@ public class UIUpdate : MonoBehaviour
     /// <param name="elementsName"></param>
     /// <param name="value"></param>
     /// <param name="stringArg"></param>
-    void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false, bool ignoreSecondTiming = false){
+    void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false, bool ignoreSecondTiming = false, Timing? timing = null){
 
-        if(! ignoreTiming){//目前仅支持button延时点击,按trial定时事件执行在DeviceTriggerExecute最后处理
-            UnityEngine.UI.Button selectedButton = buttons.Find(button => button.name == elementsName);
-            if(selectedButton != null){
-                List<string> buttonTimingSetInSec = alarm.GetAlarmNames(true).Where(name => name.StartsWith($"buttonTiming{elementsName}")).ToList();
-                buttonTimingSetInSec.Sort();
-                int lastSetInSecInd = buttonTimingSetInSec.Count > 0? int.Parse(buttonTimingSetInSec.Last().Split(";")[1]): -1;
-                List<string> buttonTimingSetInTrial = moving.ButtonTriggerDict.Keys.Where(name => name.StartsWith($"{elementsName}")).ToList();
-                buttonTimingSetInTrial.Sort();
-                int lastSetInTrialInd = buttonTimingSetInTrial.Count > 0? int.Parse(buttonTimingSetInTrial.Last().Split(";")[1]): -1;
-
-                string targetButtonTimingNameInSec = $"buttonTiming{elementsName};{lastSetInSecInd+1}";
-                string targetButtonTimingNameInTrial = $"buttonTiming{elementsName};{lastSetInTrialInd+1}";
-                int isTiming = buttonTimingSetInSec.Count  + buttonTimingSetInTrial.Count;//也等于buttonTimingList.where(n => n==elementsName).Count
+        if(! ignoreTiming && (Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) || forceTiming) || stringArg.Contains("cancelTiming")){//按trial定时事件执行在DeviceTriggerExecute最后处理
+            bool isTiming = timings.ContainsKey(elementsName);
+            
+            float _sec = -1;int _trial = -1;
+            string timingElementType = timing.HasValue? timing.Value.type: "";
+            if (stringArg.StartsWith("type_")){ timingElementType = stringArg.Split(";")[0][5..]; stringArg = stringArg.Contains(";")? string.Join(";", stringArg.Split(";")[1]) : "";}
+            if (stringArg.Contains(";")) {
+                int useSecInArg = Convert.ToInt16(stringArg.StartsWith("sec")) - Convert.ToInt16(stringArg.StartsWith("trial"));
+                if (useSecInArg == 1) { _sec = float.Parse(stringArg.Split(";")[1]); }
+                else if (useSecInArg == -1) { _trial = int.Parse(stringArg.Split(";")[1]); }
+            }
+            else {
+                if (!float.TryParse(inputFieldContent["IFTimingBySec"], out _sec)) { _sec = -1; }
+                if (!int.TryParse(inputFieldContent["IFTimingByTrial"], out _trial)) { _trial = -1; }
+            }
+            if(_sec < 0 && _trial < 0 && !timing.HasValue){
+                MessageUpdate("please input a valid number for button timing");
+                return;
+            }
+            
+            int _TimingId = TimingBaseScrDropdown.nowSelectedTimingId;
+                // string _timingBaseName = buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
+            string _timingBaseName = timing.HasValue? timing.Value.parentName: TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
+                // if(!ignoreSecondTiming && (buttonTimingBaseDropdown.value!=0 || buttonTimingList.Contains(_timingBaseName))){
+            bool useSec = _sec > 0;
+            string _timingMethod = timing.HasValue? timing.Value.timingMethod: $"type_{timingElementType};{elementsName}:{(useSec? "sec": "trial")}:{(useSec? _sec: _trial)};";
+            Timing _timing = timing.HasValue? timing.Value: timings.Add(elementsName, _timingMethod, timingElementType, parentId:_TimingId, parentName:_timingBaseName);
+            string targetElementTimingName = $"Timing{_timing.name};{_timing.Id}";
+            if (!ignoreSecondTiming && _TimingId != -1) {
+                MessageUpdate($"button {elementsName} timing set to {(useSec ? _sec : _trial)} {(useSec ? "s " : "trial")} after {_timingBaseName}");
+                UpdateOptions();
+                return;
+            }
+            
+            if(_sec > 0){
+                alarm.TrySetAlarm(targetElementTimingName, _sec, out _, addInfo:"FromTiming", force:true);
+                MessageUpdate($"button {elementsName} timing set to {_sec}s");
+                inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
+                inputFieldContent[$"IFTimingBySec"] = "null";
                 
-                if(stringArg != "cancelTiming" && Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) || forceTiming){
-                    float _sec = -1;int _trial = -1;
-                    if(stringArg.Contains(";")){
-                        bool useSecInArg = stringArg.StartsWith("sec");
-                        if(useSecInArg){_sec = float.Parse(stringArg.Split(";")[1]);}
-                        else{_trial = int.Parse(stringArg.Split(";")[1]);}
-                    }else{
-                        if(!float.TryParse(inputFieldContent["IFTimingBySec"], out _sec)){_sec = -1;};
-                        if(!int.TryParse(inputFieldContent["IFTimingByTrial"], out _trial)){_trial = -1;};
-                    }
-                    if(_sec < 0 && _trial < 0){
-                        MessageUpdate("please input a valid number for button timing");
-                        return;
-                    }
-                    
-                    int _hierarchyTimingBaseInDropdown = buttonTimingBaseScrDropdown.nowSelectedHierarchy;
-                    // string _timingBaseName = buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
-                    string _timingBaseName = "None";
-                    // if(!ignoreSecondTiming && (buttonTimingBaseDropdown.value!=0 || buttonTimingList.Contains(_timingBaseName))){
-                    bool useSec = _sec > 0;
-                    string _timingMethod = $"{elementsName}:{(useSec? "sec": "trial")}:{(useSec? _sec: _trial)};";
-                    if(!ignoreSecondTiming && _timingBaseName != "None"){
-                        while(buttonTimingBasedOnPreviousTimingDicts.Count <= _hierarchyTimingBaseInDropdown){
-                            buttonTimingBasedOnPreviousTimingDicts.Add(new Dictionary<string, string>{});
-                        }
-                        if (buttonTimingBasedOnPreviousTimingDicts[_hierarchyTimingBaseInDropdown].ContainsKey(_timingBaseName)){
-                            _timingMethod = buttonTimingBasedOnPreviousTimingDicts[_hierarchyTimingBaseInDropdown][_timingBaseName] + _timingMethod;
-                            buttonTimingBasedOnPreviousTimingDicts[_hierarchyTimingBaseInDropdown].Remove(_timingBaseName);
-                        }
-                        buttonTimingBasedOnPreviousTimingDicts[_hierarchyTimingBaseInDropdown].Add(_timingBaseName, _timingMethod);
-                        // buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(buttonTimingBasedOnPreviousTimingDicts[0]);
-                        MessageUpdate($"button {elementsName} timing set to {(useSec? _sec: _trial)} {(useSec? "s ": "trial")} after button {_timingBaseName}");
-                        return;
-                    }
-                    
-                    if(_sec > 0){
-                        alarm.TrySetAlarm(targetButtonTimingNameInSec, _sec, out _, addInfo:"FromTiming", force:true);
-                        MessageUpdate($"button {elementsName} timing set to {_sec}s");
-                        inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
-                        inputFieldContent[$"IFTimingBySec"] = "null";
-                        
-                    }else if(_trial > 0){//默认按trial start，暂时不考虑finish和end
-                        MessageUpdate($"button {elementsName} timing set to trial {Math.Max(0, moving.NowTrial) + _trial}");
-                        moving.ButtonTriggerDict.Add($"{targetButtonTimingNameInTrial};", Math.Max(0, moving.NowTrial) + _trial);
-                        inputFields.Find(inputfield => inputfield.name == "IFTimingByTrial").text = "";
-                        inputFieldContent[$"IFTimingByTrial"] = "null";
-                    }else{
-                        return;
-                    }
-                    buttonTimingList.Add(elementsName);
-                    // buttonTimingBaseDropdown.AddOptions(new List<string>{elementsName});
-                    // buttonTimingBaseScrDropdown.UpdateOptions();
-                    // buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(null);
-                    // buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(hierarchy:0, index:buttonTimingList.Count, addOrRemove:true, buttonFunctions:buttonFunctionsEnableDefault);
-                    SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate:true, ignoreTiming:true);
-                    return;
-                }else{//直接点击而非定时
-                    if(isTiming > 0){
-                        // int buttonIndexInTimingList = buttonTimingList.IndexOf(elementsName);
-                        if(buttonTimingSetInTrial.Count > 0){
-                            MessageUpdate($"button {elementsName} timing at trial{moving.ButtonTriggerDict[$"{elementsName};{lastSetInTrialInd};"]} cancelled");
-                            moving.ButtonTriggerDict.Remove($"buttonTiming{elementsName};{lastSetInTrialInd}");
-                            // buttonTimingList.Remove(elementsName);
-                            ClearComingButtonTiming(elementsName, 0);
-                        }
-                        else{
-                            MessageUpdate($"button {elementsName} timing after {(int)(alarm.GetAlarm($"buttonTiming{elementsName};{lastSetInSecInd};")* Time.fixedUnscaledDeltaTime)} sec cancelled");
-                            alarm.DeleteAlarm($"{elementsName};{lastSetInSecInd}", forceDelete:true);
-                            // buttonTimingList.Remove(elementsName);
-                            ClearComingButtonTiming(elementsName, 0);
-                        }
+            }else if(_trial > 0){//默认按trial start，暂时不考虑finish和end
+                MessageUpdate($"button {elementsName} timing set to trial {Math.Max(0, moving.NowTrial) + _trial}");
+                moving.ButtonTriggerDict.Add($"targetButtonTimingName", Math.Max(0, moving.NowTrial) + _trial);
+                inputFields.Find(inputfield => inputfield.name == "IFTimingByTrial").text = "";
+                inputFieldContent[$"IFTimingByTrial"] = "null";
+            }else{
+                return;
+            }
 
-                        if(buttonTimingBasedOnPreviousTimingDicts.Count > 0 && buttonTimingBasedOnPreviousTimingDicts[0].ContainsKey(elementsName)){//如果有相关的后续定时，则删除
-                            ClearComingButtonTiming(elementsName, 0);
-                            MessageUpdate($"button timing:{buttonTimingBasedOnPreviousTimingDicts[0][elementsName]} after button {elementsName} removed");
-                            // buttonTimingBasedOnPreviousTimingDict.Remove(elementsName);
-                        }
-                        if(isTiming == 1){SetButtonColor(selectedButton, setToPrevious:true);}
-                        return;
-                    }else{
-                        //无定时等，直接正常进入按钮parse部分
-                    }
+            UpdateOptions();
+
+            SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate:true, ignoreTiming:true);
+            return;
+        }
+        else{
+            if (Input.GetKey(KeyCode.LeftControl) && timings.ContainsKey(elementsName)) {
+                SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate:true, ignoreTiming:true);
+                foreach (Timing _timing in timings.Remove(elementsName)) {
+                    MessageUpdate($"button timing:{_timing.timingMethod} removed");
                 }
+                return;
             }
         }
-
-        if(stringArg == "cancelTiming"){return;}//应当在之前处理好
+        
+        if (stringArg == "cancelTiming") { return; }//应当在之前处理好
         //if(string_arg==""){return;}
         switch (elementsName){
             case "StartButton":{
@@ -421,172 +576,55 @@ public class UIUpdate : MonoBehaviour
                 moving.SetBackgroundMaterial(moving.Backgrounds.Find(m => m.name == matName));
                 break;
             }
-            case "TimingButtonsBaseSelect":{
-                // Dropdown timingBaseSelectDropdown = dropdowns.Find(dropdown => dropdown.name == elementsName);
-                if(stringArg.StartsWith("delete")){
-                    if(value >= buttonTimingBaseDropdown.options.Count || value == 0){break;}
-                    List<string> _options = buttonTimingBaseDropdown.options.Select(x => x.text).ToList();
-                    if(!stringArg.EndsWith("finish")){ControlsParse(_options[(int)value], 1, stringArg:$"cancelTiming", ignoreTiming:false);}//取消对应按键的延时
-                    _options.RemoveAt((int)value);
-                    buttonTimingBaseDropdown.ClearOptions();
-                    buttonTimingBaseDropdown.AddOptions(_options);
-                    buttonTimingBaseDropdown.Hide();
-                    buttonTimingBaseDropdown.value = 0;
-                    buttonTimingBaseDropdown.RefreshShownValue();
-                    // buttonTimingBaseScrDropdown.UpdateOptions();
-                    buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(buttonTimingBasedOnPreviousTimingDicts.Count > 0? buttonTimingBasedOnPreviousTimingDicts[0]: null);
-                }else if(stringArg.StartsWith("spread")){
-                    float[] spreadPos = (from pos in stringArg.Split(";")[2].Split(':') select Convert.ToSingle(pos)).ToArray();
-                    string _key = buttonTimingBaseDropdown.options[(int)value].text;
-                        if (buttonTimingBasedOnPreviousTimingDicts.Count > 0 && buttonTimingBasedOnPreviousTimingDicts[0].ContainsKey(_key)) {
-                            if (createdButtonTimingBaseSubDropdowns.Count != 0) {
-                                Destroy(createdButtonTimingBaseSubDropdowns[0]);
-                            }
-                                //新建dorpdown
-                            // Debug.Log("新建dorpdown");
-                            GameObject _buttonTimingBaseSubDropdown = Instantiate(pref_buttonTimingBaseSubDropdown);
-                            _buttonTimingBaseSubDropdown.name = "TimingButtonsBaseSelectSubDropdown";
-                            _buttonTimingBaseSubDropdown.transform.position = new Vector3(spreadPos[0] + 160, spreadPos[1], 0);
-                            _buttonTimingBaseSubDropdown.transform.SetParent(buttonTimingBaseDropdown.transform, true);
-                            _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().AddOptions(GetRelatedButtonTimingInPreviousTiming(0, _key));
-                            if (buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count > 0) { _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone[0] + 1; }
-                            ScrDropDown _tempScrDropdown = _buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>();
-                            _tempScrDropdown.ui_update = this;
-                            // Debug.Log("新建dorpdown ui_update set");
-                            _tempScrDropdown.OptionsNowHierarchy = buttonTimingBaseScrDropdown.OptionsNowHierarchy.GetRange(1, buttonTimingBaseScrDropdown.OptionsNowHierarchy.Count - 1);
-                            _tempScrDropdown.nowSubHierarchyIndex = 1;
-                            _tempScrDropdown.buttonFunctionsLs = buttonFunctionsLs;
-                            // _tempScrDropdown.UpdateOptions();
-                            _tempScrDropdown.UpdateOptionsFunctionEnableStatus(buttonTimingBasedOnPreviousTimingDicts.Count > 1 ? buttonTimingBasedOnPreviousTimingDicts[1] : null);
-                            // Debug.Log("新建dorpdown finish");
-                            alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: "1");
-                            createdButtonTimingBaseSubDropdowns.Add(_buttonTimingBaseSubDropdown);
-                            buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)(value - 1));
-                        }
-                } else if (stringArg.StartsWith("hide")) {
-                    foreach (GameObject _go in createdButtonTimingBaseSubDropdowns) {
-                            Destroy(_go);
-                        }
-                        createdButtonTimingBaseSubDropdowns.Clear();
-                        if (buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count > buttonTimingBaseScrDropdown.nowSelectedHierarchy) {
-                            buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.RemoveRange(buttonTimingBaseScrDropdown.nowSelectedHierarchy, buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count - 1);
-                        }
-                    }
-                    else {
-                        //已在onvlauechanged中处理
-                        foreach (GameObject _go in createdButtonTimingBaseSubDropdowns) {
-                            Destroy(_go);
-                        }
-                        createdButtonTimingBaseSubDropdowns.Clear();
-                    }
-                break;
-            }
-            case "TimingButtonsBaseSelectSubDropdown":{
-                string[] stringArgSplit = stringArg.Split(";");
-                int _nowHierarchy = Convert.ToInt16(stringArgSplit[1]);
-
-                if(stringArg.StartsWith("delete")){
-                    ClearComingButtonTiming(buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy, _nowHierarchy);
-                    // buttonTimingBaseScrDropdown.UpdateOptions();
-                    buttonTimingBaseScrDropdown.UpdateOptionsFunctionEnableStatus(buttonTimingBasedOnPreviousTimingDicts[_nowHierarchy]);
-                    if(createdButtonTimingBaseSubDropdowns.Count > _nowHierarchy - 1 && createdButtonTimingBaseSubDropdowns[_nowHierarchy - 1] != null){Destroy(createdButtonTimingBaseSubDropdowns[_nowHierarchy - 1]);}
-                }
-                else if(stringArg.StartsWith("spread")){
-                    float[] spreadPos = (from pos in stringArgSplit[2].Split(':') select Convert.ToSingle(pos)).ToArray();
-                    Dropdown timingBaseSelectDropdown = createdButtonTimingBaseSubDropdowns.Last().GetComponent<Dropdown>();
-                    if(createdButtonTimingBaseSubDropdowns.Count == _nowHierarchy){
-                        GameObject _buttonTimingBaseSubDropdown = Instantiate(pref_buttonTimingBaseSubDropdown);
-                        _buttonTimingBaseSubDropdown.name = "TimingButtonsBaseSelectSubDropdown";
-                        _buttonTimingBaseSubDropdown.transform.position = new Vector3(spreadPos[0] + 160, spreadPos[1], 0);
-                        _buttonTimingBaseSubDropdown.transform.SetParent(timingBaseSelectDropdown.transform, true);
-                        ScrDropDown _tempScrDropdown = _buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>();
-                        _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().AddOptions(GetRelatedButtonTimingInPreviousTiming(_nowHierarchy, stringArgSplit[2]));
-                        if(buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count >= _nowHierarchy){_buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone[_nowHierarchy - 1] + 1;}
-                        _tempScrDropdown.ui_update = this;
-                        _tempScrDropdown.nowSubHierarchyIndex = _nowHierarchy + 1;
-                        _tempScrDropdown.buttonFunctionsLs= buttonFunctionsLs;
-                        // _tempScrDropdown.UpdateOptions();
-                        _tempScrDropdown.UpdateOptionsFunctionEnableStatus(buttonTimingBasedOnPreviousTimingDicts[_nowHierarchy]);
-                        alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo:_tempScrDropdown.nowSubHierarchyIndex.ToString());
-                        createdButtonTimingBaseSubDropdowns.Add(_buttonTimingBaseSubDropdown);
-                        buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)(value - 1));
-
-                    }
-                }
-                else if(stringArg.StartsWith("destroy")){
-                    foreach(GameObject _go in createdButtonTimingBaseSubDropdowns){
-                        if(_go != null){
-                            Destroy(_go);
-                        }
-                    }
-                    createdButtonTimingBaseSubDropdowns.Clear();
-                    // createdButtonTimingBaseSubDropdowns.RemoveAt(Convert.ToInt16(stringArgSplit[1]) - 1);
-                    buttonTimingBaseDropdown.Hide();
-                }else{
-                    if(value == 0){
-                        buttonTimingBaseScrDropdown.nowSelectedHierarchy = 0;
-                        buttonTimingBaseDropdown.value = 0;
-                        buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = "None";
-                        // buttonTimingBaseDropdown.RefreshShownValue();
-                        buttonTimingBaseScrDropdown.UpdateCaptionText();
-
-                    }else{
-                        buttonTimingBaseScrDropdown.nowSelectedHierarchy = Convert.ToInt16(stringArgSplit[1]);
-                        buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = stringArgSplit[0];
-                        if(buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count > _nowHierarchy - 1){
-                            buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone[_nowHierarchy - 1] = (int)(value - 1);
-                            buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.RemoveRange(_nowHierarchy, buttonTimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count - 1);
-                        }//timing默认第一个为None
-                        buttonTimingBaseScrDropdown.UpdateCaptionText();
-                    }
-                }
-                break;
-            }
             default:{
-                if(elementsName.StartsWith("sound")){
-                    if(stringArg.StartsWith("passive")){//format: passive;add;soundName/-
+                if (elementsName.StartsWith("sound")) {
+                    if (stringArg.StartsWith("passive")) {//format: passive;add;soundName/-
                         MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
-                        foreach(int buttonInd in moving.audioPlayModeNow){
-                            soundOptionsDict[buttonInd].GetComponent<ScrButton>().pressCount ++;
+                        foreach (int buttonInd in moving.audioPlayModeNow) {
+                            soundOptionsDict[buttonInd].GetComponent<ScrButton>().pressCount++;
                             SetButtonColor(soundOptionsDict[buttonInd], Color.green);
-                            if(stringArg.Split(";").Count() == 3){
+                            if (stringArg.Split(";").Count() == 3) {
                                 string _soundName = stringArg.Split(";")[2];
-                                if(moving.audioClips.ContainsKey(_soundName)){
+                                if (moving.audioClips.ContainsKey(_soundName)) {
                                     int tempSoundInd = moving.audioClips.Keys.ToList().IndexOf(_soundName);
                                     soundOptionsDict[buttonInd].GetComponentInChildren<Dropdown>().value = tempSoundInd;
                                 }
                             }
                         }
                         //triggerModeSelect.GetComponent<ScrDropDown>().isPassive = true;
-                    }else{
+                    }
+                    else {
                         string soundOptionSelected = elementsName.Substring(5);//0 无声音、1 trial开始前、2 开始后可以舔之前、3 trial中、4 可获取奖励、5 失败
-                        if(moving.TrialSoundPlayModeExplain.Contains(soundOptionSelected)){//buttons
+                        if (moving.TrialSoundPlayModeExplain.Contains(soundOptionSelected)) {//buttons
                             int tempId = moving.TrialSoundPlayModeExplain.IndexOf(soundOptionSelected);
-                            if(tempId == 0){//"Off"
+                            if (tempId == 0) {//"Off"
                                 moving.ChangeSoundPlayMode(0, 0, "", true);
-                                foreach(UnityEngine.UI.Button button in soundOptionsDict.Values){
-                                    SetButtonColor(button, setToDefault:true);
+                                foreach (UnityEngine.UI.Button button in soundOptionsDict.Values) {
+                                    SetButtonColor(button, setToDefault: true);
                                     button.GetComponent<ScrButton>().pressCount = 0;
                                 }
-                            }else{//其他
-                                if(moving.audioPlayModeNow.Contains(0)){
+                            }
+                            else {//其他
+                                if (moving.audioPlayModeNow.Contains(0)) {
                                     moving.audioPlayModeNow.Remove(0);
-                                    SetButtonColor(soundOptionsDict[0], setToDefault:true);
-                                    soundOptionsDict[0].GetComponent<ScrButton>().pressCount ++;
+                                    SetButtonColor(soundOptionsDict[0], setToDefault: true);
+                                    soundOptionsDict[0].GetComponent<ScrButton>().pressCount++;
                                 }
-                                if(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)){
-                                    if(moving.TrialSoundPlayModeExplain[tempId] != "InPos"){
+                                if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) {
+                                    if (moving.TrialSoundPlayModeExplain[tempId] != "InPos") {
                                         moving.PlaySoundPublic(tempId, "manual", true);
                                     }
-                                }else{
+                                }
+                                else {
                                     bool selected = soundOptionsDict[tempId].GetComponent<ScrButton>().pressCount % 2 == 1;
-                                    int _result = moving.ChangeSoundPlayMode(tempId, selected? 1: 0, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
-                                    SetButtonColor(soundOptionsDict[tempId], selected? Color.green: soundOptionsDict[tempId].GetComponent<ScrButton>().defaultColor);
+                                    int _result = moving.ChangeSoundPlayMode(tempId, selected ? 1 : 0, soundOptionsDict[tempId].GetComponentInChildren<Dropdown>().captionText.text);
+                                    SetButtonColor(soundOptionsDict[tempId], selected ? Color.green : soundOptionsDict[tempId].GetComponent<ScrButton>().defaultColor);
                                     // if(_result == -1){Debug.LogWarning($"mode change failed because the sound is playing");}
                                     MessageUpdate($"cue sound play mode now: {string.Join(", ", moving.audioPlayModeNow)}\n");
                                 }
                             }
-                        }else if(soundOptionSelected.StartsWith("Dropdown")){//dropdowns
+                        }
+                        else if (soundOptionSelected.StartsWith("Dropdown")) {//dropdowns
                             string parentNameAfter = soundOptionSelected.Substring(8);
                             int _tempId = moving.TrialSoundPlayModeExplain.IndexOf(parentNameAfter);
 
@@ -595,46 +633,127 @@ public class UIUpdate : MonoBehaviour
                     }
                     break;
                 }
-                else if(elementsName.StartsWith("MouseInfo")){
+                else if (elementsName.StartsWith("MouseInfo")) {
                     string _content = elementsName.Substring(9);
-                    Dictionary<string, string> headCorrespond = new Dictionary<string, string>{{"Name", "userName"}, {"Index", "mouseInd"}};
-                    if(stringArg.StartsWith("passive")){//format: passive
+                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "userName" }, { "Index", "mouseInd" } };
+                    if (stringArg.StartsWith("passive")) {//format: passive
 
                     }
-                    else{
-                        if(headCorrespond.TryGetValue(_content, out string _info)){
+                    else {
+                        if (headCorrespond.TryGetValue(_content, out string _info)) {
                             moving.SetMouseInfo(_info + ":" + stringArg);
                         }
                     }
                 }
-                else if(elementsName.StartsWith("OG") || elementsName.StartsWith("MS")){
+                else if (elementsName.StartsWith("OG") || elementsName.StartsWith("MS")) {
                     string _type = elementsName.Substring(0, 2);
                     string _content = elementsName.Substring(2);
-                    if(_content == "Start"){
+                    if (_content == "Start") {
                         moving.trialStatus = -3;
-                        if(!int.TryParse(inputFieldContent[$"{_type}Time"], out int _mills)){_mills = _type == "OG"? 10000: 480;}
-                        bool res = _type == "OG"? moving.OGSet(_mills): moving.MSSet(_mills);
+                        if (!int.TryParse(inputFieldContent[$"{_type}Time"], out int _mills)) { _mills = _type == "OG" ? 10000 : 480; }
+                        bool res = _type == "OG" ? moving.OGSet(_mills) : moving.MSSet(_mills);
                         // if(res){
                         //     SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), Color.green);
                         //     // alarm.TrySetAlarm("OGStartToGrey", 0.5f, out _);
                         // }
-                    }else if(_content == "Stop"){
-                        bool res = _type == "OG"? moving.OGSet(0): moving.MSSet(0);
+                    }
+                    else if (_content == "Stop") {
+                        bool res = _type == "OG" ? moving.OGSet(0) : moving.MSSet(0);
                         // if(res){
                         //     SetButtonColor(buttons.Find(button => button.name == $"{_type}Start"), setToDefault:true);
                         // }
-                    }else if(_content == "Enable"){
-                        if(moving.DeviceEnableDict.TryGetValue(_type, out bool _enabled)){
-                            _enabled = ! _enabled;
+                    }
+                    else if (_content == "Enable") {
+                        if (moving.DeviceEnableDict.TryGetValue(_type, out bool _enabled)) {
+                            _enabled = !_enabled;
                             moving.DeviceEnableDict[_type] = _enabled;
-                            if(_enabled){}
-                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green, !_enabled);
+                            if (_enabled) { }
+                            // SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green, !_enabled);
+                            // SetButtonColor($"{_type}Enable", Color.green, !_enabled);
 
-                        }else{
+                        }
+                        else {
                             moving.DeviceEnableDict.Add(_type, true);
-                            SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
+                            // SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
+                        }
+                        SetButtonColor($"{_type}Enable", Color.green, !_enabled);
+                    }
+                }
+                else if (elementsName.StartsWith("TimingBaseSelect")) {
+                    string[] stringArgSplit = stringArg.Split(";");
+                    if(stringArgSplit[0] == "hide"){return;}
+
+                    int _nowTimingId = stringArgSplit[0] == "type_dropdown"? (stringArgSplit.Count() > 2? int.Parse(stringArgSplit[2]): -1): (int)value;
+                    var _t = timings.GetTiming(_nowTimingId);
+                    if(_nowTimingId != -1 && !_t.HasValue){ Debug.Log($"invalid Id:{_nowTimingId}"); return; }
+                    int hierarchy = _t.Value.hierarchy;
+
+                    if (stringArg.StartsWith("delete")) {
+                        ClearComingButtonTiming(_nowTimingId);
+                        UpdateOptions(hierarchy);
+                        if (createdTimingBaseSubDropdowns.Count > _nowTimingId - 1 && createdTimingBaseSubDropdowns[_nowTimingId - 1] != null) { Destroy(createdTimingBaseSubDropdowns[_nowTimingId - 1]); }
+                    }
+                    else if (stringArg.StartsWith("spread")) {
+                        float[] spreadPos = (from pos in stringArgSplit[1].Split(':') select Convert.ToSingle(pos)).ToArray();
+                        Dropdown timingBaseSelectDropdown = hierarchy == 0 ? TimingBaseDropdown : createdTimingBaseSubDropdowns.Last().GetComponent<Dropdown>();
+                        if (createdTimingBaseSubDropdowns.Count == hierarchy) {
+                            GameObject _buttonTimingBaseSubDropdown = Instantiate(pref_buttonTimingBaseSubDropdown);
+                            _buttonTimingBaseSubDropdown.name = "TimingButtonsBaseSelectSubDropdown";
+                            _buttonTimingBaseSubDropdown.transform.position = new Vector3(spreadPos[0] + 160, spreadPos[1], 0);
+                            _buttonTimingBaseSubDropdown.transform.SetParent(timingBaseSelectDropdown.transform, true);
+                            ScrDropDown _tempScrDropdown = _buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>();
+
+                            // _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().AddOptions(timings[hierarchy + 1].Names());
+                            if(TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count == 0) {
+                                _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = 0;
+                            }
+                            else if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count >= hierarchy) { _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = TimingBaseScrDropdown.subSelectedIndexesExcludeNone[hierarchy - 1] + 1; }
+                            _tempScrDropdown.ui_update = this;
+                            _tempScrDropdown.nowSubHierarchyIndex = hierarchy + 1;
+                            _tempScrDropdown.buttonFunctionsLs = buttonFunctionsLs;
+                            // _tempScrDropdown.UpdateOptions();
+                            _tempScrDropdown.UpdateOptions(timings[hierarchy + 1].Values(), timings[hierarchy + 1].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList());
+                            alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: _tempScrDropdown.nowSubHierarchyIndex.ToString());
+                            createdTimingBaseSubDropdowns.Add(_buttonTimingBaseSubDropdown);
+                            TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)(value - 1));
+
                         }
                     }
+                    else if (stringArg.StartsWith("destroy")) {
+                        foreach (GameObject _go in createdTimingBaseSubDropdowns) {
+                            if (_go != null) {
+                                Destroy(_go);
+                            }
+                        }
+                        createdTimingBaseSubDropdowns.Clear();
+                        TimingBaseDropdown.Hide();
+                    }
+                    else if (stringArg.StartsWith("hide")) {
+
+                    }
+                    else {
+                        if (value == 0) {
+                            TimingBaseScrDropdown.nowSelectedTimingId = -1;
+                            TimingBaseScrDropdown.nowSelectedSubHierarchy = 0;
+                            TimingBaseDropdown.value = 0;
+                            // buttonTimingBaseDropdown.RefreshShownValue();
+                            TimingBaseScrDropdown.UpdateCaptionText();
+
+                        }
+                        else {
+                            TimingBaseScrDropdown.nowSelectedTimingId = _nowTimingId;
+                            TimingBaseScrDropdown.nowSelectedSubHierarchy = hierarchy;
+                            if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count == 0) {
+                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)value - 1);
+                            }
+                            else if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count > hierarchy - 1) {
+                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone[_nowTimingId - 1] = (int)(value - 1);
+                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone.RemoveRange(_nowTimingId, TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count - 1);
+                            }//timing默认第一个为None
+                            TimingBaseScrDropdown.UpdateCaptionText();
+                        }
+                    }
+
                 }
                 break;
             }
@@ -647,6 +766,9 @@ public class UIUpdate : MonoBehaviour
             string Spout = elementsName.Substring(elementsName.Length-1);
             if(Input.GetKey(KeyCode.LeftShift)){
                 ControlsParse("IFSerialMessage", 1, $"/p_water_flush[{Spout}]=1");
+                // if(GetButtonColor(elementsName, out Color buttonColor)){
+                //     SetButtonColor(elementsName, buttonColor != Color.green? Color.green: Color.green);
+                // }
             }else{
                 moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
             }
@@ -799,10 +921,11 @@ public class UIUpdate : MonoBehaviour
         dropdowns.Add(modeSelect);
         dropdowns.Add(triggerModeSelect);
         dropdowns.Add(backgroundSwitch);
-        dropdowns.Add(buttonTimingBaseDropdown);
+        dropdowns.Add(TimingBaseDropdown);
         soundOptionsDict = new Dictionary<int, UnityEngine.UI.Button>();
         logScrollBar.GetComponent<ScrScrollBar>().ui_update = this;
-        buttonTimingBaseScrDropdown = buttonTimingBaseDropdown.GetComponent<ScrDropDown>();
+        TimingBaseScrDropdown = TimingBaseDropdown.GetComponent<ScrDropDown>();
+        timings = new TimingCollection();
 
         foreach(UnityEngine.UI.Button button in soundOptions.GetComponentsInChildren<UnityEngine.UI.Button>()){
             if(moving.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))){
@@ -953,7 +1076,7 @@ public class UIUpdate : MonoBehaviour
                     break;
                 }
                 case "showButtonTimingSubDropdown":{
-                    GameObject buttonTimingBaseSubDropdown = createdButtonTimingBaseSubDropdowns[Convert.ToInt16(alarm.GetAlarmAddInfo("showButtonTimingSubDropdown")) - 1];
+                    GameObject buttonTimingBaseSubDropdown = createdTimingBaseSubDropdowns[Convert.ToInt16(alarm.GetAlarmAddInfo("showButtonTimingSubDropdown")) - 1];
                     buttonTimingBaseSubDropdown.GetComponent<Dropdown>().Show();
                     buttonTimingBaseSubDropdown.transform.GetChild(3).gameObject.AddComponent<ScrDestroyParent>();
 
@@ -961,24 +1084,30 @@ public class UIUpdate : MonoBehaviour
                     break;
                 }
                 default:{
-                    if(alarmFinished.StartsWith("buttonTiming")){
-                        string timingButtonName = alarmFinished[12..alarmFinished.IndexOf(";")];
-                        UnityEngine.UI.Button _tempButton = buttons.Find(button => button.name == timingButtonName);
-                        if(_tempButton == null){break;}
-                        string _args = alarm.GetAlarmAddInfo(alarmFinished);//format:"{buttonName;ind}"，暂时不需要stringArg传递
-                        _tempButton.GetComponent<ScrButton>().pressCount ++;
-                        buttonTimingList.Remove(timingButtonName);
-                        SetButtonColor(timingButtonName, setToPrevious:true, ignoreTiming:true);
-                        ControlsParse(timingButtonName, 1, _args);
-                        // ControlsParse("TimingButtonsBaseSelect", buttonTimingBaseDropdown.options.IndexOf(buttonTimingBaseDropdown.options.Where(o => o.text == timingButtonName).First()), stringArg:"delete;finish");
-                        if(buttonTimingBasedOnPreviousTimingDicts.Count > 0 && buttonTimingBasedOnPreviousTimingDicts[0].ContainsKey(timingButtonName)){
-                            string _tempTimingMethod = buttonTimingBasedOnPreviousTimingDicts[0][timingButtonName].Trim(';');
-                            foreach(string _subTimingMethod in _tempTimingMethod.Split(";")){
-                                ControlsParse(_subTimingMethod[.._subTimingMethod.IndexOf(":")], 1, _subTimingMethod[(_subTimingMethod.IndexOf(":")+1)..], ignoreTiming:false, forceTiming:true, ignoreSecondTiming:true);
+                    if(alarmFinished.StartsWith("Timing")){
+                        string timingElementName = alarmFinished[6..];
+                        int TimingId = int.Parse(timingElementName.Split(';')[1]);
+                        timingElementName = timingElementName.Split(';')[0];
+                        Timing? _tempTiming = timings.GetTiming(TimingId);
+                        if (_tempTiming.HasValue){
+                            if(timings.Count > 0 && timings[0].ContainsKey(timingElementName)){
+                                // string _tempTimingMethod = timings[0].GetTimingMethod(-1, timingButtonName).Trim(';');
+                                foreach(Timing _timing in timings.GetTimingChildren(TimingId)){
+                                    ControlsParse(_timing.name, 1, ignoreTiming:false, forceTiming:true, ignoreSecondTiming:true, timing: _timing);
+                                }
+                                timings.Remove(TimingId);
                             }
-                            buttonTimingBasedOnPreviousTimingDicts[0].Remove(timingButtonName);
+                            alarm.DeleteAlarm(alarmFinished);
+                            UpdateOptions();
+
+                            if(_tempTiming.Value.type == "button"){
+                                UnityEngine.UI.Button button = buttons.Find(b => b.name == _tempTiming.Value.name);
+                                button.GetComponent<ScrButton>().pressCount++;
+                                SetButtonColor(timingElementName, setToPrevious:true, ignoreTiming:true);
+                            }
+                            ControlsParse(timingElementName, 1);
+                            // ControlsParse("TimingButtonsBaseSelect", buttonTimingBaseDropdown.options.IndexOf(buttonTimingBaseDropdown.options.Where(o => o.text == timingButtonName).First()), stringArg:"delete;finish");
                         }
-                        alarm.DeleteAlarm(alarmFinished);
                     }
                     break;
                 }

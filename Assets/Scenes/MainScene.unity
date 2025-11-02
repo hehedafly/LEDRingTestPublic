@@ -38,7 +38,6 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.12731749, g: 0.13414757, b: 0.1210787, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -2161,7 +2160,7 @@ MonoBehaviour:
   m_ContentType: 2
   m_InputType: 0
   m_AsteriskChar: 42
-  m_KeyboardType: 4
+  m_KeyboardType: 2
   m_LineType: 0
   m_HideMobileInput: 0
   m_CharacterValidation: 1
@@ -7908,8 +7907,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -8725,8 +8723,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -9580,8 +9577,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -10368,7 +10364,7 @@ MonoBehaviour:
   m_ContentType: 2
   m_InputType: 0
   m_AsteriskChar: 42
-  m_KeyboardType: 4
+  m_KeyboardType: 2
   m_LineType: 0
   m_HideMobileInput: 0
   m_CharacterValidation: 1
@@ -13329,8 +13325,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -15225,8 +15220,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -15691,7 +15685,7 @@ MonoBehaviour:
   m_ContentType: 2
   m_InputType: 0
   m_AsteriskChar: 42
-  m_KeyboardType: 4
+  m_KeyboardType: 2
   m_LineType: 0
   m_HideMobileInput: 0
   m_CharacterValidation: 1
@@ -20831,8 +20825,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -20996,8 +20989,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -21229,7 +21221,7 @@ MonoBehaviour:
   - {fileID: 1188724605}
   - {fileID: 1339636506}
   - {fileID: 1130604108}
-  buttonTimingBaseDropdown: {fileID: 1239954583698251826}
+  TimingBaseDropdown: {fileID: 1239954583698251826}
   buttonFunctionsLs:
   - delete
   - spread
@@ -21995,8 +21987,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -23915,8 +23906,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -26705,8 +26695,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 0
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 
@@ -27668,12 +27657,12 @@ GameObject:
   - component: {fileID: 1239954583698251826}
   - component: {fileID: 7964849090953120011}
   m_Layer: 5
-  m_Name: TimingButtonsBaseSelect
+  m_Name: TimingBaseSelect
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!1 &806600792387554803
 GameObject:
   m_ObjectHideFlags: 0
@@ -27842,7 +27831,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   Type: delete
   parentDropdownName: 
-  index: -1
+  Id: -1
   preActiveStatus: 0
 --- !u!1 &1485350416729830436
 GameObject:
@@ -28591,7 +28580,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   Type: spread
   parentDropdownName: 
-  index: -1
+  Id: -1
   preActiveStatus: 0
 --- !u!224 &6095537163353445511
 RectTransform:
@@ -28836,8 +28825,7 @@ MonoBehaviour:
   ui_update: {fileID: 0}
   EnableOptionsFunction: 1
   buttonFunctionsLs: []
-  OptionsNowHierarchy: []
-  nowSelectedHierarchy: 0
+  nowSelectedTimingId: -1
   nowSubHierarchyIndex: 0
   subSelectedIndexesExcludeNone: 
   optionSelectedIncludeHigerHierarchy: 

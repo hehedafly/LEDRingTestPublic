@@ -42,7 +42,7 @@ class ContextInfo{
         try{
             errorMessage = "avaliablePosArray";
             avaliablePosDict = new Dictionary<int, int>();
-            foreach(string availablePos in _available_pos_array.Split(',')){
+            foreach (string availablePos in _available_pos_array.Split(',')){
                 int temp_pos = Convert.ToInt16(availablePos) % 360;
                 // if(!avaliablePosDict.Contains(temp_pos)){avaliablePosDict.Add(temp_pos);}
                 avaliablePosDict.Add(avaliablePosDict.Count(), temp_pos);
@@ -50,21 +50,22 @@ class ContextInfo{
 
             errorMessage = "avaliableMatArray";
             matAvaliableArray = new List<string>();
-            foreach(string availableMat in _matAvailable_array.Split(',')){
-                if(!matAvaliableArray.Contains(availableMat)){matAvaliableArray.Add(availableMat);}
+            foreach (string availableMat in _matAvailable_array.Split(',')){
+                if (!matAvaliableArray.Contains(availableMat)) { matAvaliableArray.Add(availableMat); }
             }
-            
+
             errorMessage = "pumpPosLs";
             pumpPosLs = new List<int>();
             var _strPumpPos = _pump_pos_array.Split(",");
-            if(_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosDict.Count()){
-                foreach(string pos in _strPumpPos){
+            if (_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosDict.Count()){
+                foreach (string pos in _strPumpPos){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                        pumpPosLs.Add(Convert.ToInt16(pos));
+                    pumpPosLs.Add(Convert.ToInt16(pos));
                     //}
                 }
-            }else{
-                foreach(int _ in avaliablePosDict.Keys){
+            }
+            else{
+                foreach (int _ in avaliablePosDict.Keys){
                     pumpPosLs.Add(pumpPosLs.Count());
                 }
             }
@@ -72,14 +73,15 @@ class ContextInfo{
             errorMessage = "lickPosLs";
             lickPosLs = new List<int>();
             var _strLickPos = _lick_pos_array.Split(",");
-            if(_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosDict.Count()){
-                foreach(string pos in _strLickPos){
+            if (_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosDict.Count()){
+                foreach (string pos in _strLickPos){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                        lickPosLs.Add(Convert.ToInt16(pos));
+                    lickPosLs.Add(Convert.ToInt16(pos));
                     //}
                 }
-            }else{
-                foreach(int _ in avaliablePosDict.Keys){
+            }
+            else{
+                foreach (int _ in avaliablePosDict.Keys){
                     lickPosLs.Add(lickPosLs.Count());
                 }
             }
@@ -87,62 +89,65 @@ class ContextInfo{
             errorMessage = "trackMarkLs";
             trackMarkLs = new List<int>();
             var _strtrackMark = _trackMark_array.Split(",");
-            if(_strtrackMark.Count() > 0 && _strtrackMark.Count() >= avaliablePosDict.Count()){
-                foreach(string pos in _strtrackMark){
+            if (_strtrackMark.Count() > 0 && _strtrackMark.Count() >= avaliablePosDict.Count()){
+                foreach (string pos in _strtrackMark){
                     //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                        trackMarkLs.Add(Convert.ToInt16(pos));
+                    trackMarkLs.Add(Convert.ToInt16(pos));
                     //}
                 }
-            }else{
-                foreach(int _ in avaliablePosDict.Keys){
+            }
+            else{
+                foreach (int _ in avaliablePosDict.Keys){
                     trackMarkLs.Add(trackMarkLs.Count());
                 }
             }
-            
+
             errorMessage = "assign or random pos parse";
             List<int> posLs = new List<int>();
             List<int> availablePosArray = avaliablePosDict.Keys.ToList();
 
-            if(startMethod.StartsWith("random")){//format like random0,90,180
+            if (startMethod.StartsWith("random")){//format like random0,90,180
                 string content = startMethod[6..].Replace(" ", "");
-                string[] temp = content.Length > 0? content.Split(",") : new string[]{};
+                string[] temp = content.Length > 0 ? content.Split(",") : new string[] { };
                 // Debug.Log(temp.Length > 0);
                 // try{
-                    if(temp.Length > 0){posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt16(str))? Convert.ToInt16(str): -1).ToList();}
-                    else{posLs = availablePosArray;}
-                    if(posLs.Contains(-1)){throw new Exception("");}
-                    
-                    List<int> ints = new List<int>();
-                    for (int i = 0; i < posLs.Count * 3; i++){ints.Add(i % posLs.Count);}
-                    while(barPosLs.Count < _maxTrial){
-                        Shuffle(ints);
-                        foreach(int j in ints){barPosLs.Add(posLs[j]);}
-                    }
+                if (temp.Length > 0) { posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt16(str)) ? Convert.ToInt16(str) : -1).ToList(); }
+                else { posLs = availablePosArray; }
+                if (posLs.Contains(-1)) { throw new Exception(""); }
+
+                List<int> ints = new List<int>();
+                for (int i = 0; i < posLs.Count * 3; i++) { ints.Add(i % posLs.Count); }
+                while (barPosLs.Count < _maxTrial){
+                    Shuffle(ints);
+                    foreach (int j in ints) { barPosLs.Add(posLs[j]); }
+                }
                 // }
                 // catch(FormatException e){
                 //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
-                    
+
                 // }
                 // catch(Exception e){
                 //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
                 // }
 
-                
-            }else if(startMethod.StartsWith("assign")){
+
+            }
+            else if (startMethod.StartsWith("assign")){
                 posLs = availablePosArray;
                 string lastUnit = "";
-                foreach(string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*0,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
+                foreach (string pos in _assigned_pos.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*0,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                     List<int> _pos = new List<int>();
                     ProcessUnit(pos);
                     lastUnit = pos;
                 }
 
-                for(int i=barPosLs.Count(); i<_maxTrial; i++){
-                    if(_assigned_pos.EndsWith("..")){
-                        while(barPosLs.Count() < maxTrial){
+                for (int i = barPosLs.Count(); i < _maxTrial; i++){
+                    if (_assigned_pos.EndsWith("..")){
+                        while (barPosLs.Count() < maxTrial){
                             ProcessUnit(lastUnit);
                         }
-                    }else{
+                    }
+                    else{
                         barPosLs.Add(UnityEngine.Random.Range(0, avaliablePosDict.Count));
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
@@ -154,57 +159,62 @@ class ContextInfo{
             }
 
             errorMessage = "assign or random mat parse";
-            if(matStartMethod.StartsWith("random")){
+            if (matStartMethod.StartsWith("random")){
                 List<string> matLs = new List<string>();
                 string content = matStartMethod[6..].Replace(" ", "");
-                string[] temp = content.Length > 0? content.Split(",") : new string[]{};
-                if(temp.Length > 0){matLs = temp.ToList();}
-                else{matLs = matAvaliableArray;}
+                string[] temp = content.Length > 0 ? content.Split(",") : new string[] { };
+                if (temp.Length > 0) { matLs = temp.ToList(); }
+                else { matLs = matAvaliableArray; }
 
                 bool posMatMatch = true;
-                if(matLs.Count != posLs.Count){
-                    if(MessageBoxForUnity.YesOrNo("materials random setting does not match the pos settings, ignore?", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
+                if (matLs.Count != posLs.Count){
+                    if (MessageBoxForUnity.YesOrNo("materials random setting does not match the pos settings, ignore?", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
                         Quit();
+                        return;
                     }
                     posMatMatch = false;
                 }
 
-                if(posMatMatch && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+                if (posMatMatch && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                     errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
-                    for (int i=0; i<_maxTrial; i++){
+                    for (int i = 0; i < _maxTrial; i++){
                         barmatLs.Add(matAvaliableArray[barPosLs[i]]);
                     }
-                }else{
+                }
+                else{
 
                     List<int> ints = new List<int>();
-                    for (int i = 0; i < matLs.Count; i++){ints.Add(i % matLs.Count);}
-                    for (int i=0; i<_maxTrial; i++){
-                        if(i % ints.Count == 0){
+                    for (int i = 0; i < matLs.Count; i++) { ints.Add(i % matLs.Count); }
+                    for (int i = 0; i < _maxTrial; i++){
+                        if (i % ints.Count == 0){
                             Shuffle(ints);
                         }
                         barmatLs.Add(matLs[ints[i % ints.Count]]);
                     }
                 }
-                
-            }else if(matStartMethod.StartsWith("assign")){//有多种barmat时才考虑align
-                if(matAvaliableArray.Count > 1 && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
+
+            }
+            else if (matStartMethod.StartsWith("assign")){//有多种barmat时才考虑align
+                if (matAvaliableArray.Count > 1 && MessageBoxForUnity.YesOrNo("Align to bar Pos? (recommend)", "bar settings") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                     errorMessage += "\nBar pos count does not match to mat count, please fill the mat types to the same count as bar pos settting ";
-                    for (int i=0; i<_maxTrial; i++){
+                    for (int i = 0; i < _maxTrial; i++){
                         barmatLs.Add(matAvaliableArray[barPosLs[i]]);
                     }
-                }else{
+                }
+                else{
                     string lastUnit = "";
-                    foreach(string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
+                    foreach (string mat in _matAssigned.Replace("..", "").Replace(" ", "").Split(',')){//form like 0,1,2,1 ...... or 0,1,0,2,1,1..  ...... or 0*100,1*100,0*50,1*50.. or(0-1)*50,(2-3)*50 or (0-1)..
                         ProcessMatUnit(mat);
                         lastUnit = mat;
                     }
 
-                    for(int i=barmatLs.Count(); i<_maxTrial; i++){
-                        if(_matAssigned.EndsWith("..")){
-                            while(barmatLs.Count() < maxTrial){
+                    for (int i = barmatLs.Count(); i < _maxTrial; i++){
+                        if (_matAssigned.EndsWith("..")){
+                            while (barmatLs.Count() < maxTrial){
                                 ProcessMatUnit(lastUnit);
                             }
-                        }else{
+                        }
+                        else{
                             barmatLs.Add(matAvaliableArray[UnityEngine.Random.Range(0, matAvaliableArray.Count)]);
                         }
                         //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
@@ -217,7 +227,7 @@ class ContextInfo{
             }
 
             errorMessage = "trialInterval";
-            trialInterval = new List<float>{};
+            trialInterval = new List<float> { };
             RandomParse(_trialInterval, trialInterval);
 
             errorMessage = "interval when success or fail";
@@ -237,39 +247,41 @@ class ContextInfo{
 
             errorMessage = "barShiftLs";
             barShiftLs = new List<int>();
-            barShiftedLs = new List<int>{};
+            barShiftedLs = new List<int> { };
             try{
                 RandomParse(_barShiftLs, barShiftLs);
-                foreach( var _ in barPosLs){
+                foreach (var _ in barPosLs){
                     barShiftedLs.Add(GetRandom(barShiftLs));
                 }
             }
-            catch(Exception e) when(e.Message.Equals("invalid input")){//format like random-20~20*30,0.. or random-20~20*30,0*30,-20~20*30 or random0*40,-20~30*20...
+            catch (Exception e) when (e.Message.Equals("invalid input")){//format like random-20~20*30,0.. or random-20~20*30,0*30,-20~20*30 or random0*40,-20~30*20...
                 barShiftedLs.Clear();
                 string lastUnit = "";
-                foreach(string _unit in _barShiftLs[6..].Replace("..", "").Split(",")){
+                foreach (string _unit in _barShiftLs[6..].Replace("..", "").Split(",")){
                     ProcessUnit(_unit, barShiftedLs);
                     lastUnit = _unit;
                 }
 
-                for(int i=barShiftedLs.Count(); i<_maxTrial; i++){
-                    if(_barShiftLs.EndsWith("..")){
-                        while(barShiftedLs.Count() < maxTrial){
+                for (int i = barShiftedLs.Count(); i < _maxTrial; i++){
+                    if (_barShiftLs.EndsWith("..")){
+                        while (barShiftedLs.Count() < maxTrial){
                             ProcessUnit(lastUnit, barShiftedLs);
                         }
-                    }else{
+                    }
+                    else{
                         barShiftedLs.Add(0);
                     }
                     //barPosLs.Add(avaiblePosArray[UnityEngine.Random.Range(0, avaiblePosArray.Count)]);
                 }
             }
         }
-        catch{
-            MessageBoxForUnity.Ensure($"Value Error in Config: {errorMessage}", "Config Parse Failed");
+        catch (Exception e){
+            MessageBoxForUnity.Ensure($"Value Error in Config: {errorMessage}, detail:{e.Message}", "Config Parse Failed");
             Quit();
+            return;
         }
         finally{
-            
+
         }
 
     }
@@ -443,8 +455,7 @@ class ContextInfo{
     /// <returns></returns>
     List<int> ExtractFactors(string content, string pattern){
         List<int> indices = content.AllIndexesOf(pattern).ToList();
-        return indices.Select(i => 
-        {
+        return indices.Select(i => {
             // Try parsing from (i-2)..i first, then (i-1)..i
             int _i = 1;
             int parseValue = -1;
@@ -623,8 +634,8 @@ class ContextInfo{
         
         for(int i = 0; i < multiple; i++){
             foreach(int posUnit in _pos){
-                if(posUnit > avaliablePosDict.Count() && targetLs == barPosLs){
-                    throw new Exception("wrong pos id: pos not in available_pos");
+                if(posUnit >= avaliablePosDict.Count() && targetLs == barPosLs){
+                    throw new Exception($"wrong pos id: pos {posUnit} not in available_pos");
                 }
                 else{
                     targetLs.Add(posUnit);
@@ -1452,10 +1463,8 @@ public class Moving : MonoBehaviour
                             }
                             break;
                         }
-                        else
-                        {
-                            if (fail_count == 0)
-                            {
+                        else{
+                            if (fail_count == 0){
                                 throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
                             }
                             continue;
@@ -1744,16 +1753,11 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// use trialSuccess for deactivate bar instantly and playsound
     /// </summary>
-    /// <param name="isInit"></param>
-    /// <param name="trialSuccess"></param>
-    /// <param name="rightLickSpout"></param>
-    /// <param name="trialReadyWaitSec"></param>
-    /// <returns></returns>
-    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false){
+    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false, bool ignoreBarLatstingTime = false){
         // Debug.Log($"End Trial {nowTrial}");
         ContextEndSync();
         trialStatus = 0;
-        if(isInit || !trialSuccess){DeactivateBar();}
+        if(isInit || !trialSuccess || ignoreBarLatstingTime){DeactivateBar();}
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
         
         if(!isInit && !trialSuccess){PlaySound("AtFail");}
@@ -2088,12 +2092,13 @@ public class Moving : MonoBehaviour
                     if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
                         // if(trialMode % 0x10 == 2){ServeWaterInTrial();}
                         ui_update.MessageUpdate("Trial end");
-                        EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false);
+                        EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
                         TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
                         if(result){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
-                            DeactivateBar();
+                            // DeactivateBar();
+                            alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);
                             ui_update.MessageUpdate("Target arrived.");
                             DeviceTriggerExecute(2);
                             TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial);
@@ -2102,7 +2107,7 @@ public class Moving : MonoBehaviour
                             trialStatus = 2;
                         }else{//手动跳过
                             ui_update.MessageUpdate("Trial skipped");
-                            EndTrial(trialSuccess: false);
+                            EndTrial(trialSuccess: false, ignoreBarLatstingTime:true);
                         }
                     }
                 }
@@ -2540,7 +2545,7 @@ public class Moving : MonoBehaviour
     /// </summary>
     void CommandParse(string _buildinCmd){
         switch(_buildinCmd){
-            case "Exit":{
+            case "exit":{
                 Quit();
                 break;
             }
@@ -2673,8 +2678,7 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// return: 1:success, -1:fail, -2:port not open, -3:no port
     /// </summary>
-    public int CommandVerify(List<string> messages, List<int> values)
-    {
+    public int CommandVerify(List<string> messages, List<int> values){
         if (sp == null) { return -3; }
         manualResetEventVerify.Reset();
         sp.ReadTimeout = 100;
@@ -2802,8 +2806,7 @@ public class Moving : MonoBehaviour
         }
     }
 
-    private void ProcessWriteQueue(bool writeAll = false)//txt文件写入，位于主进程
-    {
+    private void ProcessWriteQueue(bool writeAll = false){//txt文件写入，位于主进程
         while (logWriteQueue.Count > 0 && logStreamWriter !=  null){
             string chunk = logWriteQueue.Peek();
             logStreamWriter.WriteLine(chunk);
@@ -2850,17 +2853,14 @@ public class Moving : MonoBehaviour
     //     }
     // }
 
-    private void CleanupStreamWriter()
-    {
-        if (logStreamWriter !=  null)
-        {
+    private void CleanupStreamWriter(){
+        if (logStreamWriter !=  null){
             logStreamWriter.Close();
             logStreamWriter.Dispose();
             logStreamWriter = null;
         }
 
-        if (posStreamWriter !=  null)
-        {
+        if (posStreamWriter !=  null){
             posStreamWriter.Close();
             posStreamWriter.Dispose();
             posStreamWriter = null;
@@ -3015,10 +3015,14 @@ public class Moving : MonoBehaviour
 
         if(InApp){
             if(!disableMainDisplay){
+                Display monitorDisplay = null;
                 if(separate){
                     try{
-                        
-                        for (int i = 2; i < Math.Min(4, Display.displays.Length); i++){
+                    
+                        if (Display.displays.Length > 3){//无监视屏
+                            monitorDisplay = Display.displays[1];
+                        }
+                        for (int i = (monitorDisplay == null? 1: 2); i < Math.Min(4, Display.displays.Length); i++){
                             Display.displays[i].Activate();
                             Screen.fullScreen = false;
                             Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
@@ -3035,24 +3039,28 @@ public class Moving : MonoBehaviour
                     }
                 }else{
                     try{
-                            Display.displays[2].Activate();
-                            Screen.fullScreen = false;
-                            Display.displays[2].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
-                            SecondCamera.enabled = false;
+                        if (Display.displays.Length > 2){//无监视屏
+                            monitorDisplay = Display.displays[1];
+                        }
+                        Display LEDRing = monitorDisplay == null ? Display.displays[1] : Display.displays[2];
+                        Screen.fullScreen = false;
+                        LEDRing.Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                        SecondCamera.enabled = false;
                     }
                     catch (Exception e){
-                        Debug.LogError(e.Message);
+                        Debug.LogWarning("no third screen connected for moniter:" + e.Message);
                     }
+                }
+                
+                if (monitorDisplay != null){
+                    CameraMonitor.targetDisplay = 1;
+                    monitorDisplay.Activate(1440, 1080, new RefreshRate() { numerator = 60, denominator = 1 });
+                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                    tempChildTs.targetDisplay = 1;
                 }
             }else{
                 MainCamera.enabled = false;
                 SecondCamera.enabled = false;
-            }
-            if (Display.displays.Length > 1){
-                CameraMonitor.targetDisplay = 1;
-                Display.displays[1].Activate(1440, 1080, new RefreshRate() { numerator = 60, denominator = 1 });
-                Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                tempChildTs.targetDisplay = 1;
             }
         }
             else{
@@ -3065,25 +3073,20 @@ public class Moving : MonoBehaviour
                             SecondCamera.targetDisplay = 3;
                             SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                         }
-                        catch (Exception e)
-                        {
+                        catch (Exception e){
                             Debug.LogError(e.Message);
                         }
                     }
-                    else
-                    {
-                        try
-                        {
+                    else{
+                        try{
                             SecondCamera.enabled = false;
                         }
-                        catch (Exception e)
-                        {
+                        catch (Exception e){
                             Debug.LogError(e.Message);
                         }
                     }
                 }
-                else
-                {
+                else{
                     MainCamera.enabled = false;
                     SecondCamera.enabled = false;
                 }
@@ -3139,6 +3142,7 @@ public class Moving : MonoBehaviour
             MessageBoxForUnity.Ensure("wrong arguments in config file: "+e.Message, "error");
             Debug.LogError(e.Message);
             Quit();
+            return;
         }
 
         ExeLauncher exeLauncher= new ExeLauncher();
@@ -3301,6 +3305,7 @@ public class Moving : MonoBehaviour
             if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + IniReadContent, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){}
             else{
                 Quit();
+                return;
             }
         }
         
@@ -3322,16 +3327,14 @@ public class Moving : MonoBehaviour
             Debug.Log(" serial thread started");
         }else{
             Debug.LogWarning("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
-            if (MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES)
-            {
+            if (MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
                 InitializeStreamWriter();
                 string data_write = WriteInfo(returnTypeHead: true);
                 logWriteQueue.Enqueue(data_write);
 
             }
-            else
-            {
+            else{
                 Quit();
             }
         }

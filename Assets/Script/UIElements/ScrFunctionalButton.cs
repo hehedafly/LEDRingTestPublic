@@ -14,14 +14,14 @@ public class ScrFunctionalButton : MonoBehaviour
     Transform parentDropdown;
     ScrDropDown parentScrDropDown;
     public string parentDropdownName;
-    public int index = -1;
+    int id; public int Id{get{return id;} set{id = value; Debug.Log($"{Type} from {parentItem.name} id is changed to {id}");} }
     public bool preActiveStatus = false;
     // bool added = false;
     public void OnClick(){
         if(ui_update != null){
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParsePublic(parentDropdownName, index, ignoreTiming:false, stringArg:$"{Type};{parentScrDropDown.nowSubHierarchyIndex};{parentItem.position.x}:{parentItem.position.y};{parentDropdown.GetComponent<Dropdown>().options[index].text}");
+            ui_update.ControlsParsePublic(parentDropdownName, id, ignoreTiming:false, stringArg:$"{Type};{parentItem.position.x}:{parentItem.position.y}");
         }
     }
 
@@ -34,7 +34,7 @@ public class ScrFunctionalButton : MonoBehaviour
         if(parentItem.name.StartsWith("Item ")){
             string _name = parentItem.name;
             _name = _name[5.._name.IndexOf(":")];
-            int.TryParse(_name, out index);
+            int.TryParse(_name, out int index);
         }
         parentDropdown = this.transform.parent.parent.parent.parent.parent;
         // Debug.Log($"{this.transform.parent.name}/{this.transform.parent.parent.name}/{this.transform.parent.parent.parent.name}/{parentDropdown.name}");
