@@ -1967,7 +1967,7 @@ public class Moving : MonoBehaviour
         return -1;
     }
 
-    int TrialResultAdd(int result, int trial, int LickSpout = -1, int rightLickSpout = -1, bool force = false){
+    int TrialResultAdd(int result, int trial, int LickSpout, int rightLickSpout, bool force = false){
         if(LickSpout < 0 || rightLickSpout < 0){return -2;}
         if(trialResult.Count() == trial){
             trialResult.Add(result);
@@ -2053,26 +2053,25 @@ public class Moving : MonoBehaviour
                             if(trialMode == 0x01){ServeWaterInTrial();}
                             ui_update.MessageUpdate($"Trial completed at pos {lickInd}");
                         }else{//手动跳过或结束trial
-                            TrialResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd, rightLickInd);
+                            TrialResultAdd(lickInd == -2? 1 : 0, nowTrial, lickInd == -2? rightLickInd: lickInd, rightLickInd);
                             //trialResult.Add(lickInd == -2? 1 : 0);
-                            if(lickInd == -1){
-                                ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
-                            }else if(lickInd == -2){
+                            if(lickInd == -2){
                                 if(trialMode == 0x01){ServeWaterInTrial();}
                                 ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
                         EndTrial(trialSuccess: true, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                     }else{
-                        TrialResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd, rightLickInd);
+                        TrialResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd == -1? rightLickInd: lickInd, rightLickInd);
                         if(lickInd == -1){
+                            ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
                             EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
                         }
                     }
                 }else if(trialMode >> 4 == 1){
                     //只能舔对的
                     result = result || lickInd == -2;
-                    TrialResultAdd(result? 1: 0, nowTrial, lickInd, rightLickInd);
+                    TrialResultAdd(result? 1: 0, nowTrial, lickInd == -2? rightLickInd: lickInd, rightLickInd);
                     if(result && trialMode == 0x11){
                         ServeWaterInTrial();
                     }
@@ -2094,14 +2093,13 @@ public class Moving : MonoBehaviour
                         ui_update.MessageUpdate("Trial end");
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
-                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
+                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd == -2? rightLickInd: lickInd, rightLickInd);
                         if(result){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             // DeactivateBar();
                             alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);
                             ui_update.MessageUpdate("Target arrived.");
                             DeviceTriggerExecute(2);
-                            TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial);
                             PlaySound("EnableReward");
 
                             trialStatus = 2;
@@ -2322,7 +2320,7 @@ public class Moving : MonoBehaviour
         // if (triggerType < 2){
         var OGTrigger = contextInfo.OGTriggerSortedInType[triggerType];
         var MSTrigger = contextInfo.MSTriggerSortedInType[triggerType];
-        var ButtonTrigger = ButtonTriggerDict.ContainsValue(nowTrial) ? ButtonTriggerDict.Keys.Where(x => ButtonTriggerDict[x] == nowTrial).ToList() : new List<string>();
+        var ElementTrigger = ButtonTriggerDict.ContainsValue(nowTrial) ? ButtonTriggerDict.Keys.Where(x => ButtonTriggerDict[x] == nowTrial).ToList() : new List<string>();
         if(DeviceEnableDict.TryGetValue("OG", out bool _enable) && _enable){
             foreach(var _trigger in OGTrigger){
                 int _mills = ui_update.TryGetDeviceSetTime("OGTime", out int _mills_temp)? _mills_temp: -1;
@@ -2371,10 +2369,11 @@ public class Moving : MonoBehaviour
             }
         }
         
-        foreach(string buttonName in ButtonTrigger){
-            // ui_update.ControlsParsePublic(buttonName, 1, stringArg:"FromTiming");
-            ui_update.SetButtonTiming(buttonName);
-            ButtonTriggerDict.Remove(buttonName);
+        foreach(string elementName in ElementTrigger){
+            //  $"Timing{_timing.name};{_timing.Id};{value}"
+            var buttonNameSplit = elementName.Split(";");
+            ui_update.SetTiming(string.Join(";", buttonNameSplit[..2]), int.Parse(buttonNameSplit[2]));
+            ButtonTriggerDict.Remove(elementName);
         }
 
         return true;

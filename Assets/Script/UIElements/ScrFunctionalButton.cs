@@ -14,14 +14,15 @@ public class ScrFunctionalButton : MonoBehaviour
     Transform parentDropdown;
     ScrDropDown parentScrDropDown;
     public string parentDropdownName;
-    int id; public int Id{get{return id;} set{id = value; Debug.Log($"{Type} from {parentItem.name} id is changed to {id}");} }
+    public int Id = -1;
     public bool preActiveStatus = false;
     // bool added = false;
     public void OnClick(){
         if(ui_update != null){
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            ui_update.ControlsParsePublic(parentDropdownName, id, ignoreTiming:false, stringArg:$"{Type};{parentItem.position.x}:{parentItem.position.y}");
+            Debug.Log($"{Type} from {parentItem.name} id is {Id}");
+            ui_update.ControlsParsePublic(parentDropdownName, Id, ignoreTiming:false, stringArg:$"{Type};{parentItem.position.x}:{parentItem.position.y}");
         }
     }
 
@@ -41,7 +42,7 @@ public class ScrFunctionalButton : MonoBehaviour
         parentScrDropDown = parentDropdown.GetComponent<ScrDropDown>();
         ui_update = parentScrDropDown.ui_update;
         parentDropdownName = parentDropdown.name;
-        Debug.Log($"{parentItem.name} position: {parentItem.position}");
+        // Debug.Log($"{parentItem.name} position: {parentItem.position}");
         // if(parentDropdownName == "TimingButtonsBaseSelect"){
         //     if(index == 0){
         //         Destroy(this.gameObject);

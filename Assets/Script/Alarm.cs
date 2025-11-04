@@ -16,7 +16,7 @@ public class Alarm
     Dictionary<string, int> alarmNameIndDic = new Dictionary<string, int>();
     List<string> alarmName = new List<string>();
     string[] alarmAddInfo = new string[40];
-    public Alarm(int initValue = -1, int size = 20){
+    public Alarm(int initValue = -1, int size = 40){
         if(alarm.Count() != size){
             alarm = new long[size];
         }
@@ -152,6 +152,7 @@ public class Alarm
                 alarmRec[ind] = -1;
                 alarmExecuteTimes[ind] = 0;
                 alarmStartAfter[ind] = -1;
+                alarmPause[ind] = 0;
                 return 1;
             }else{
                 if(forceDelete){
@@ -160,6 +161,7 @@ public class Alarm
                     alarmRec[ind] = -1;
                     alarmExecuteTimes[ind] = 0;
                     alarmStartAfter[ind] = -1;
+                    alarmPause[ind] = 0;
                     return 2;
                 }else{
                     return 0;

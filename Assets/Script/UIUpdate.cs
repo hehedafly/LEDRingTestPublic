@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -26,6 +27,7 @@ public class UIUpdate : MonoBehaviour
     public Text logMessageShow;
     List<string> logMessageList = new List<string>();
     string LastAddedLogMessage = "";
+    float LastAddedLogMessageTime = -1;
     public Scrollbar logScrollBar;
     int logWindowDraging = 0;//-1: another page, 0: no draging, 1: draging
     int logPage = 0;
@@ -50,7 +52,10 @@ public class UIUpdate : MonoBehaviour
     /// like {"delete", "spread"} or...
     /// </summary>
     public List<string> buttonFunctionsLs = new List<string>{"delete", "spread"};
-    bool[] buttonFunctionsEnableDefault = new bool[]{true, false};
+    /// <summary>
+    /// 每个元素存储每级选择的timing id
+    /// </summary>
+    List<int> timingSelectedPerHierarchy = new List<int>();
     public GameObject pref_buttonTimingBaseSubDropdown;
     List<GameObject> createdTimingBaseSubDropdowns = new List<GameObject>();
     public string IFContentLoaded = "";
@@ -58,7 +63,7 @@ public class UIUpdate : MonoBehaviour
     private int _FrameCount = 0; private float _TimeCount = 0; private float _FrameRate = 0;
 
     //public Image LineChartImage;
-
+    [System.Serializable]
     struct Timing {
         public string type;//button, dropdown...
         public string name;//pass to ControlsParse
@@ -68,6 +73,7 @@ public class UIUpdate : MonoBehaviour
         public int Id;//unique id for each timingcollection
         public int parentId;
         public string parentName;
+        public float value;
 
         public Timing SetLowerHierarchy() {
             hierarchy--;
@@ -87,14 +93,31 @@ public class UIUpdate : MonoBehaviour
 
     class TimingCollection{
 
-        public TimingCollection(List<Timing> _timings = null){
-            if (_timings == null){
+        public TimingCollection(List<Timing> _timings = null) {
+            if (_timings == null) {
                 return;
             }
             _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
-            foreach (Timing timing in _timings){
+            foreach (Timing timing in _timings) {
                 timings.Add(timing.Id, timing);
                 maxId = Math.Max(maxId, timing.Id);
+            }
+        }
+        
+        public TimingCollection(string _json) {
+            var _timingstr = _json.Split("||JSON_RECORD||");
+            try {
+                var _timings = _timingstr.Select(s => JsonConvert.DeserializeObject<Timing>(s)).ToList();
+                if (_timings is not null) {
+                    _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
+                    foreach (Timing timing in _timings) {
+                        timings.Add(timing.Id, timing);
+                        maxId = Math.Max(maxId, timing.Id);
+                    }
+                }
+            }
+            catch {
+                timings = new Dictionary<int, Timing>();
             }
         }
 
@@ -147,8 +170,8 @@ public class UIUpdate : MonoBehaviour
             }
         }
 
-        public List<string> Names(){
-            return timings.Values.Select(t => t.name).ToList();
+        public List<Timing> Times(){
+            return timings.Values.ToList();
         }
 
         public List<int> Keys(){
@@ -163,22 +186,14 @@ public class UIUpdate : MonoBehaviour
             return timings.Values.Where(t => t.name == key).Any();
         }
 
-        public List<int> Hierarchies(){
+        public List<int> Hierarchies() {
             return timings.Values.Select(t => t.hierarchy).ToList();
         }
 
-        public Timing Add(string name, string timingMethod, string type, int hierarchy = 0, int parentId = -1, float time = -1, string parentName = "") {//hierarchy默认为一阶选项，当parentId不为-1时，hierarchy自动指定为父项hierarchy+1
-            int Id = ++maxId;
-            if (parentId != -1) {
-                Timing? parentTiming = GetTiming(parentId);
-                if (parentTiming != null) {
-                    hierarchy = parentTiming.Value.hierarchy + 1;
-                }
-            }
-            if (time == -1) { time = Time.fixedUnscaledTime; }
-            Timing timing = new Timing { type = type, name = name, hierarchy = hierarchy, time = time, timingMethod = timingMethod, Id = Id, parentId = parentId, parentName = parentName };
-            timings.Add(Id, timing);
-            return timing;
+        public int GetTimingOrderInSelectHierarchy(int hierarchy, int timingId) {
+            if (!timings.ContainsKey(timingId)) { return -1; }
+            if(!this[hierarchy].Keys().Contains(timingId)){ return -2; }
+            return this[hierarchy].Keys().IndexOf(timingId);
         }
         
         List<Timing> GetTimingsByHierarchyAndName(int hierarchy, string name) {
@@ -187,6 +202,20 @@ public class UIUpdate : MonoBehaviour
             res.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
 
             return res;
+        }
+
+        public Timing Add(string name, string timingMethod, string type, int hierarchy = 0, int parentId = -1, float time = -1, string parentName = "", float value = -1) {//hierarchy默认为一阶选项，当parentId不为-1时，hierarchy自动指定为父项hierarchy+1
+            int Id = ++maxId;
+            if (parentId != -1) {
+                Timing? parentTiming = GetTiming(parentId);
+                if (parentTiming != null) {
+                    hierarchy = parentTiming.Value.hierarchy + 1;
+                }
+            }
+            if (time == -1) { time = Time.fixedUnscaledTime; }
+            Timing timing = new Timing { type = type, name = name, hierarchy = hierarchy, time = time, timingMethod = timingMethod, Id = Id, parentId = parentId, parentName = parentName, value = value };
+            timings.Add(Id, timing);
+            return timing;
         }
 
         public List<Timing> Remove(string name, int hierarchy = -1, bool iterate = false) {//如未指定hierarchy，则删除第一个hierarchy下第一个对应name的定时
@@ -214,15 +243,17 @@ public class UIUpdate : MonoBehaviour
                     else {
                         childId.Add(key);
                         timings[key] = timings[key].SetLowerHierarchy();
+                        Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
                     }
                 }
-                else if (childId.Contains(key)) {
+                else if (childId.Contains(timings[key].parentId)) {
                     childId.Add(key);
                     timings[key] = timings[key].SetLowerHierarchy();
+                    Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
                 }
             }
-            while (maxId > 100 && removedId.Contains(maxId)) {
-                maxId--;
+            if (maxId > 100 && timings.Count() == 0) {//应该没问题
+                maxId = 0;
             }
             return removedTiming;
         }
@@ -242,7 +273,6 @@ public class UIUpdate : MonoBehaviour
             return null;
         }
         
-
         public int GetId(int hierarchy, string name){
             var _timings = GetTimingsByHierarchyAndName(hierarchy, name);
             if (_timings.Count == 0){
@@ -258,9 +288,21 @@ public class UIUpdate : MonoBehaviour
             else { return _timingMethods[0].ToString(); }
         }
 
+        public string GetName(int Id) {
+            var _t = GetTiming(Id);
+            if (!_t.HasValue) { return ""; }
+            return _t.Value.name;
+        }
+
         public List<Timing> GetTimingChildren(int parentId) {
             List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.parentId == parentId);
             return _timings.OrderBy(t => t.Id).ToList();
+        }
+
+        public string Export() {
+            return string.Join("||JSON_RECORD||",
+                timings.Values.Select(t => JsonConvert.SerializeObject(t))
+                );
         }
 
         Dictionary<int, Timing> timings = new Dictionary<int, Timing>();
@@ -288,7 +330,7 @@ public class UIUpdate : MonoBehaviour
     void SetButtonColor(UnityEngine.UI.Button _button, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate = false, bool ignoreTiming = false){
         if(_button == null || (!ignoreTiming && timings.ContainsKey(_button.name))){return;}
         _button.GetComponent<ScrButton>().ChangeColor(color, setToDefault, setToPrevious, forcePreviousUpdate);
-        Debug.Log($"SetButtonColor {_button.name} to {color}");
+        // Debug.Log($"SetButtonColor {_button.name} to {color}");
     }
     
     bool GetButtonColor(string buttonName, out Color color){
@@ -301,14 +343,17 @@ public class UIUpdate : MonoBehaviour
         return false;
     }
 
-    public void SetButtonTiming(string _buttonNameWithInd){
-        alarm.TrySetAlarm(_buttonNameWithInd, 1, out _, addInfo: "FromTiming", force: true);
+    public void SetTiming(string _elementNameWithInd, int value){
+        alarm.TrySetAlarm(_elementNameWithInd, 1, out _, addInfo: $"FromTiming;{value}", force: true);
     }
 
     int ClearComingButtonTiming(int timingId = -1) {
         if (timingId == -1) {
             foreach (Timing timing in timings.Clear()) {
                 MessageUpdate($"button timing:{timing.timingMethod} removed");
+                if (timing.type == "button") {
+                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+                }
             }
             return 1;
         }
@@ -316,23 +361,28 @@ public class UIUpdate : MonoBehaviour
         var removedTimings = timings.Remove(timingId, true);
         foreach (Timing timing in removedTimings) {
             MessageUpdate($"button timing:{timing.timingMethod} removed");
+            if (timing.type == "button") {
+                SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+            }
         }
         UpdateOptions();
         return 1;
     }
     
-    int UpdateOptions(int hierarchy = 0) {
+    int UpdateOptions(int hierarchy = 0, int selectId = -2, string selectText = "", bool show = false) {
         int _timingCount = timings[0].Count;
         if (_timingCount > 0) {
-            return TimingBaseScrDropdown.UpdateOptions(timings[hierarchy].Values(), timings[hierarchy].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList());
+            if (show) { alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: $"{hierarchy}"); }
+            return TimingBaseScrDropdown.UpdateOptions(timings[hierarchy].Values(), timings[hierarchy].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList(), selectId, selectText);
         }
         else {
-            return TimingBaseScrDropdown.UpdateOptions();
+            if (show) { alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: "0"); }
+            return TimingBaseScrDropdown.UpdateOptions(selectId:selectId, selectText:selectText);
         }
     }
 
-    public void ControlsParsePublic(string elementsName, float value, string stringArg = "", bool ignoreTiming = true, bool forceTiming = false) {//scrButton中调用时ignoreTiming为false
-        ControlsParse(elementsName, value, stringArg, ignoreTiming, forceTiming);
+    public int ControlsParsePublic(string elementsName, float value, string stringArg = "", bool ignoreTiming = true, bool forceTiming = false) {//scrButton中调用时ignoreTiming为false
+        return ControlsParse(elementsName, value, stringArg, ignoreTiming, forceTiming);
     }
     
     /// <summary>
@@ -342,13 +392,13 @@ public class UIUpdate : MonoBehaviour
     /// <param name="elementsName"></param>
     /// <param name="value"></param>
     /// <param name="stringArg"></param>
-    void ControlsParse(string elementsName, float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false, bool ignoreSecondTiming = false, Timing? timing = null){
+    int ControlsParse(string elementsName, float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false, bool ignoreSecondTiming = false, Timing? timing = null){
 
         if(! ignoreTiming && (Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) || forceTiming) || stringArg.Contains("cancelTiming")){//按trial定时事件执行在DeviceTriggerExecute最后处理
             bool isTiming = timings.ContainsKey(elementsName);
             
             float _sec = -1;int _trial = -1;
-            string timingElementType = timing.HasValue? timing.Value.type: "";
+            string timingElementType;
             if (stringArg.StartsWith("type_")){ timingElementType = stringArg.Split(";")[0][5..]; stringArg = stringArg.Contains(";")? string.Join(";", stringArg.Split(";")[1]) : "";}
             if (stringArg.Contains(";")) {
                 int useSecInArg = Convert.ToInt16(stringArg.StartsWith("sec")) - Convert.ToInt16(stringArg.StartsWith("trial"));
@@ -361,42 +411,64 @@ public class UIUpdate : MonoBehaviour
             }
             if(_sec < 0 && _trial < 0 && !timing.HasValue){
                 MessageUpdate("please input a valid number for button timing");
-                return;
+                return -1;
             }
             
-            int _TimingId = TimingBaseScrDropdown.nowSelectedTimingId;
+            int _TimingId;
                 // string _timingBaseName = buttonTimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
-            string _timingBaseName = timing.HasValue? timing.Value.parentName: TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
-                // if(!ignoreSecondTiming && (buttonTimingBaseDropdown.value!=0 || buttonTimingList.Contains(_timingBaseName))){
-            bool useSec = _sec > 0;
-            string _timingMethod = timing.HasValue? timing.Value.timingMethod: $"type_{timingElementType};{elementsName}:{(useSec? "sec": "trial")}:{(useSec? _sec: _trial)};";
-            Timing _timing = timing.HasValue? timing.Value: timings.Add(elementsName, _timingMethod, timingElementType, parentId:_TimingId, parentName:_timingBaseName);
-            string targetElementTimingName = $"Timing{_timing.name};{_timing.Id}";
+            string _timingBaseName;
+            // if(!ignoreSecondTiming && (buttonTimingBaseDropdown.value!=0 || buttonTimingList.Contains(_timingBaseName))){
+            bool useSec; string _timingMethod;
+            if (timing.HasValue) {
+                _TimingId = timing.Value.parentId;
+                _timingBaseName = timing.Value.parentName;
+                _timingMethod = timing.Value.timingMethod;
+                float _tv = float.Parse(_timingMethod.Split(";")[1].Split(":")[2]);
+                useSec = _timingMethod.Split(";")[1].Split(":")[1] == "sec";
+                _sec = useSec ? _tv : _sec;
+                _trial = useSec ? _trial : (int)_tv;
+                timingElementType = timing.Value.type;
+                value = timing.Value.value;
+            }
+            else {
+                _TimingId = TimingBaseScrDropdown.nowSelectedTimingId;
+                _timingBaseName = TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
+                useSec = _sec > 0;
+                if (buttons.FindAll(b => b.name == elementsName).Any()) { timingElementType = "button"; }
+                else if (dropdowns.FindAll(d => d.name == elementsName).Any()) { timingElementType = "dropdown"; }
+                else{ timingElementType = "unknow"; }
+                _timingMethod = $"type_{timingElementType};{elementsName}:{(useSec? "sec": "trial")}:{(useSec? _sec: _trial)};";
+            }
+            
+            Timing _timing = timing.HasValue? timing.Value: timings.Add(elementsName, _timingMethod, timingElementType, parentId:_TimingId, parentName:_timingBaseName, value:value);
+            string targetElementTimingName = $"Timing{_timing.name};{_timing.Id};{_timing.value}";//value仅在dropdown中使用
             if (!ignoreSecondTiming && _TimingId != -1) {
                 MessageUpdate($"button {elementsName} timing set to {(useSec ? _sec : _trial)} {(useSec ? "s " : "trial")} after {_timingBaseName}");
-                UpdateOptions();
-                return;
+                UpdateOptions(selectId: timingSelectedPerHierarchy[0]);
+                return 1;
             }
             
             if(_sec > 0){
-                alarm.TrySetAlarm(targetElementTimingName, _sec, out _, addInfo:"FromTiming", force:true);
-                MessageUpdate($"button {elementsName} timing set to {_sec}s");
+                alarm.TrySetAlarm(targetElementTimingName, _sec, out _, addInfo:$"FromTiming;{value}", force:true);
+                MessageUpdate($"{elementsName} timing set to {_sec}s");
                 inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
                 inputFieldContent[$"IFTimingBySec"] = "null";
                 
             }else if(_trial > 0){//默认按trial start，暂时不考虑finish和end
-                MessageUpdate($"button {elementsName} timing set to trial {Math.Max(0, moving.NowTrial) + _trial}");
-                moving.ButtonTriggerDict.Add($"targetButtonTimingName", Math.Max(0, moving.NowTrial) + _trial);
+                MessageUpdate($"{elementsName} timing set to trial {Math.Max(0, moving.NowTrial) + _trial}");
+                moving.ButtonTriggerDict.TryAdd(targetElementTimingName, Math.Max(0, moving.NowTrial) + _trial);
                 inputFields.Find(inputfield => inputfield.name == "IFTimingByTrial").text = "";
                 inputFieldContent[$"IFTimingByTrial"] = "null";
             }else{
-                return;
+                return -1;
             }
 
             UpdateOptions();
 
-            SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate:true, ignoreTiming:true);
-            return;
+            if (timingElementType == "button") {
+                SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate: true, ignoreTiming: true);
+            }
+            return 1;
         }
         else{
             if (Input.GetKey(KeyCode.LeftControl) && timings.ContainsKey(elementsName)) {
@@ -404,11 +476,11 @@ public class UIUpdate : MonoBehaviour
                 foreach (Timing _timing in timings.Remove(elementsName)) {
                     MessageUpdate($"button timing:{_timing.timingMethod} removed");
                 }
-                return;
+                return 0;
             }
         }
         
-        if (stringArg == "cancelTiming") { return; }//应当在之前处理好
+        if (stringArg == "cancelTiming") { return -2; }//应当在之前处理好
         //if(string_arg==""){return;}
         switch (elementsName){
             case "StartButton":{
@@ -429,7 +501,7 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "ExitButton":{
-                if(stringArg == "FromTiming"){
+                if(stringArg.StartsWith("FromTiming")){
                     moving.Exit();
                 }else{
                     moving.PreExit();
@@ -571,9 +643,41 @@ public class UIUpdate : MonoBehaviour
                 PageNum.text = $"{logPage+1}/{logMessageList.Count+1}";
                 break;
             }
-            case "BackgroundSwitch":{
-                string matName = backgroundSwitch.captionText.text;
+            case "BackgroundSwitch": {
+                string matName = backgroundSwitch.options[(int)value].text;
                 moving.SetBackgroundMaterial(moving.Backgrounds.Find(m => m.name == matName));
+                break;
+            }
+            case "TimingConfigExoprt": {
+                string exportRes = timings.Export();
+                var IFTimingSet = inputFields.Find(inputfield => inputfield.name == "IFTimingSet");
+                if(IFTimingSet is not null) {
+                    IFTimingSet.text = exportRes;
+                }
+                break;
+            }
+            case "IFTimingSet": {
+                timings = new TimingCollection(inputFieldContent[elementsName]);
+                moving.ButtonTriggerDict.Clear();
+                UpdateOptions();
+                alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).Select(a => {
+                    alarm.DeleteAlarm(a, true);
+                    return a;
+                });
+                foreach (var _t in timings[0].Times()) {
+                    ControlsParse(_t.name, _t.value, ignoreTiming: false, forceTiming: true, ignoreSecondTiming: true, timing: _t);
+                }
+                timingSelectedPerHierarchy = new List<int> { 0 };
+                break;
+            }
+            case "TimingPause": {
+                bool pause = buttons.Find(b => b.name == "TimingPause").GetComponent<ScrButton>().pressCount % 2 == 1;
+                var timingAlarms = alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing"));
+                foreach (var _a in timingAlarms) {
+                    if (pause) { alarm.PauseAlarm(_a); }
+                    else { alarm.StartAlarm(_a); }
+                }
+                MessageUpdate($"{timingAlarms.Count()} alarm {(pause ? "paused" : "started")}");
                 break;
             }
             default:{
@@ -681,42 +785,39 @@ public class UIUpdate : MonoBehaviour
                 }
                 else if (elementsName.StartsWith("TimingBaseSelect")) {
                     string[] stringArgSplit = stringArg.Split(";");
-                    if(stringArgSplit[0] == "hide"){return;}
+                    // if(stringArgSplit[0] == "hide"){return 0;}
 
                     int _nowTimingId = stringArgSplit[0] == "type_dropdown"? (stringArgSplit.Count() > 2? int.Parse(stringArgSplit[2]): -1): (int)value;
                     var _t = timings.GetTiming(_nowTimingId);
-                    if(_nowTimingId != -1 && !_t.HasValue){ Debug.Log($"invalid Id:{_nowTimingId}"); return; }
-                    int hierarchy = _t.Value.hierarchy;
+                    if(_nowTimingId != -1 && !_t.HasValue){ Debug.Log($"invalid Id:{_nowTimingId}"); return 0; }
+                    int hierarchy = _t.HasValue? _t.Value.hierarchy: -1;
 
                     if (stringArg.StartsWith("delete")) {
                         ClearComingButtonTiming(_nowTimingId);
-                        UpdateOptions(hierarchy);
-                        if (createdTimingBaseSubDropdowns.Count > _nowTimingId - 1 && createdTimingBaseSubDropdowns[_nowTimingId - 1] != null) { Destroy(createdTimingBaseSubDropdowns[_nowTimingId - 1]); }
+                        if (createdTimingBaseSubDropdowns.Count > hierarchy && createdTimingBaseSubDropdowns[hierarchy] != null) { Destroy(createdTimingBaseSubDropdowns[hierarchy]); }
+                        if (hierarchy > 0) { UpdateOptions(show: true); }
                     }
                     else if (stringArg.StartsWith("spread")) {
                         float[] spreadPos = (from pos in stringArgSplit[1].Split(':') select Convert.ToSingle(pos)).ToArray();
-                        Dropdown timingBaseSelectDropdown = hierarchy == 0 ? TimingBaseDropdown : createdTimingBaseSubDropdowns.Last().GetComponent<Dropdown>();
+                        Dropdown timingBaseSelectDropdown = hierarchy == 0 ? TimingBaseDropdown : createdTimingBaseSubDropdowns[hierarchy - 1].GetComponent<Dropdown>();
                         if (createdTimingBaseSubDropdowns.Count == hierarchy) {
                             GameObject _buttonTimingBaseSubDropdown = Instantiate(pref_buttonTimingBaseSubDropdown);
-                            _buttonTimingBaseSubDropdown.name = "TimingButtonsBaseSelectSubDropdown";
+                            _buttonTimingBaseSubDropdown.name = "TimingBaseSelectSubDropdown";
                             _buttonTimingBaseSubDropdown.transform.position = new Vector3(spreadPos[0] + 160, spreadPos[1], 0);
                             _buttonTimingBaseSubDropdown.transform.SetParent(timingBaseSelectDropdown.transform, true);
                             ScrDropDown _tempScrDropdown = _buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>();
 
-                            // _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().AddOptions(timings[hierarchy + 1].Names());
-                            if(TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count == 0) {
-                                _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = 0;
+                            if (timingSelectedPerHierarchy.Count > hierarchy + 1) { _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = timings[hierarchy].Keys().IndexOf(timingSelectedPerHierarchy[hierarchy]) + TimingBaseScrDropdown.noneOptionCount; }
+                            else{
+                                _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = 0;//默认显示第一个选项
                             }
-                            else if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count >= hierarchy) { _buttonTimingBaseSubDropdown.GetComponent<Dropdown>().value = TimingBaseScrDropdown.subSelectedIndexesExcludeNone[hierarchy - 1] + 1; }
                             _tempScrDropdown.ui_update = this;
                             _tempScrDropdown.nowSubHierarchyIndex = hierarchy + 1;
                             _tempScrDropdown.buttonFunctionsLs = buttonFunctionsLs;
                             // _tempScrDropdown.UpdateOptions();
-                            _tempScrDropdown.UpdateOptions(timings[hierarchy + 1].Values(), timings[hierarchy + 1].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList());
+                            _tempScrDropdown.UpdateOptions(timings[hierarchy + 1].Values(), timings[hierarchy + 1].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList(), timingSelectedPerHierarchy.Count > hierarchy? timingSelectedPerHierarchy[hierarchy]: -2);
                             alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: _tempScrDropdown.nowSubHierarchyIndex.ToString());
                             createdTimingBaseSubDropdowns.Add(_buttonTimingBaseSubDropdown);
-                            TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)(value - 1));
-
                         }
                     }
                     else if (stringArg.StartsWith("destroy")) {
@@ -729,13 +830,17 @@ public class UIUpdate : MonoBehaviour
                         TimingBaseDropdown.Hide();
                     }
                     else if (stringArg.StartsWith("hide")) {
-
+                        int _hierarchy = int.Parse(stringArgSplit[1]);
+                        if(createdTimingBaseSubDropdowns.Count >= _hierarchy) {
+                            Destroy(createdTimingBaseSubDropdowns[_hierarchy]);
+                        }
                     }
                     else {
-                        if (value == 0) {
+                        if (value == 0 && TimingBaseScrDropdown.noneOptionCount != 0) {
                             TimingBaseScrDropdown.nowSelectedTimingId = -1;
                             TimingBaseScrDropdown.nowSelectedSubHierarchy = 0;
                             TimingBaseDropdown.value = 0;
+                            TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = "None";
                             // buttonTimingBaseDropdown.RefreshShownValue();
                             TimingBaseScrDropdown.UpdateCaptionText();
 
@@ -743,13 +848,19 @@ public class UIUpdate : MonoBehaviour
                         else {
                             TimingBaseScrDropdown.nowSelectedTimingId = _nowTimingId;
                             TimingBaseScrDropdown.nowSelectedSubHierarchy = hierarchy;
-                            if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count == 0) {
-                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Add((int)value - 1);
-                            }
-                            else if (TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count > hierarchy - 1) {
-                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone[_nowTimingId - 1] = (int)(value - 1);
-                                TimingBaseScrDropdown.subSelectedIndexesExcludeNone.RemoveRange(_nowTimingId, TimingBaseScrDropdown.subSelectedIndexesExcludeNone.Count - 1);
-                            }//timing默认第一个为None
+                            TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = timings.GetName(_nowTimingId);
+                            Debug.Log($"optionSelectedIncludeHigerHierarchy changed to {TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy}");
+                            int targetId = _nowTimingId;
+                            timingSelectedPerHierarchy = Enumerable.Range(0, _t.Value.hierarchy + 1).Reverse()
+                                        .Select(i => {
+                                            int index = timings[i].Keys().IndexOf(targetId);
+                                            targetId = timings.GetTiming(targetId).Value.parentId;
+                                            return index;
+                                        })
+                                        .TakeWhile(index => index != -1).ToList();
+                            
+
+                            TimingBaseDropdown.Hide();
                             TimingBaseScrDropdown.UpdateCaptionText();
                         }
                     }
@@ -759,20 +870,23 @@ public class UIUpdate : MonoBehaviour
             }
         }
 
-        if(elementsName.StartsWith("LickSpout")){
-            string Spout = elementsName.Substring(elementsName.Length-1);
+        if (elementsName.StartsWith("LickSpout")) {
+            string Spout = elementsName.Substring(elementsName.Length - 1);
             moving.CommandParsePublic($"{moving.LsTypes[0]}:{Spout}:1");
-        }else if (elementsName.StartsWith("WaterSpout")){
-            string Spout = elementsName.Substring(elementsName.Length-1);
-            if(Input.GetKey(KeyCode.LeftShift)){
+        }
+        else if (elementsName.StartsWith("WaterSpout")) {
+            string Spout = elementsName.Substring(elementsName.Length - 1);
+            if (Input.GetKey(KeyCode.LeftShift)) {
                 ControlsParse("IFSerialMessage", 1, $"/p_water_flush[{Spout}]=1");
                 // if(GetButtonColor(elementsName, out Color buttonColor)){
                 //     SetButtonColor(elementsName, buttonColor != Color.green? Color.green: Color.green);
                 // }
-            }else{
-                moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec:0.2f, out _, elementsName.Contains("Single")? 0: 99);
+            }
+            else {
+                moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec: 0.2f, out _, elementsName.Contains("Single") ? 0 : 99);
             }
         }
+        return 0;
     }
 
     /// <summary>
@@ -816,7 +930,7 @@ public class UIUpdate : MonoBehaviour
             TexContextFixInfo.text = add_log_message;
         }else{
             string _time = DateTime.Now.ToString("HH:mm:ss ");
-            if(add_log_message == LastAddedLogMessage){
+            if(add_log_message == LastAddedLogMessage && Time.fixedUnscaledTime - LastAddedLogMessageTime < 0.5f){
                 return "";
             }
             
@@ -839,6 +953,7 @@ public class UIUpdate : MonoBehaviour
                     logMessage += _time + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
                 }
                 LastAddedLogMessage = add_log_message;
+                LastAddedLogMessageTime = Time.fixedUnscaledTime;
 
                 // Debug.Log($"logMessage added: {logMessage.Length}");
                 if(logPage == logMessageList.Count){
@@ -1007,7 +1122,7 @@ public class UIUpdate : MonoBehaviour
                 inputFieldContent[focus_input_field.name] = focus_input_field.text;
             }
             ControlsParse(focus_input_field.name, float.TryParse(inputFieldContent[focus_input_field.name], out float temp_value) ? temp_value : 0, inputFieldContent[focus_input_field.name]);
-            if(focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue"){
+            if(focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue" || focus_input_field.name == "IFTimingSet"){
                 focus_input_field.text="";
                 // inputFieldContent[focus_input_field.name] = "null";
             }
@@ -1076,10 +1191,10 @@ public class UIUpdate : MonoBehaviour
                     break;
                 }
                 case "showButtonTimingSubDropdown":{
-                    GameObject buttonTimingBaseSubDropdown = createdTimingBaseSubDropdowns[Convert.ToInt16(alarm.GetAlarmAddInfo("showButtonTimingSubDropdown")) - 1];
-                    buttonTimingBaseSubDropdown.GetComponent<Dropdown>().Show();
-                    buttonTimingBaseSubDropdown.transform.GetChild(3).gameObject.AddComponent<ScrDestroyParent>();
-
+                    if (int.TryParse(alarm.GetAlarmAddInfo("showButtonTimingSubDropdown"), out int showHierarchy) && createdTimingBaseSubDropdowns.Count >= showHierarchy) {
+                        GameObject buttonTimingBaseSubDropdown = showHierarchy > 0? createdTimingBaseSubDropdowns[showHierarchy - 1]: TimingBaseDropdown.gameObject;
+                        buttonTimingBaseSubDropdown.GetComponent<Dropdown>().Show();
+                    }
                     // buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>().UpdateOptionsFunctionEnableStatus(0);
                     break;
                 }
@@ -1089,10 +1204,14 @@ public class UIUpdate : MonoBehaviour
                         int TimingId = int.Parse(timingElementName.Split(';')[1]);
                         timingElementName = timingElementName.Split(';')[0];
                         Timing? _tempTiming = timings.GetTiming(TimingId);
+                        int elementDefaultValueForControlParse = 1;
+                        string alarmAddInfo = alarm.GetAlarmAddInfo(alarmFinished);
                         if (_tempTiming.HasValue){
+                            Debug.Log($"Timing{_tempTiming.Value.name} finished, , Id: {TimingId}, Info: {alarmAddInfo}");
                             if(timings.Count > 0 && timings[0].ContainsKey(timingElementName)){
                                 // string _tempTimingMethod = timings[0].GetTimingMethod(-1, timingButtonName).Trim(';');
                                 foreach(Timing _timing in timings.GetTimingChildren(TimingId)){
+                                    Debug.Log($"Timing {_timing.name} started, Id: {_timing.Id}, TimingMethod: {_timing.timingMethod}");
                                     ControlsParse(_timing.name, 1, ignoreTiming:false, forceTiming:true, ignoreSecondTiming:true, timing: _timing);
                                 }
                                 timings.Remove(TimingId);
@@ -1100,12 +1219,20 @@ public class UIUpdate : MonoBehaviour
                             alarm.DeleteAlarm(alarmFinished);
                             UpdateOptions();
 
-                            if(_tempTiming.Value.type == "button"){
+                            if (_tempTiming.Value.type == "button") {
                                 UnityEngine.UI.Button button = buttons.Find(b => b.name == _tempTiming.Value.name);
                                 button.GetComponent<ScrButton>().pressCount++;
-                                SetButtonColor(timingElementName, setToPrevious:true, ignoreTiming:true);
+                                SetButtonColor(timingElementName, setToPrevious: true, ignoreTiming: true);
                             }
-                            ControlsParse(timingElementName, 1);
+                            else if (_tempTiming.Value.type == "dropdown") {
+                                Dropdown dropdown = dropdowns.Find(d => d.name == _tempTiming.Value.name);
+                                elementDefaultValueForControlParse = int.Parse(alarmAddInfo.Split(";")[1]);
+                                dropdown.GetComponent<ScrDropDown>().ignoreValueChange = true;
+                                dropdown.value = elementDefaultValueForControlParse;
+                                dropdown.GetComponent<ScrDropDown>().ignoreValueChange = false;
+                                dropdown.RefreshShownValue();
+                            }
+                            ControlsParse(timingElementName, elementDefaultValueForControlParse);
                             // ControlsParse("TimingButtonsBaseSelect", buttonTimingBaseDropdown.options.IndexOf(buttonTimingBaseDropdown.options.Where(o => o.text == timingButtonName).First()), stringArg:"delete;finish");
                         }
                     }

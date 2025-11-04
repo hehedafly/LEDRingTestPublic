@@ -41,7 +41,7 @@ public class ScrButton : MonoBehaviour
         }else{
             if(previousColor.Last() != GetComponent<Image>().color || forcePreviousUpdate){
                 previousColor.Add(GetComponent<Image>().color);
-                Debug.Log($"previous color changed to {previousColor}");
+                // Debug.Log($"previous color changed to {previousColor}");
             }
         }
         if(setToDefault){GetComponent<Image>().color = defaultColor;previousColor = new List<Color>{defaultColor};return;}

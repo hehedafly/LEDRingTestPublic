@@ -24,7 +24,8 @@ public class ScrDropDown : MonoBehaviour
     /// </summary>
     List<bool[]> certainButtonFunctionDefault = new List<bool[]>{new bool[]{true, false}, new bool[]{true, true}};
 
-    public List<bool[]> functionEnableList = new List<bool[]>{};//bool[0]: delete, bool[1]:spread
+    public List<bool[]> functionEnableList = new List<bool[]> { };//bool[0]: delete, bool[1]:spread
+    public int noneOptionCount = 0;
     /// <summary>
     /// 存储每一个定时的按键名称及其存储其定时方式
     /// </summary>
@@ -33,26 +34,37 @@ public class ScrDropDown : MonoBehaviour
     public int nowSelectedTimingId = -1;
     public int nowSelectedSubHierarchy = -1;
     public int nowSubHierarchyIndex = -1;
-    public List<int> subSelectedIndexesExcludeNone = new List<int>();//index exclude None in default
     public string optionSelectedIncludeHigerHierarchy = "";
-    public bool slient = false;
+    public bool ignoreValueChange = false;
+    int previousValue = -1;
 
     public void OnValueChanged(){
 
-        if (ui_update != null && !slient){
+        if (ui_update != null && !ignoreValueChange){
             int value = dropdown.value;
             string option = dropdown.options[value].text;
             
-            if (EnableOptionsFunction && nowSubHierarchyIndex == 0){//生成的子dropdown不需要更新captionText
+            if (EnableOptionsFunction){//生成的子dropdown不需要更新captionText
                 optionSelectedIncludeHigerHierarchy = dropdown.options[dropdown.value].text;
                 nowSelectedTimingId = optionsNowHierarchy.Keys.ToList()[dropdown.value];
-                UpdateCaptionText();
+                if(nowSubHierarchyIndex == 0) {
+                    UpdateCaptionText();
+                }
             }
-            ui_update.ControlsParsePublic(name, value, $"type_dropdown;{option};{nowSelectedTimingId}");
+            int timingSucceed = ui_update.ControlsParsePublic(name, value, $"type_dropdown;{option};{nowSelectedTimingId}", ignoreTiming: false);
+            if (timingSucceed != 0) {
+                ignoreValueChange = true;
+                dropdown.value = previousValue;
+                dropdown.RefreshShownValue();
+                ignoreValueChange = false;
+            }
+            else {
+                previousValue = value;
+            }
         }
     }
 
-    public int UpdateOptions(Dictionary<int, string> timingMethods = null, List<int> enableList = null) {//每次提供全部列表
+    public int UpdateOptions(Dictionary<int, string> timingMethods = null, List<int> enableList = null, int selectId = -2, string selectText = null) {//每次提供全部列表
         dropdown.Hide();
         optionsNowHierarchy = optionsNowHierarchy.Where(o => o.Key == -1).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         functionEnableList = functionEnableList.Take(optionsNowHierarchy.Count).ToList();
@@ -78,13 +90,19 @@ public class ScrDropDown : MonoBehaviour
             nowSelectedSubHierarchy = -1;
             UpdateCaptionText();
         }
-        slient = true;
+        ignoreValueChange = true;
         dropdown.ClearOptions();
         dropdown.AddOptions(optionsNowHierarchy.Values.ToList());
-        dropdown.value = nowSelectedTimingId != -1? optionsPerHierarchyKeys.IndexOf(nowSelectedTimingId): 0;
-        optionSelectedIncludeHigerHierarchy = dropdown.options[dropdown.value].text;
+        if (optionsPerHierarchyKeys.Contains(nowSelectedTimingId) || optionsPerHierarchyKeys.Contains(selectId)) {
+            int ind = optionsPerHierarchyKeys.Contains(selectId)? optionsPerHierarchyKeys.IndexOf(selectId) : optionsPerHierarchyKeys.IndexOf(nowSelectedTimingId);
+            dropdown.value = ind;
+            optionSelectedIncludeHigerHierarchy = dropdown.options[dropdown.value].text;
+        }
         dropdown.RefreshShownValue();
-        slient = false;
+        ignoreValueChange = false;
+        optionSelectedIncludeHigerHierarchy = selectText is null ? optionSelectedIncludeHigerHierarchy : selectText;
+        UpdateCaptionText();
+        // Debug.Log($"UpdateOptions, timing methods: {timingMethods.Count()}, now dropdown options: {string.Join(";" ,optionsNowHierarchy.Values.ToList())}, nowSelectedTimingId: {nowSelectedTimingId}, nowSelectedSubHierarchy: {nowSelectedSubHierarchy}, nowSubHierarchyIndex: {nowSubHierarchyIndex}, optionSelectedIncludeHigerHierarchy: {optionSelectedIncludeHigerHierarchy}, ");
 
         // UpdateOptionsFunctionEnableStatus();
         return 1;
@@ -93,10 +111,7 @@ public class ScrDropDown : MonoBehaviour
     /// <summary>
     /// call this function with buttonFunctions given after dropdown options edited, functionEnableList created from TimingBasedOnPreviousTimingDictsbgiven
     /// </summary>
-    public void UpdateOptionsFunctionEnableStatus(int Id = -1, int DefaultBoolType = -1){
-        if (Id >= 0 && DefaultBoolType >= 0) {
-
-        }
+    public void UpdateOptionsFunctionEnableStatus(){
 
         List<Transform> _optionLists = (from t in transform.GetComponentsInChildren<Transform>() where t.name == "Content" select t).ToList();
         if(_optionLists.Count == 0){return;}
@@ -107,14 +122,11 @@ public class ScrDropDown : MonoBehaviour
             List<ScrFunctionalButton> functionalButtons = option.GetComponentsInChildren<ScrFunctionalButton>(includeInactive:true).ToList();
             int[] functionalButtonsNow = (from func in functionalButtons select (func.gameObject.activeSelf? buttonFunctionsLs.IndexOf(func.Type): -1)).ToArray();
             for(int j = 0; j < buttonFunctionsLs.Count(); j++){
-                if (functionEnableList[i][j] != functionalButtonsNow.Contains(j)) {
-                    var fb = functionalButtons.Where(fb => fb.Type == buttonFunctionsLs[j]).ToList()[0].gameObject;
-                    fb.SetActive(functionEnableList[i][j]);
-                    fb.GetComponent<ScrFunctionalButton>().Id = optionsPerHierarchyKeys[i];
-                    Debug.Log($"Set {fb.name} (from {option.name}) Id: {optionsPerHierarchyKeys[i]}, now {fb.GetComponent<ScrFunctionalButton>().Id}");
-                    // Debug.Log(string.Join(",", (from fb in functionalButtons select (fb.name + fb.index.ToString() + fb.gameObject.activeSelf.ToString())).ToList()));
-
-                }
+                var fb = functionalButtons.Where(fb => fb.Type == buttonFunctionsLs[j]).ToList()[0].gameObject;
+                fb.SetActive(functionEnableList[i][j]);
+                fb.GetComponent<ScrFunctionalButton>().Id = optionsPerHierarchyKeys[i];
+                // Debug.Log($"Set {fb.name} (from {option.name}) Id: {optionsPerHierarchyKeys[i]}, now {fb.GetComponent<ScrFunctionalButton>().Id}");
+                // Debug.Log(string.Join(",", (from fb in functionalButtons select (fb.name + fb.index.ToString() + fb.gameObject.activeSelf.ToString())).ToList()));
             }
         }
 
@@ -132,6 +144,16 @@ public class ScrDropDown : MonoBehaviour
 
     void Awake(){
         dropdown = GetComponent<Dropdown>();
+        if (EnableOptionsFunction) {
+            optionSelectedIncludeHigerHierarchy = dropdown.options[dropdown.value].text;
+            if(optionSelectedIncludeHigerHierarchy == "None") {
+                optionsNowHierarchy.Add(-1, "None");
+                functionEnableList.Add(new bool[2]);
+                optionsPerHierarchyKeys.Add(-1);
+                nowSelectedSubHierarchy = 0;
+                noneOptionCount = 1;
+            }
+        }
     }
 
     void Start()
@@ -140,13 +162,7 @@ public class ScrDropDown : MonoBehaviour
             // Debug.Log("新建dorpdown start");
             if(ui_update != null){
                 buttonFunctionsLs = ui_update.buttonFunctionsLs;
-                optionSelectedIncludeHigerHierarchy = dropdown.options[dropdown.value].text;
-                if(optionSelectedIncludeHigerHierarchy == "None") {
-                    optionsNowHierarchy.Add(-1, "None");
-                    functionEnableList.Add(new bool[2]);
-                    optionsPerHierarchyKeys.Add(-1);
-                    nowSelectedSubHierarchy = 0;
-                }
+                
             }
             if(transform.GetChild(2).gameObject.activeSelf){
                 transform.GetChild(2).gameObject.SetActive(false);
@@ -171,7 +187,7 @@ public class ScrDropDown : MonoBehaviour
 
             }
         }
-        if (slient) { slient = false; }
+        if (ignoreValueChange) { ignoreValueChange = false; }
         
     }
 
