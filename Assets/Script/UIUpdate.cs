@@ -1,4 +1,5 @@
 ﻿using System;
+using RestSharp;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -348,36 +349,44 @@ public class UIUpdate : MonoBehaviour
     }
 
     int ClearComingButtonTiming(int timingId = -1) {
+        bool selectClear = false;
         if (timingId == -1) {
             foreach (Timing timing in timings.Clear()) {
                 MessageUpdate($"button timing:{timing.timingMethod} removed");
                 if (timing.type == "button") {
+                    UnityEngine.UI.Button button = buttons.Find(b => b.name == timing.name);
+                    button.GetComponent<ScrButton>().pressCount++;
                     SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
                 }
             }
-            return 1;
+            selectClear = true;
         }
+        else {
 
-        var removedTimings = timings.Remove(timingId, true);
-        foreach (Timing timing in removedTimings) {
-            MessageUpdate($"button timing:{timing.timingMethod} removed");
-            if (timing.type == "button") {
-                SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+            var removedTimings = timings.Remove(timingId, true);
+            foreach (Timing timing in removedTimings) {
+                MessageUpdate($"button timing:{timing.timingMethod} removed");
+                if (timing.type == "button") {
+                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+                }
+                if(timing.Id == TimingBaseScrDropdown.nowSelectedTimingId){selectClear = true;}
             }
         }
-        UpdateOptions();
+        UpdateOptions(selectId: selectClear? -2: -1,selectText:selectClear? "None": "");
         return 1;
     }
     
     int UpdateOptions(int hierarchy = 0, int selectId = -2, string selectText = "", bool show = false) {
         int _timingCount = timings[0].Count;
+        var targetScrDropdown = hierarchy == 0 ? TimingBaseScrDropdown : (createdTimingBaseSubDropdowns.Count() >= hierarchy ? createdTimingBaseSubDropdowns[hierarchy - 1].GetComponent<ScrDropDown>() : null);
+        if(targetScrDropdown is null){ return -1; }
         if (_timingCount > 0) {
             if (show) { alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: $"{hierarchy}"); }
-            return TimingBaseScrDropdown.UpdateOptions(timings[hierarchy].Values(), timings[hierarchy].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList(), selectId, selectText);
+            return targetScrDropdown.UpdateOptions(timings[hierarchy].Values(), timings[hierarchy].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList(), selectId, selectText);
         }
         else {
             if (show) { alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: "0"); }
-            return TimingBaseScrDropdown.UpdateOptions(selectId:selectId, selectText:selectText);
+            return targetScrDropdown.UpdateOptions(selectId:selectId, selectText:selectText);
         }
     }
 
@@ -395,8 +404,7 @@ public class UIUpdate : MonoBehaviour
     int ControlsParse(string elementsName, float value, string stringArg="", bool ignoreTiming = true, bool forceTiming = false, bool ignoreSecondTiming = false, Timing? timing = null){
 
         if(! ignoreTiming && (Input.GetKey(KeyCode.LeftControl) && Input.GetKey(KeyCode.LeftShift) || forceTiming) || stringArg.Contains("cancelTiming")){//按trial定时事件执行在DeviceTriggerExecute最后处理
-            bool isTiming = timings.ContainsKey(elementsName);
-            
+
             float _sec = -1;int _trial = -1;
             string timingElementType;
             if (stringArg.StartsWith("type_")){ timingElementType = stringArg.Split(";")[0][5..]; stringArg = stringArg.Contains(";")? string.Join(";", stringArg.Split(";")[1]) : "";}
@@ -442,20 +450,20 @@ public class UIUpdate : MonoBehaviour
             
             Timing _timing = timing.HasValue? timing.Value: timings.Add(elementsName, _timingMethod, timingElementType, parentId:_TimingId, parentName:_timingBaseName, value:value);
             string targetElementTimingName = $"Timing{_timing.name};{_timing.Id};{_timing.value}";//value仅在dropdown中使用
-            if (!ignoreSecondTiming && _TimingId != -1) {
-                MessageUpdate($"button {elementsName} timing set to {(useSec ? _sec : _trial)} {(useSec ? "s " : "trial")} after {_timingBaseName}");
+            if (!ignoreSecondTiming && _TimingId >= 0) {
+                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {(useSec ? _sec : _trial)} {(useSec ? "s " : "trial")} after {_timingBaseName}");
                 UpdateOptions(selectId: timingSelectedPerHierarchy[0]);
                 return 1;
             }
             
             if(_sec > 0){
                 alarm.TrySetAlarm(targetElementTimingName, _sec, out _, addInfo:$"FromTiming;{value}", force:true);
-                MessageUpdate($"{elementsName} timing set to {_sec}s");
+                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {_sec}s");
                 inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
                 inputFieldContent[$"IFTimingBySec"] = "null";
                 
             }else if(_trial > 0){//默认按trial start，暂时不考虑finish和end
-                MessageUpdate($"{elementsName} timing set to trial {Math.Max(0, moving.NowTrial) + _trial}");
+                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to trial {Math.Max(0, moving.NowTrial) + _trial}");
                 moving.ButtonTriggerDict.TryAdd(targetElementTimingName, Math.Max(0, moving.NowTrial) + _trial);
                 inputFields.Find(inputfield => inputfield.name == "IFTimingByTrial").text = "";
                 inputFieldContent[$"IFTimingByTrial"] = "null";
@@ -474,7 +482,7 @@ public class UIUpdate : MonoBehaviour
             if (Input.GetKey(KeyCode.LeftControl) && timings.ContainsKey(elementsName)) {
                 SetButtonColor(elementsName, Color.yellow, forcePreviousUpdate:true, ignoreTiming:true);
                 foreach (Timing _timing in timings.Remove(elementsName)) {
-                    MessageUpdate($"button timing:{_timing.timingMethod} removed");
+                    MessageUpdate($"button timing:{_timing.timingMethod} (id: {_timing.Id}{(_timing.parentId != -1? $" parten Id: {_timing.parentId}": "")}) removed");
                 }
                 return 0;
             }
@@ -657,17 +665,30 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "IFTimingSet": {
-                timings = new TimingCollection(inputFieldContent[elementsName]);
-                moving.ButtonTriggerDict.Clear();
-                UpdateOptions();
-                alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).Select(a => {
-                    alarm.DeleteAlarm(a, true);
-                    return a;
-                });
-                foreach (var _t in timings[0].Times()) {
-                    ControlsParse(_t.name, _t.value, ignoreTiming: false, forceTiming: true, ignoreSecondTiming: true, timing: _t);
+                string content = inputFieldContent[elementsName];
+                bool clearAndReset = content == " "? true: false;
+                try {
+                    var res = JsonConvert.DeserializeObject<Timing?>(content.Split("||JSON_RECORD||")[0]);
+                    if(res is not null) {
+                        clearAndReset = true;
+                    }
                 }
-                timingSelectedPerHierarchy = new List<int> { 0 };
+                catch (Exception) { break; }
+
+                if (clearAndReset) {
+                    ClearComingButtonTiming();
+                    timings = new TimingCollection(inputFieldContent[elementsName]);
+                    moving.ButtonTriggerDict.Clear();
+                    UpdateOptions();
+                    alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).Select(a => {
+                        alarm.DeleteAlarm(a, true);
+                        return a;
+                    });
+                    foreach (var _t in timings[0].Times()) {
+                        ControlsParse(_t.name, _t.value, ignoreTiming: false, forceTiming: true, ignoreSecondTiming: true, timing: _t);
+                    }
+                    timingSelectedPerHierarchy = new List<int> { 0 };
+                }
                 break;
             }
             case "TimingPause": {
@@ -678,6 +699,10 @@ public class UIUpdate : MonoBehaviour
                     else { alarm.StartAlarm(_a); }
                 }
                 MessageUpdate($"{timingAlarms.Count()} alarm {(pause ? "paused" : "started")}");
+                break;
+            }
+            case "MessagePost": {
+                PostMessageToWeChat("收鼠收鼠收鼠"+ " 现在" + DateTime.Now.ToString("HH:mm:ss "), "鼠训完了！");
                 break;
             }
             default:{
@@ -778,6 +803,7 @@ public class UIUpdate : MonoBehaviour
                         }
                         else {
                             moving.DeviceEnableDict.Add(_type, true);
+                            _enabled = true;
                             // SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
                         }
                         SetButtonColor($"{_type}Enable", Color.green, !_enabled);
@@ -789,15 +815,22 @@ public class UIUpdate : MonoBehaviour
 
                     int _nowTimingId = stringArgSplit[0] == "type_dropdown"? (stringArgSplit.Count() > 2? int.Parse(stringArgSplit[2]): -1): (int)value;
                     var _t = timings.GetTiming(_nowTimingId);
-                    if(_nowTimingId != -1 && !_t.HasValue){ Debug.Log($"invalid Id:{_nowTimingId}"); return 0; }
+                    if(_nowTimingId != -1 && !_t.HasValue && stringArgSplit[0] != "hide"){ Debug.Log($"invalid Id:{_nowTimingId}"); return 0; }
                     int hierarchy = _t.HasValue? _t.Value.hierarchy: -1;
 
                     if (stringArg.StartsWith("delete")) {
                         ClearComingButtonTiming(_nowTimingId);
                         if (createdTimingBaseSubDropdowns.Count > hierarchy && createdTimingBaseSubDropdowns[hierarchy] != null) { Destroy(createdTimingBaseSubDropdowns[hierarchy]); }
-                        if (hierarchy > 0) { UpdateOptions(show: true); }
+                        if (hierarchy > 0) { UpdateOptions(hierarchy - 1, show: true); }
                     }
                     else if (stringArg.StartsWith("spread")) {
+                        if(hierarchy < createdTimingBaseSubDropdowns.Count()) {
+                            foreach(GameObject _go in createdTimingBaseSubDropdowns.Skip(hierarchy)) {
+                                _go.GetComponent<ScrDropDown>().ui_update = null;
+                                Destroy(_go);
+                                createdTimingBaseSubDropdowns.Remove(_go);
+                            }
+                        }
                         float[] spreadPos = (from pos in stringArgSplit[1].Split(':') select Convert.ToSingle(pos)).ToArray();
                         Dropdown timingBaseSelectDropdown = hierarchy == 0 ? TimingBaseDropdown : createdTimingBaseSubDropdowns[hierarchy - 1].GetComponent<Dropdown>();
                         if (createdTimingBaseSubDropdowns.Count == hierarchy) {
@@ -815,7 +848,8 @@ public class UIUpdate : MonoBehaviour
                             _tempScrDropdown.nowSubHierarchyIndex = hierarchy + 1;
                             _tempScrDropdown.buttonFunctionsLs = buttonFunctionsLs;
                             // _tempScrDropdown.UpdateOptions();
-                            _tempScrDropdown.UpdateOptions(timings[hierarchy + 1].Values(), timings[hierarchy + 1].Keys().Select(t => timings.GetTimingChildren(t).Count > 0 ? 1 : 0).ToList(), timingSelectedPerHierarchy.Count > hierarchy? timingSelectedPerHierarchy[hierarchy]: -2);
+                            var children = timings.GetTimingChildren(_nowTimingId);
+                            _tempScrDropdown.UpdateOptions(children.ToDictionary(t => t.Id, t => t.name), children.Select(t => timings.GetTimingChildren(t.Id).Count > 0 ? 1 : 0).ToList(), timingSelectedPerHierarchy.Count > hierarchy? timingSelectedPerHierarchy[hierarchy]: -2);
                             alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: _tempScrDropdown.nowSubHierarchyIndex.ToString());
                             createdTimingBaseSubDropdowns.Add(_buttonTimingBaseSubDropdown);
                         }
@@ -832,7 +866,10 @@ public class UIUpdate : MonoBehaviour
                     else if (stringArg.StartsWith("hide")) {
                         int _hierarchy = int.Parse(stringArgSplit[1]);
                         if(createdTimingBaseSubDropdowns.Count >= _hierarchy) {
-                            Destroy(createdTimingBaseSubDropdowns[_hierarchy]);
+                            if(createdTimingBaseSubDropdowns.Count > 0){
+                                _hierarchy = Math.Max(_hierarchy, 1); 
+                                Destroy(createdTimingBaseSubDropdowns[_hierarchy - 1]);
+                            }
                         }
                     }
                     else {
@@ -1028,8 +1065,41 @@ public class UIUpdate : MonoBehaviour
         return "";
     }
 
-    void Awake()
-    {
+    void PostMessageToWeChat(string message, string title) {
+        var client = new RestClient("https://www.pushplus.plus/send");
+        client.Timeout = -1;
+        var request = new RestRequest(Method.POST);
+        request.AddHeader("Content-Type", "application/json");
+        var body = @"{" + "\n" +
+        @"    ""token"":""afb23f2078ed4adaaf10a51855d7e07d""," + "\n" +
+        @"    ""title"":""" + title + @"""," + "\n" +
+        @"    ""content"":"""+ message +@"""," + "\n" +
+        @"    ""topic"":""""" + "\n" +
+        @"}";
+        request.AddParameter("application/json", body,  ParameterType.RequestBody);
+        IRestResponse response = client.Execute(request);
+        if(!response.IsSuccessful){
+            Debug.LogWarning(response.Content);
+        }
+        else {
+            Debug.Log(response.Content);
+        }
+
+        request = new RestRequest(Method.POST);
+        request.AddHeader("Content-Type", "application/json");
+        body = @"{" + "\n" +
+        @"    ""token"":""d9c7bd9449984dfda967a8d7efe28000""," + "\n" +
+        @"    ""title"":""" + title + @"""," + "\n" +
+        @"    ""content"":"""+ message +@"""," + "\n" +
+        @"    ""topic"":""""" + "\n" +
+        @"}";
+        request.AddParameter("application/json", body,  ParameterType.RequestBody);
+        response = client.Execute(request);
+        Debug.Log(response.Content);
+    }
+
+    void Awake() {
+
         moving = GetComponent<Moving>();
         inputFields.Add(serialMessageInputs);
         buttons.Add(startButton);
@@ -1042,12 +1112,12 @@ public class UIUpdate : MonoBehaviour
         TimingBaseScrDropdown = TimingBaseDropdown.GetComponent<ScrDropDown>();
         timings = new TimingCollection();
 
-        foreach(UnityEngine.UI.Button button in soundOptions.GetComponentsInChildren<UnityEngine.UI.Button>()){
-            if(moving.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))){
+        foreach (UnityEngine.UI.Button button in soundOptions.GetComponentsInChildren<UnityEngine.UI.Button>()) {
+            if (moving.TrialSoundPlayModeExplain.Contains(button.name.Substring(5))) {
                 soundOptionsDict.Add(moving.TrialSoundPlayModeExplain.IndexOf(button.name.Substring(5)), button);
                 button.GetComponent<ScrButton>().ui_update = this;
                 Dropdown _dropdown = button.GetComponentInChildren<Dropdown>();
-                if(_dropdown != null){
+                if (_dropdown != null) {
                     _dropdown.name = "soundDropdown" + button.name.Substring(5);
                     _dropdown.AddOptions(moving.audioClips.Keys.ToList());
                     _dropdown.GetComponentInChildren<Text>().fontSize = 10;
@@ -1056,27 +1126,27 @@ public class UIUpdate : MonoBehaviour
                 }
             }
         }
-        
+
         backgroundSwitch.AddOptions(moving.Backgrounds.Select(m => m.name).ToList());
 
-        foreach(UnityEngine.UI.Slider slider in sliders){
-            if(slider.GetComponent<ScrSlider>() != null){
+        foreach (UnityEngine.UI.Slider slider in sliders) {
+            if (slider.GetComponent<ScrSlider>() != null) {
                 slider.GetComponent<ScrSlider>().ui_update = this;
             }
         }
-        foreach(UnityEngine.UI.Button button in buttons){
-            if(button.GetComponent<UnityEngine.UI.Button>() != null){
+        foreach (UnityEngine.UI.Button button in buttons) {
+            if (button.GetComponent<UnityEngine.UI.Button>() != null) {
                 button.GetComponent<ScrButton>().ui_update = this;
             }
         }
-        foreach(UnityEngine.UI.Dropdown dropdown in dropdowns){
-            if(dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null){
+        foreach (UnityEngine.UI.Dropdown dropdown in dropdowns) {
+            if (dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null) {
                 dropdown.GetComponent<ScrDropDown>().ui_update = this;
                 //dropdown.RefreshShownValue();
             }
         }
-        foreach(UnityEngine.UI.Dropdown dropdown in soundDropdowns){
-            if(dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null){
+        foreach (UnityEngine.UI.Dropdown dropdown in soundDropdowns) {
+            if (dropdown.GetComponent<UnityEngine.UI.Dropdown>() != null) {
                 dropdown.GetComponent<ScrDropDown>().ui_update = this;
                 //dropdown.RefreshShownValue();
             }
@@ -1092,18 +1162,28 @@ public class UIUpdate : MonoBehaviour
         //     }
         // }
 
-        foreach(InputField inputField in inputFields){
-            if(!inputFieldContent.TryAdd(inputField.name, inputField.text)){
+        foreach (InputField inputField in inputFields) {
+            if (!inputFieldContent.TryAdd(inputField.name, inputField.text)) {
                 inputFieldContent[inputField.name] = "null";
             }
         }
 
-        if(IFContentLoaded != ""){
-            foreach(string content in IFContentLoaded.Split(";")){
-                string IFName = content.Split(":")[0];
-                if(inputFieldContent.ContainsKey(IFName)){
-                    inputFieldContent[IFName] = content.Split(":")[1];
+        if (IFContentLoaded != "") {
+            foreach (string content in IFContentLoaded.Split(";;;")) {
+                string IFName = content.Split("=>")[0];
+                if (inputFieldContent.ContainsKey(IFName)) {
+                    inputFieldContent[IFName] = content.Split("=>")[1];
                 }
+            }
+        }
+    }
+
+    void Start()
+    {
+        var _ic = inputFieldContent.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        foreach(var key in _ic.Keys) {
+            if(key == "IFTimingSet" && _ic[key] != "null") {
+                ControlsParse("IFTimingSet", 1);
             }
         }
     }

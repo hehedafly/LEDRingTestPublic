@@ -905,8 +905,6 @@ public class Moving : MonoBehaviour
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
     bool debugMode = false; public bool DebugMode { get { return debugMode;} set{debugMode = value;}}
-    // bool serialSync = true;
-    // float UnscaledfixedTime = -1;
     public GameObject refseg;
     Material refSegementMat;
     public Dictionary<string, bool> DeviceEnableDict = new Dictionary<string, bool>{};
@@ -914,11 +912,9 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// 0:Optogenetics, 1:Miniscope, 2:PythonScript
     /// </summary>
-    bool[] DeviceCloseOptionBeforeExits = new bool[3]{true, true, false};
+    bool[] DeviceCloseOptionBeforeExits = new bool[3] { true, true, false };
+    
 
-    /// <summary>
-    /// DeviceTriggerMethod = new List<string>() {"certainTrialStart", "everyTrialStart", "randomTrialStart", "certainTrialEnd", "everyTrialEnd"};
-    /// </summary>
 
     #endregion communicating end
 
@@ -2093,8 +2089,8 @@ public class Moving : MonoBehaviour
                         ui_update.MessageUpdate("Trial end");
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
-                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, lickInd == -2? rightLickInd: lickInd, rightLickInd);
-                        if(result){
+                        TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
+                        if(result && trialStatus != 2){
                             if(trialMode % 0x10 == 1){ServeWaterInTrial();}
                             // DeactivateBar();
                             alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);
@@ -2103,7 +2099,7 @@ public class Moving : MonoBehaviour
                             PlaySound("EnableReward");
 
                             trialStatus = 2;
-                        }else{//手动跳过
+                        }else if(!result){//手动跳过
                             ui_update.MessageUpdate("Trial skipped");
                             EndTrial(trialSuccess: false, ignoreBarLatstingTime:true);
                         }

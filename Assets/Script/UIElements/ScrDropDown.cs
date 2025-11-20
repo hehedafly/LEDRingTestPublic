@@ -64,7 +64,8 @@ public class ScrDropDown : MonoBehaviour
         }
     }
 
-    public int UpdateOptions(Dictionary<int, string> timingMethods = null, List<int> enableList = null, int selectId = -2, string selectText = null) {//每次提供全部列表
+    public int UpdateOptions(Dictionary<int, string> timingMethods = null, List<int> enableList = null, int selectId = -2, string selectText = "") {//每次提供全部列表
+        
         dropdown.Hide();
         optionsNowHierarchy = optionsNowHierarchy.Where(o => o.Key == -1).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         functionEnableList = functionEnableList.Take(optionsNowHierarchy.Count).ToList();
@@ -100,10 +101,12 @@ public class ScrDropDown : MonoBehaviour
         }
         dropdown.RefreshShownValue();
         ignoreValueChange = false;
-        optionSelectedIncludeHigerHierarchy = selectText is null ? optionSelectedIncludeHigerHierarchy : selectText;
+        optionSelectedIncludeHigerHierarchy = selectText == "" ? optionSelectedIncludeHigerHierarchy : selectText;
         UpdateCaptionText();
         // Debug.Log($"UpdateOptions, timing methods: {timingMethods.Count()}, now dropdown options: {string.Join(";" ,optionsNowHierarchy.Values.ToList())}, nowSelectedTimingId: {nowSelectedTimingId}, nowSelectedSubHierarchy: {nowSelectedSubHierarchy}, nowSubHierarchyIndex: {nowSubHierarchyIndex}, optionSelectedIncludeHigerHierarchy: {optionSelectedIncludeHigerHierarchy}, ");
-
+        if(name == "TimingBaseSelect") {
+            Debug.Log($"nowSelectTimingId: {nowSelectedTimingId}, selectText: {optionSelectedIncludeHigerHierarchy}");
+        }
         // UpdateOptionsFunctionEnableStatus();
         return 1;
     }

@@ -27,8 +27,8 @@ public void WriteIniContent(string section,string key,string value)
 
 //读取Ini文件
 public string ReadIniContent(string section,string key, string value_in_default, bool Confirm = false){
-  StringBuilder temp=new StringBuilder(255);
-  int i=GetPrivateProfileString(section,key,"",temp,255,this.path);
+  StringBuilder temp=new StringBuilder(8192);
+  int i=GetPrivateProfileString(section,key,"",temp,8192,this.path);
   if(temp.Length == 0 && Confirm){return "";}
   if(temp.Length==0){
     readDefaultContents.Add($"section: {section}, key: {key}, default value:{value_in_default}");
