@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.spas.restsharp": "https://github.com/spaskhalov/UnityRestSharp.git",
     "com.unity.collab-proxy": "2.7.1",
     "com.unity.feature.development": "1.0.1",
     "com.unity.nuget.newtonsoft-json": "3.2.1",
