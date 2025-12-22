@@ -105,7 +105,7 @@ public class ScrDropDown : MonoBehaviour
         UpdateCaptionText();
         // Debug.Log($"UpdateOptions, timing methods: {timingMethods.Count()}, now dropdown options: {string.Join(";" ,optionsNowHierarchy.Values.ToList())}, nowSelectedTimingId: {nowSelectedTimingId}, nowSelectedSubHierarchy: {nowSelectedSubHierarchy}, nowSubHierarchyIndex: {nowSubHierarchyIndex}, optionSelectedIncludeHigerHierarchy: {optionSelectedIncludeHigerHierarchy}, ");
         if(name == "TimingBaseSelect") {
-            Debug.Log($"nowSelectTimingId: {nowSelectedTimingId}, selectText: {optionSelectedIncludeHigerHierarchy}");
+            // Debug.Log($"nowSelectTimingId: {nowSelectedTimingId}, selectText: {optionSelectedIncludeHigerHierarchy}");
         }
         // UpdateOptionsFunctionEnableStatus();
         return 1;

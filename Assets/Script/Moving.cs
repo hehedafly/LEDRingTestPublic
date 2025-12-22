@@ -15,6 +15,8 @@ using TMPro;
 using UnityEngine.Experimental.GlobalIllumination;
 using MatrixClaculator;
 using Unity.VisualScripting;
+using System.Reflection;
+using System.ComponentModel;
 // using System.Drawing;
 
 [System.Serializable]
@@ -33,6 +35,10 @@ class ContextInfo{
         waitFromLastLick = _waitFromLastLick;
         trialExpireTime = _trialExpireTime;
         trialTriggerMode = _trialStartType;
+        extraRewardTimeInSec = 0;
+        stopExtraRewardMethod = "";
+        stopExtraRewardUseTriggerSelectArea = -1;
+        stopExtraRewardLickDelaySec = 0;
         barPosLs = new List<int>();
         barmatLs = new List<string>();
         materialsInfo = new List<string>();
@@ -109,8 +115,7 @@ class ContextInfo{
             if (startMethod.StartsWith("random")){//format like random0,90,180
                 string content = startMethod[6..].Replace(" ", "");
                 string[] temp = content.Length > 0 ? content.Split(",") : new string[] { };
-                // Debug.Log(temp.Length > 0);
-                // try{
+
                 if (temp.Length > 0) { posLs = temp.Select(str => availablePosArray.Contains(Convert.ToInt16(str)) ? Convert.ToInt16(str) : -1).ToList(); }
                 else { posLs = availablePosArray; }
                 if (posLs.Contains(-1)) { throw new Exception(""); }
@@ -121,15 +126,6 @@ class ContextInfo{
                     Shuffle(ints);
                     foreach (int j in ints) { barPosLs.Add(posLs[j]); }
                 }
-                // }
-                // catch(FormatException e){
-                //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
-
-                // }
-                // catch(Exception e){
-                //     MessageBoxForUnity.Ensure(e.Message, "error in random start method parse");
-                // }
-
 
             }
             else if (startMethod.StartsWith("assign")){
@@ -281,7 +277,6 @@ class ContextInfo{
             return;
         }
         finally{
-
         }
 
     }
@@ -289,7 +284,7 @@ class ContextInfo{
     /// <summary>
     /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
     /// </summary>
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
@@ -297,6 +292,11 @@ class ContextInfo{
         standingSecInTrigger = _standingSecInTrigger;
         standingSecInDest = _standingSecInDest;
         countAfterLeave = _countAfterLeave;
+        extraRewardTimeInSec = _extraRewardTimeInSec;
+        stopExtraRewardMethod = _stopExtraRewardMethod;
+        stopExtraRewardUseTriggerSelectArea = _stopExtraRewardUseTriggerSelectArea;
+        stopExtraRewardLickDelaySec = _stopExtraRewardLickDelaySec;
+        minIgnoreLickInterval = _minIgnoreLickInterval;
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
         DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialInTarget", "everyTrialInTarget", "nextTrialStart", "nextTrialEnd", "nextTrialInTarget"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
@@ -483,38 +483,44 @@ class ContextInfo{
         }
     }
     //public string start_method;
-    public string       startMethod     {get;}
-    public string       startMethodStr     {get;}
+
+    public string       startMethod             {get;}
+    public string       startMethodStr          {get;}
     public Dictionary<int, int>    avaliablePosDict {get;}//最多8个，从角度0开始对位置顺时针编号0-7
-    public string       matStartMethod     {get;}
-    public List<string> matAvaliableArray {get;}
-    public List<int>    lickPosLs       {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
-    public List<int>    pumpPosLs       {get;}
-    public List<int>    trackMarkLs     {get;}
-    public List<int>    barShiftLs      {get;}
-    public int          barOffset       {get;set;}
-    public bool         destAreaFollow  {get;set;}
+    public string       matStartMethod          {get;}
+    public List<string> matAvaliableArray       {get;}
+    public List<int>    lickPosLs               {get;}//lick, pump等物理位置自己标定（顺时针或其他方式），按avaliable
+    public List<int>    pumpPosLs               {get;}
+    public List<int>    trackMarkLs             {get;}
+    public List<int>    barShiftLs              {get;}
+    public int          barOffset               {get;set;}
+    public bool         destAreaFollow          {get;set;}
     public float        standingSecInTrigger    {get;set;}
     public float        standingSecInDest       {get;set;}
-    public int          maxTrial        {get;}
-    public int          seed            {get;}
-    public float        barDelayTime    {get;}//主动触发的trial间最短间隔
-    public float        barLastingTime  {get;}
-    public List<float>  waitFromStart   {get;}
-    public float        waitFromLastLick{get;}
-    public int          backgroundLight {get;}
-    public int          backgroundRedMode{get;}
-    public List<float>  trialInterval   {get;}
-    public List<float>  sWaitSec        {get;}
-    public List<float>  fWaitSec        {get;}
-    public int          trialTriggerMode{get;}
-    public List<float>  trialTriggerDelay{get;}
-    public float        trialExpireTime {get;}
-    public List<string> materialsInfo   {get;set;}
-    public float        soundLength     {get; set;}
-    public float        cueVolume {get; set;}
-    public string       manuplateMethods {get; set;}
-    public bool         countAfterLeave   {get;set; }
+    public int          maxTrial                {get;set;}
+    public int          seed                    {get;}
+    public float        barDelayTime            {get;set;}//主动触发的trial间最短间隔
+    public float        barLastingTime          {get;set;}
+    public List<float>  waitFromStart           {get;set;}
+    public float        waitFromLastLick        {get;set;}
+    public int          backgroundLight         {get;set;}
+    public int          backgroundRedMode       {get;set;}
+    public List<float>  trialInterval           {get;set;}
+    public List<float>  sWaitSec                {get;set;}
+    public List<float>  fWaitSec                {get;set;}
+    public int          trialTriggerMode        {get;}
+    public List<float>  trialTriggerDelay       {get;set;}
+    public float        trialExpireTime         {get;set;}
+    public List<string> materialsInfo           {get;set;}
+    public float        soundLength             {get;set;}
+    public float        cueVolume               {get;set;}
+    public string       manuplateMethods        {get;set;}
+    public bool         countAfterLeave         {get;set;}
+    public float        extraRewardTimeInSec    {get;set;}
+    public string       stopExtraRewardMethod   {get;set;}
+    public int stopExtraRewardUseTriggerSelectArea {get; set;}
+    public float stopExtraRewardLickDelaySec    {get; set;}
+    public float        minIgnoreLickInterval   {get;set;}
 
     /// <summary>
     /// resore template keys of trigger Dicts:
@@ -840,6 +846,9 @@ public class Moving : MonoBehaviour
     List<int> lickPosLsCopy;
     
     List<List<int>> lickCount = new List<List<int>>();
+    // List<float> rawLickTime = new List<float>();
+    public List<float> lickTimeInTrial = new List<float>();
+    public List<float> rewardServedTimeInTrial = new List<float>();
     public GameObject audioSourceSketchObject;
     public Dictionary<int, AudioSource> audioSources = new Dictionary<int, AudioSource>{};
     public List<int> audioPlayModeNow = new List<int>();
@@ -875,7 +884,7 @@ public class Moving : MonoBehaviour
     SerialPort sp = null;
     volatile bool StopSerialThread = false;
     int serialSpeed = -1;
-    List<string> compatibleVersion = new List<string>(){"V2.1"};
+    List<string> compatibleVersion = new List<string>(){"V2.2"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
@@ -898,9 +907,9 @@ public class Moving : MonoBehaviour
     ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     /// <summary>
-    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord
+    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual
     /// </summary>
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord, p_waterServeWhenLick, p_waterServeManual".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
@@ -913,6 +922,8 @@ public class Moving : MonoBehaviour
     /// 0:Optogenetics, 1:Miniscope, 2:PythonScript
     /// </summary>
     bool[] DeviceCloseOptionBeforeExits = new bool[3] { true, true, false };
+    int lickCheckFunctionsStatus = -1; //return from lick check functions, used when somewhere depend on judging lick
+    int posCheckFunctionsStatus = -1; //return from position check functions, used when somewhere depend on judging mouse pos
     
 
 
@@ -932,6 +943,9 @@ public class Moving : MonoBehaviour
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
     Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
+    public PropertyInfo[] _cachedPropertyInfo;
+
+    
     // KalmanFilter kalmanFilter = null;
     // List<List<float>> selectRegions = new List<List<float>>();
 
@@ -1032,6 +1046,46 @@ public class Moving : MonoBehaviour
                     $"frequency      {frequency      }"+
                     $"direction      {direction      }"+
                     $"horizontal     {horizontal     }";
+        }
+    }
+
+    public string SetProperty(object obj, string propertyName, object value)
+    {
+        var property = _cachedPropertyInfo.Where(p => p.Name == propertyName).ToArray();
+        string errmsg = "";
+        if (property.Any() && property[0].CanWrite){
+            var converter = TypeDescriptor.GetConverter(property[0].PropertyType);
+            if (converter.CanConvertFrom(value?.GetType())){
+                try
+                {
+                    var convertedValue = converter.ConvertFrom(value);
+                    property[0].SetValue(obj, convertedValue);
+                    return errmsg;
+                }
+                catch (Exception e){
+                    errmsg = $"error occured when setting property {propertyName} with value {value}, detail:{e.Message}";
+                    Debug.Log(errmsg);
+                    return errmsg;
+                }
+            }
+            else {
+                string content = JsonConvert.SerializeObject(property[0].GetValue(obj));
+                errmsg = $"property {propertyName} with value {value} cannot be converted to {property[0].PropertyType.Name}, current value is: {content}";
+                return errmsg;
+            }
+        }
+        else {
+            errmsg = $"property {propertyName} not found or not writable";
+            Debug.Log(errmsg);
+        }
+        return errmsg;
+    }
+    public void SetContextInfoProperties(string variableName, string content) {
+        if(!debugMode){ui_update.MessageUpdate("DebugMode is not enabled, cannot set contextInfo properties.");return;}
+        string errmsg = SetProperty(contextInfo, variableName, content);
+        if(errmsg.Length > 0){ui_update.MessageUpdate(errmsg);}
+        else {
+            ui_update.MessageUpdate($"variable {variableName} set to {content}");
         }
     }
 
@@ -1579,6 +1633,7 @@ public class Moving : MonoBehaviour
             }
 
             forceWaiting = false;
+            ui_update.SetLightSignal("stop", false);
             if(trialStartTriggerMode != 0 && trialStartTriggerMode != 4){
                 trialStartReady = true;
                 ui_update.MessageUpdate("Ready");
@@ -1586,6 +1641,11 @@ public class Moving : MonoBehaviour
 
             }
             InitTrial(isFristInit:manual);
+        }
+
+        if(nowTrial >= contextInfo.maxTrial){
+            ClearAfterMaxTrialReached();
+            return -5;
         }
         
         if((trialStartTriggerMode == 0 || trialStartTriggerMode == 4) && manual || (!manual && trialStartReady == true)){//延时触发以及trial结束后触发仅在最初通过manual调用
@@ -1636,6 +1696,8 @@ public class Moving : MonoBehaviour
                 ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
             }
         }
+        lickTimeInTrial.Clear();
+        rewardServedTimeInTrial.Clear();
         StopSound();
         DeactivateBar();
         trialInitTime = Time.fixedUnscaledTime;
@@ -1644,15 +1706,21 @@ public class Moving : MonoBehaviour
         return 0;
     }
 
-    int ServeWaterInTrial(){
+    int ServeWaterInTrial(bool changeTrialStatus = true){
         int fail = 0;
-        while(CommandVerify(Arduino_var_list[2], 2) == -1){
-            fail += 1;
-            if (fail > 10){
-                Debug.Log("ServeWaterInTrial failed for 10 times");
-                return -10;
+        if(changeTrialStatus){
+            while(CommandVerify(Arduino_var_list[2], 2) == -1){
+                fail += 1;
+                if (fail > 10){
+                    Debug.Log("ServeWaterInTrial failed for 10 times");
+                    return -10;
+                }
             }
-        };
+        }else{
+            DataSend($"{Arduino_var_list[9]}={-2}", needParse:true, inVerifyOrVerifyNeedless:true);
+        }
+        ui_update.SetLightSignal("reward", true, duration:0.2f);
+        rewardServedTimeInTrial.Add(Time.fixedUnscaledTime);
         // Debug.Log($"ServeWaterInTrial {(fail == 0? "succes": $"failed for {fail} time")}");
         return 0 - fail;
     }
@@ -1664,6 +1732,7 @@ public class Moving : MonoBehaviour
         trialStartTime = Time.fixedUnscaledTime;
         while (!DebugWithoutArduino && ContextStartSync() < 0){
             RecreateSerialConnection();
+            Debug.Log("StartTrial failed, retrying");
             ContextInitSync();
         }
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
@@ -1748,8 +1817,10 @@ public class Moving : MonoBehaviour
 
     /// <summary>
     /// use trialSuccess for deactivate bar instantly and playsound
+    /// trialReadyWaitSec: usually pass the barLastingTime
+    /// the final interval take the max of baseInterval, trialReadyWaitSec and trialReadyWaitForExtraRewardSec
     /// </summary>
-    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false, bool ignoreBarLatstingTime = false){
+    int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false, bool ignoreBarLatstingTime = false, float trialReadyWaitForExtraRewardSec = -1){
         // Debug.Log($"End Trial {nowTrial}");
         ContextEndSync();
         trialStatus = 0;
@@ -1774,11 +1845,15 @@ public class Moving : MonoBehaviour
         if(!isInit){
             DeviceTriggerExecute(1);
             if(serveWater){ServeWaterInTrial();}//20ms左右，如果放在DeviceTriggerExecute后能正常运行，说明串口影响了定时器中断
+            if(trialReadyWaitForExtraRewardSec > 0) {
+                alarm.TrySetAlarm("DisabletExtraReward", trialReadyWaitForExtraRewardSec, out _);
+            }
             waitSecRec = Time.fixedUnscaledTime;
             
             //lickCount.Clear();
+            float _finalTrialReadyWaitSec = Math.Max(trialReadyWaitSec, trialReadyWaitForExtraRewardSec);
+            float _temp_waitSec;
             if(contextInfo.trialInterval[0] > 0){
-                float _temp_waitSec;
                 if(trialStartTriggerMode == 0){
                     // _temp_waitSec = UnityEngine.Random.Range(contextInfo.trialInterval[0], contextInfo.trialInterval[1]);
                     _temp_waitSec = GetRandom(contextInfo.trialInterval);
@@ -1786,32 +1861,39 @@ public class Moving : MonoBehaviour
                     //_temp_waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
                     _temp_waitSec = contextInfo.barDelayTime;
                 }
-
-                if(_temp_waitSec > 0){
-                    ui_update.MessageUpdate($"Interval: {_temp_waitSec}", attachToLastLine:true);
+                waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+                if(waitSec > 0){
+                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                     Debug.Log(Time.fixedUnscaledTime);
                 }
-                waitSec = _temp_waitSec;
             }else{
                 if(trialStartTriggerMode == 0){
                     
-                    waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
-                    ui_update.MessageUpdate($"Interval: {waitSec}", attachToLastLine:true);
+                    _temp_waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
+                    waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
 
                 }else{//其他主动触发模式
-                    waitSec = contextInfo.barDelayTime;
-                    ui_update.MessageUpdate($"Interval: {waitSec}", attachToLastLine:true);
+                    _temp_waitSec = contextInfo.barDelayTime;
+                    waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+
+                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
                     // ui_update.MessageUpdate($"Interval: {waitSec}");
                     // Debug.Log($"Interval: {waitSec}");
                 }
             }
+
+            if(waitSec == trialReadyWaitForExtraRewardSec){
+                float trialReadyWaitSecWithoutExtraRewardSec = Math.Max(trialReadyWaitSec, _temp_waitSec);
+                alarm.TrySetAlarm("SetTrialReadyToTrueWithoutExtraRewardSec", trialReadyWaitSecWithoutExtraRewardSec, out _, addInfo:$"{trialReadyWaitSecWithoutExtraRewardSec}");
+            }
             
-            if(trialReadyWaitSec <= 0){
+            if(_finalTrialReadyWaitSec <= 0){
                 trialStartReady = true;
             }
             else{
-                alarm.TrySetAlarm("SetTrialReadyToTrue", trialReadyWaitSec, out _);
+                alarm.TrySetAlarm("SetTrialReadyToTrue", _finalTrialReadyWaitSec, out _);
             }
 
             if(trialStartTriggerMode == 4){
@@ -1852,21 +1934,52 @@ public class Moving : MonoBehaviour
     }
 
     public bool IsIPCInNeed(){
-        bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3;
+        bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3 || contextInfo.stopExtraRewardMethod.Contains("pos");
         // ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
         return res;
     }
 
-    public bool SetIPCAvtive(bool value){
+    public bool SetIPCAvtive(bool value, bool silent = true, string addInfo = ""){
         if(value){
+            if(!silent && !ipcclient.Silent){ui_update.MessageUpdate($"activate IPC..{(addInfo == ""? "": $"for {addInfo}")}");}
             ipcclient.Silent = false;
-
         }else{
+            if(!silent && ipcclient.Activated){ui_update.MessageUpdate("deactivate IPC..");}
             ipcclient.Silent = true;
             ipcclient.Activated = false;
         }
         return true;
     }
+
+    /// <summary>
+    /// 按顺序添加各个函数及对应返回值，每次暂时只执行一个符合条件的函数即返回，默认返回-1
+    /// 0: stop extra reward, 已做contextinof是否配置检查
+    /// </summary>
+    /// <param name="pos"></param>
+    /// <returns></returns>
+    int CheckMousePos(long[] pos){
+        if(contextInfo.stopExtraRewardMethod.Contains("pos") && waiting){
+            List<int[]> selectedAreas = ipcclient.GetselectedArea().Where(a => a[0] < 32).ToList();
+            if(contextInfo.stopExtraRewardUseTriggerSelectArea >= 0 && selectedAreas.Count > contextInfo.stopExtraRewardUseTriggerSelectArea){
+                return CheckInRegion(pos, selectedAreas[contextInfo.stopExtraRewardUseTriggerSelectArea])? 0: -1;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// 与CheckMousePos类似，默认返回-1
+    /// </summary>
+    /// <returns></returns>
+    int CheckMouseLick(){
+        if(contextInfo.stopExtraRewardMethod.Contains("lick")){
+            if(lickTimeInTrial.Count > 0 && Time.fixedUnscaledTime - lickTimeInTrial.Last() > contextInfo.stopExtraRewardLickDelaySec){
+                return 0;
+            }
+        }
+        return -1;
+    }
+
     public int ChangeMode(int _mode){
         if(_mode == trialMode){
             return 0;
@@ -1877,7 +1990,7 @@ public class Moving : MonoBehaviour
                 EndTrial(isInit: true);
                 trialMode = _mode;
 
-                SetIPCAvtive(IsIPCInNeed());
+                SetIPCAvtive(IsIPCInNeed(), silent:false, addInfo:"mode changed");
 
                 nowTrial = -1;
                 forceWaiting = true;
@@ -1898,7 +2011,7 @@ public class Moving : MonoBehaviour
             if(_triggerMode < trialStartTriggerModeLs.Count() && IntervalCheck() == -2 || trialStartTriggerMode == 4){
                 trialStartTriggerMode = _triggerMode;
 
-                SetIPCAvtive(IsIPCInNeed());
+                SetIPCAvtive(IsIPCInNeed(), silent:false, addInfo:"trigger mode changed");
                 // if(IPCInNeed()){
                 //     ipcclient.Silent = false;
                 // }else{
@@ -1992,8 +2105,8 @@ public class Moving : MonoBehaviour
 
     }
 
-    public int LickingCheckPubic(int lickInd, int lickTypeMark = 1){
-        return LickingCheck(lickInd, lickTypeMark);
+    public int LickingCheckPubic(int lickInd, int lickTypeMark = 1, bool simulate = false){
+        return LickingCheck(lickInd, lickTypeMark, simulate);
     }
 
     /// <summary>
@@ -2004,7 +2117,7 @@ public class Moving : MonoBehaviour
     /// <param name="lickInd"></param>
     /// <param name="lickTypeMark"></param>
     /// <returns></returns>
-    int LickingCheck(int lickInd, int lickTypeMark = 1){
+    int LickingCheck(int lickInd, int lickTypeMark = 1, bool simulate = false){
         // Debug.Log($"LickingCheck: lickInd {lickInd}, lickTypeMark {lickTypeMark} in trial {nowTrial}");
         int rightLickInd = contextInfo.GetRightLickPosIndInTrial(nowTrial);
         
@@ -2013,7 +2126,15 @@ public class Moving : MonoBehaviour
         }
         
         if(lickTypeMark == 1){
+            if(lickInd >= 0 ){ui_update.SetLightSignal("lick", true, duration:simulate? 0.2f: 0.5f);}
+            // rawLickTime.Add(Time.fixedUnscaledTime);
+            if(nowTrial >= 0){
+                lickTimeInTrial.Add(Time.fixedUnscaledTime);
+            }
             lickCountGetSet("set", lickInd, nowTrial);
+            if(alarm.GetAlarm("DisabletExtraReward") > 0 && rewardServedTimeInTrial.Count>0 && Time.fixedUnscaledTime - rewardServedTimeInTrial.Last() > contextInfo.minIgnoreLickInterval){//暂时写死0.3s防止过快触发
+                ServeWaterInTrial(false);
+            }
             
             if(!forceWaiting){
                 if(lickInd <= -3){
@@ -2026,6 +2147,8 @@ public class Moving : MonoBehaviour
                     WriteInfo(_lickPos: lickInd);
                 }
             }
+        }else{
+            if(lickInd >= 0){ui_update.SetLightSignal("lick", false);}
         }
 
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
@@ -2056,12 +2179,12 @@ public class Moving : MonoBehaviour
                                 ui_update.MessageUpdate($"Trial completed manually at pos {rightLickInd}");
                             }
                         }
-                        EndTrial(trialSuccess: true, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
+                        EndTrial(trialSuccess: true, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
                     }else{
                         TrialResultAdd(lickInd == -1? -1: -3, nowTrial, lickInd == -1? rightLickInd: lickInd, rightLickInd);
                         if(lickInd == -1){
                             ui_update.MessageUpdate($"Trial expired at pos {rightLickInd}");
-                            EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime);
+                            EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
                         }
                     }
                 }else if(trialMode >> 4 == 1){
@@ -2077,7 +2200,7 @@ public class Moving : MonoBehaviour
                     }else if(lickInd >= 0){
                         ui_update.MessageUpdate($"Trial {(result? "success": "failed")} at pos {lickInd}, right place: {rightLickInd}");
                     }
-                    EndTrial(trialSuccess: result, rightLickSpout: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0);
+                    EndTrial(trialSuccess: result, rightLickSpout: rightLickInd, trialReadyWaitSec: result? contextInfo.barLastingTime : 0, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
                 }else if(trialMode >> 4 == 2){//到特定地方
                     result = false;
                     if(lickInd < 0){
@@ -2087,7 +2210,7 @@ public class Moving : MonoBehaviour
                     if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
                         // if(trialMode % 0x10 == 2){ServeWaterInTrial();}
                         ui_update.MessageUpdate("Trial end");
-                        EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true);
+                        EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
                         TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
                         if(result && trialStatus != 2){
@@ -2195,10 +2318,9 @@ public class Moving : MonoBehaviour
     /// <param name="_recType"></param> 
     /// <returns></returns>
     int TriggerRespond(bool inOrLeave, int _recType){
-        if(trialStartTriggerMode > 0){
+        if(trialStartTriggerMode > 0 && nowTrial < contextInfo.maxTrial){
             if(inOrLeave){
                 if(AudioPlayModeNowContains("BeforeTrial") && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
-                    //alarm.TrySetAlarm("SetTrialInfraRedLightDelay", (int)(contextInfo.trialTriggerDelay/Time.fixedUnscaledDeltaTime), out _);
                     SetTrial(manual:false, waitSoundCue: true);
                 }else{
                     SetTrial(manual:false, waitSoundCue: false);
@@ -2608,13 +2730,16 @@ public class Moving : MonoBehaviour
                 }
             }else{
                 RecreateSerialConnection(false);
+                Debug.Log("lost connection to serial port, try to reconnect...");
             }
         }
     }
 
     public int DataSendRaw(string message){
-        byte[] temp_msg = Encoding.UTF8.GetBytes(message);
-        sp.Write(temp_msg, 0, temp_msg.Length);
+        if(sp!= null && sp.IsOpen){
+            byte[] temp_msg = Encoding.UTF8.GetBytes(message);
+            sp.Write(temp_msg, 0, temp_msg.Length);
+        }
         return 1;
     }
     public int DataSend(string message, bool needParse = false, bool inVerifyOrVerifyNeedless=false){
@@ -2978,6 +3103,7 @@ public class Moving : MonoBehaviour
             MessageBoxForUnity.Ensure(errorMessage, "error");
             Quit();
         }
+        
         ui_update = GetComponent<UIUpdate>();
         ipcclient = GetComponent<IPCClient>();
 
@@ -3129,7 +3255,12 @@ public class Moving : MonoBehaviour
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "standingSecInTrialInDest",   "0.5" )),
                 iniReader.ReadIniContent(                   "settings"      , "OGTriggerMethod"          ,   ""                  ),
                 iniReader.ReadIniContent(                   "settings"      , "MSTriggerMethod"          ,   ""                  ),
-                iniReader.ReadIniContent(                   "settings"      , "countAfterLeave"          ,   "true"              ) == "true"
+                iniReader.ReadIniContent(                   "settings"      , "countAfterLeave"          ,   "true"              ) == "true",
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "extraRewardTimeInSec"     ,   "0"              )),
+                iniReader.ReadIniContent(                   "settings"      , "stopExtraRewardMethod"    ,   ""              ),
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "stopExtraRewardUseTriggerSelectArea",   "-1"                     )),
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "stopExtraRewardLickDelaySec"     ,   "0"              )),
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              ))
             );
 
         }
@@ -3334,12 +3465,14 @@ public class Moving : MonoBehaviour
             }
         }
 
+        _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
+
     }
 
     void Start(){
         ui_update.ControlsParsePublic("ModeSelect", trialMode, "passive");
         ui_update.ControlsParsePublic("TriggerModeSelect", trialStartTriggerMode, "passive");
-        IsIPCInNeed();
+        // IsIPCInNeed();
         foreach(int mode in audioPlayModeNow){
             ui_update.ControlsParsePublic("sound", mode, $"passive;add;{audioSources[mode].name}");
         }
@@ -3377,14 +3510,6 @@ public class Moving : MonoBehaviour
                     waiting = false;
                     Debug.Log("waiting set to false");
                     break ;
-                }
-                case "SetTrialInfraRedLightDelay":{
-                    SetTrial(manual:false, waitSoundCue: true);
-                    break;
-                }
-                case "SetTrialPressDelay":{
-                    SetTrial(manual:false, waitSoundCue: true);
-                    break;
                 }
                 case "SetTrialReadyToTrue":{
                     trialStartReady = true;
@@ -3434,8 +3559,10 @@ public class Moving : MonoBehaviour
                     break;
                 }
             }
-            if(alarmFinished.StartsWith("sw")){
+            if(alarmFinished.StartsWith("sw=")){
                 DataSend(alarmFinished, false);
+                ui_update.SetLightSignal("reward", duration: 0.2f);
+
             }
         }
         alarm.AlarmFixUpdate();
@@ -3471,8 +3598,10 @@ public class Moving : MonoBehaviour
                 }
             }
         }
+        
 
-        if(trialStartTriggerMode == 3 || trialMode >> 4 == 2){
+        // if(trialStartTriggerMode == 3 || trialMode >> 4 == 2 || (IsIPCInNeed() && ipcclient.Activated)){
+        if(IsIPCInNeed() && ipcclient.Activated){
             int markCountPerType = 32;
             long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
 
@@ -3530,24 +3659,25 @@ public class Moving : MonoBehaviour
                     } 
                 }
             }
+            
+            posCheckFunctionsStatus = CheckMousePos(pos);
         }
 
         if(waiting){//延时模式下下一个trial开始相关计算
+            lickCheckFunctionsStatus = CheckMouseLick();//暂时只在wating期间检查
             if(!forceWaiting){
-                //if(Time.fixedUnscaledTime - waitSecRec >= (trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec)){
 
+                //if(Time.fixedUnscaledTime - waitSecRec >= (trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec)){
                 if(waitSec != -1 && IntervalCheck() == 0){
                     if(trialStartTriggerMode == 0){
-                        Debug.Log(Time.fixedUnscaledTime);
+                        // Debug.Log(Time.fixedUnscaledTime);
+                        if(nowTrial + 1 >= contextInfo.maxTrial){
+                            ClearAfterMaxTrialReached();
+                            return; 
+                        }
                         StartTrial();
                         contextInfo.soundCueLeadTime = GetRandom(contextInfo.trialTriggerDelay);
                         waitSec = -1;
-                        if(nowTrial >= contextInfo.maxTrial){
-                            DeactivateBar();
-                            forceWaiting = true;
-                            Debug.Log($"{contextInfo.maxTrial} trials finished");
-                            return; 
-                        }
                     }else{
                         //trialStartReady = true;
                         //其他模式等待拉杆
@@ -3557,14 +3687,30 @@ public class Moving : MonoBehaviour
                         //完全空闲
                     }
                 }
+
+
             }else{
                 if(trialInitTime != 0){
                     waitSec += Time.unscaledDeltaTime;
                 }
             }
+
+            if(posCheckFunctionsStatus != -1 || lickCheckFunctionsStatus != -1){
+                if(posCheckFunctionsStatus == 0 || lickCheckFunctionsStatus == 0)
+                if(alarm.GetAlarm("DisabletExtraReward") > 0 ){
+                    alarm.DeleteAlarm("DisabletExtraReward", true);
+                    long _t = alarm.GetAlarm("SetTrialReadyToTrueWithoutExtraRewardSec");
+                    if(_t >= -1){
+                        waitSec = float.Parse(alarm.GetAlarmAddInfo("SetTrialReadyToTrueWithoutExtraRewardSec"));
+                        alarm.TrySetAlarm("SetTrialReadyToTrue", _t > 0? 1: _t, out _);
+                        alarm.DeleteAlarm("SetTrialReadyToTrueWithoutExtraRewardSec", true);
+                    }
+
+                }
+            }
         }else{//其他主动触发模式下相关计算
             if(nowTrial >= contextInfo.maxTrial){
-                forceWaiting = true;
+                // forceWaiting = true;
                 return;
             }
             if(trialStartTime != -1 && Time.fixedUnscaledTime - trialStartTime >= contextInfo.trialExpireTime && trialResult.Count <= nowTrial){//超时进入下一个trial，因track模式下小鼠完成任务和结束分离，加入result判断
@@ -3572,6 +3718,13 @@ public class Moving : MonoBehaviour
             }
 
         }
+    }
+
+    void ClearAfterMaxTrialReached(){
+        forceWaiting = true;
+        DeactivateBar();
+        ui_update.MessageUpdate($"{contextInfo.maxTrial} trials finished");
+        ui_update.SetLightSignal("stop");
     }
 
     public void PreExit(bool timing = true){

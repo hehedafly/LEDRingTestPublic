@@ -9,6 +9,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.UIElements;
 using Image = UnityEngine.UI.Image;
+using System.Reflection;
 
 public class UIUpdate : MonoBehaviour
 {
@@ -60,6 +61,17 @@ public class UIUpdate : MonoBehaviour
     public GameObject pref_buttonTimingBaseSubDropdown;
     List<GameObject> createdTimingBaseSubDropdowns = new List<GameObject>();
     public string IFContentLoaded = "";
+    List<string> IFSerialMessageHistory = new List<string>();
+    bool IFSerialMessageEdited = true;
+    string IFSerialMessageRecLastFrame = "";
+    int IFSerialMessageHistoryInvId = 0;
+    public List<GameObject> LightObjects = new List<GameObject>();
+    public Dictionary<string, GameObject> Lights = new Dictionary<string, GameObject>();
+    Dictionary<string, Color> LightDefaultColors = new Dictionary<string, Color>{
+        {"lick", Color.green},
+        {"reward", Color.cyan},
+        {"stop", Color.red},
+    };
     
     private int _FrameCount = 0; private float _TimeCount = 0; private float _FrameRate = 0;
 
@@ -69,6 +81,7 @@ public class UIUpdate : MonoBehaviour
         public string type;//button, dropdown...
         public string name;//pass to ControlsParse
         public int hierarchy;
+        [JsonIgnore]
         public float time;//time been set in seconds in unity time
         public string timingMethod;
         public int Id;//unique id for each timingcollection
@@ -106,7 +119,9 @@ public class UIUpdate : MonoBehaviour
         }
         
         public TimingCollection(string _json) {
+            
             var _timingstr = _json.Split("||JSON_RECORD||");
+            _timingstr = _timingstr.Count() == 1? _json.Split("|JR|"): _timingstr;
             try {
                 var _timings = _timingstr.Select(s => JsonConvert.DeserializeObject<Timing>(s)).ToList();
                 if (_timings is not null) {
@@ -301,7 +316,7 @@ public class UIUpdate : MonoBehaviour
         }
 
         public string Export() {
-            return string.Join("||JSON_RECORD||",
+            return string.Join("|JR|",
                 timings.Values.Select(t => JsonConvert.SerializeObject(t))
                 );
         }
@@ -493,6 +508,7 @@ public class UIUpdate : MonoBehaviour
         switch (elementsName){
             case "StartButton":{
                 moving.SetTrial(manual: true, waitSoundCue: true);
+                moving.SetIPCAvtive(moving.IsIPCInNeed(), silent: false, addInfo:"extra reward judgement maybe");
                 break;
             }
             case "WaitButton":{
@@ -525,11 +541,47 @@ public class UIUpdate : MonoBehaviour
             case "IFSerialMessage":{
                 // string temp_str=serialMessageInputs.text;
                 string temp_str=stringArg.Length >0? stringArg: inputFieldContent[serialMessageInputs.name];
-                MessageUpdate($"serial message sent: {temp_str}");
-                if(temp_str.StartsWith("//")){
-                    moving.DataSendRaw(temp_str);
-                }else{
-                    if(moving.DataSend(temp_str, temp_str.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                if (temp_str.StartsWith("///")) {
+                    if (!temp_str.Contains("=")){
+                        if (temp_str.StartsWith("///help")) {
+                            string helpStr = "";
+                            foreach(PropertyInfo p in moving._cachedPropertyInfo.Where(p => p.CanWrite)) {
+                                string _type = p.PropertyType.Name;
+                                if (p.PropertyType.FullName.StartsWith("System.Collections.Generic")) {
+                                    string contains = p.PropertyType.FullName.Replace("System.Collections.Generic.", "");
+                                    while(contains.Contains("`")){
+                                        contains = contains.Replace(contains.Substring(contains.IndexOf("`"), 4), "<");
+                                    }
+                                    contains = contains.Replace("]]", ">");
+                                    while (contains.Contains(">,")) {
+                                        contains = contains.Replace(contains.Substring(contains.IndexOf(">,"), contains.IndexOf(">", contains.IndexOf(">,") + 1) - contains.IndexOf(">")), ">");
+                                    }
+                                    if (contains.Contains(",")) {
+                                        contains = contains.Replace(contains.Substring(contains.IndexOf(","), contains.IndexOf(">") - contains.IndexOf(",")), "");
+                                    }
+                                    _type = contains;
+                                }
+                                
+                                helpStr += $"{p.Name}, type {_type}\n";
+                            }
+                            MessageUpdate(helpStr);
+                        }
+                        break;
+                    }
+                    
+                    string variableName = temp_str[3..].Split("=")[0];
+                    string content = temp_str.Split("=")[1];
+                    if(variableName.Length > 0 && content.Length > 0) {
+                        moving.SetContextInfoProperties(variableName, content);
+                    }
+                }
+                else{
+                    if(temp_str.StartsWith("//")){
+                        moving.DataSendRaw(temp_str);
+                    }else{
+                        if(moving.DataSend(temp_str, temp_str.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                    }
+                    MessageUpdate($"serial message sent: {temp_str}");
                 }
                 break;
             }
@@ -827,8 +879,8 @@ public class UIUpdate : MonoBehaviour
                         if(hierarchy < createdTimingBaseSubDropdowns.Count()) {
                             foreach(GameObject _go in createdTimingBaseSubDropdowns.Skip(hierarchy)) {
                                 _go.GetComponent<ScrDropDown>().ui_update = null;
-                                Destroy(_go);
                                 createdTimingBaseSubDropdowns.Remove(_go);
+                                Destroy(_go);
                             }
                         }
                         float[] spreadPos = (from pos in stringArgSplit[1].Split(':') select Convert.ToSingle(pos)).ToArray();
@@ -903,26 +955,28 @@ public class UIUpdate : MonoBehaviour
                     }
 
                 }
+                else if (elementsName.StartsWith("LickSpout")) {
+                    string Spout = elementsName.Substring(elementsName.Length - 1);
+                    // moving.CommandParsePublic($"{moving.LsTypes[0]}:{Spout}:1");
+                    moving.LickingCheckPubic(lickInd: int.Parse(Spout), simulate:true);
+                }
+                else if (elementsName.StartsWith("WaterSpout")) {
+                    string Spout = elementsName.Substring(elementsName.Length - 1);
+                    if (Input.GetKey(KeyCode.LeftShift)) {
+                        ControlsParse("IFSerialMessage", 1, $"/p_water_flush[{Spout}]=1");
+                        // if(GetButtonColor(elementsName, out Color buttonColor)){
+                        //     SetButtonColor(elementsName, buttonColor != Color.green? Color.green: Color.green);
+                        // }
+                    }
+                    else {
+                        moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec: 0.2f, out _, elementsName.Contains("Single") ? 0 : 99);
+                    }
+                }
                 break;
             }
         }
 
-        if (elementsName.StartsWith("LickSpout")) {
-            string Spout = elementsName.Substring(elementsName.Length - 1);
-            moving.CommandParsePublic($"{moving.LsTypes[0]}:{Spout}:1");
-        }
-        else if (elementsName.StartsWith("WaterSpout")) {
-            string Spout = elementsName.Substring(elementsName.Length - 1);
-            if (Input.GetKey(KeyCode.LeftShift)) {
-                ControlsParse("IFSerialMessage", 1, $"/p_water_flush[{Spout}]=1");
-                // if(GetButtonColor(elementsName, out Color buttonColor)){
-                //     SetButtonColor(elementsName, buttonColor != Color.green? Color.green: Color.green);
-                // }
-            }
-            else {
-                moving.alarmPublic.TrySetAlarm($"sw={Spout}", _sec: 0.2f, out _, elementsName.Contains("Single") ? 0 : 99);
-            }
-        }
+
         return 0;
     }
 
@@ -956,13 +1010,11 @@ public class UIUpdate : MonoBehaviour
         }
 
         if(UpdateFreq == 1){//高频
-            if(moving.TrialInitTime != 0){
-                int time = (int)(Time.fixedUnscaledTime - moving.TrialInitTime);
-                int hour = time / 3600;
-                int minute = (time - hour*3600) / 60;
-                int second = time % 60;
-                TexContextHighFreqInfo.text = $"{hour:D2}:{minute:D2}:{second:D2}, fps={(int)_FrameRate}";
-            }
+            int time = moving.TrialInitTime != 0? (int)(Time.fixedUnscaledTime - moving.TrialInitTime): 0;
+            int hour = time / 3600;
+            int minute = (time - hour*3600) / 60;
+            int second = time % 60;
+            TexContextHighFreqInfo.text = $"{hour:D2}:{minute:D2}:{second:D2}, fps={(int)_FrameRate}";
         }else if(UpdateFreq == -1){//fix
             TexContextFixInfo.text = add_log_message;
         }else{
@@ -1056,13 +1108,38 @@ public class UIUpdate : MonoBehaviour
                 }
 
                 if(tempStatus["waitSec"] != -1){
-                    temp_context_info += $"interval now: ~{tempStatus["waitSec"]}";
+                    temp_context_info += $"interval now: ~{tempStatus["waitSec"]}\n";
                 }
+                temp_context_info += $"total reward count: {moving.rewardServedTimeInTrial.Count}\n";
 
                 TexContextInfo.text=temp_context_info; 
             }
         }
         return "";
+    }
+    
+    public void SetLightSignal(string lightType, bool turnOn = true, float duration = -1f){
+        if(!Lights.ContainsKey(lightType)){return;}
+        if(turnOn){
+            Lights[lightType].GetComponent<Image>().color = LightDefaultColors[lightType];
+            if(duration > 0f){
+                alarm.TrySetAlarm($"LightOff_{lightType}", duration, out _);
+            }
+        }else{
+            Lights[lightType].GetComponent<Image>().color = Color.grey;
+        }
+
+    }
+
+    public void SetLightSignal(string[] lightTypes = null, bool turnOn = false, float duration = -1f){
+        if(lightTypes == null){
+            lightTypes = Lights.Keys.ToArray();
+        }
+
+        foreach(string lightType in lightTypes){
+            SetLightSignal(lightType, turnOn, duration);
+        }
+        
     }
 
     void PostMessageToWeChat(string message, string title) {
@@ -1176,6 +1253,13 @@ public class UIUpdate : MonoBehaviour
                 }
             }
         }
+        foreach(GameObject l in LightObjects){
+            string type = LightDefaultColors.Where(n => l.name.ToLower().EndsWith(n.Key)).Select(n => n.Key).FirstOrDefault();
+            if(type == null){continue;}
+            Lights.Add(type, l);
+        }
+        SetLightSignal();
+        SetLightSignal("stop");
     }
 
     void Start()
@@ -1197,12 +1281,33 @@ public class UIUpdate : MonoBehaviour
             }
         }
 
+        if(focus_input_field is not null && focus_input_field.name == "IFSerialMessage") {
+            int UpOrDown = Convert.ToInt16(Input.GetKeyDown(KeyCode.UpArrow)) - Convert.ToInt16(Input.GetKeyDown(KeyCode.DownArrow));
+            if(UpOrDown !=0  && (focus_input_field.text.Length == 0 || !IFSerialMessageEdited)) {
+                IFSerialMessageHistoryInvId = Math.Clamp(IFSerialMessageHistoryInvId + UpOrDown, 0, IFSerialMessageHistory.Count + 1);
+                if(IFSerialMessageHistoryInvId >= 1 && IFSerialMessageHistoryInvId <= IFSerialMessageHistory.Count()){
+                    focus_input_field.text = IFSerialMessageHistory[IFSerialMessageHistory.Count() - IFSerialMessageHistoryInvId];
+                    // Debug.Log($"UpOrDown: {UpOrDown}, edited: {IFSerialMessageEdited}, changedto {IFSerialMessageHistoryInvId}");
+                    IFSerialMessageRecLastFrame = focus_input_field.text;
+                    IFSerialMessageEdited = false;
+                }
+            }
+            if(!IFSerialMessageEdited && IFSerialMessageRecLastFrame != focus_input_field.text) {
+                IFSerialMessageEdited = true;
+                IFSerialMessageRecLastFrame = focus_input_field.text;
+            }
+        }
+        else {
+            IFSerialMessageHistoryInvId = 0;
+        }
+
         if(focus_input_field!=null && Input.GetKeyDown(KeyCode.Return)){
             if(!inputFieldContent.TryAdd(focus_input_field.name, focus_input_field.text)){
                 inputFieldContent[focus_input_field.name] = focus_input_field.text;
             }
             ControlsParse(focus_input_field.name, float.TryParse(inputFieldContent[focus_input_field.name], out float temp_value) ? temp_value : 0, inputFieldContent[focus_input_field.name]);
             if(focus_input_field.name=="IFSerialMessage" || focus_input_field.name=="IFConfigValue" || focus_input_field.name == "IFTimingSet"){
+                if(focus_input_field.name=="IFSerialMessage"){IFSerialMessageHistory.Add(focus_input_field.text);}
                 focus_input_field.text="";
                 // inputFieldContent[focus_input_field.name] = "null";
             }
@@ -1230,7 +1335,7 @@ public class UIUpdate : MonoBehaviour
 
         _FrameCount++;
         _TimeCount += Time.unscaledDeltaTime;
-        if (_TimeCount >= 10){ _FrameRate = _FrameCount / _TimeCount; _FrameCount = 0; _TimeCount -= 10;}
+        if (_TimeCount >= 10){ _FrameRate = _FrameCount / _TimeCount; _FrameCount = 0; _TimeCount = 0;}
     }
 
     void FixedUpdate() {
@@ -1243,8 +1348,14 @@ public class UIUpdate : MonoBehaviour
                 }
                 case "ipcRefresh":
                     {
-                    moving.Ipcclient.Silent = false;
-                    alarm.TrySetAlarm("checkIPCConnectStatus", 3.0f, out _, force:true);
+                    // moving.Ipcclient.Silent = false;
+                    if(!moving.Ipcclient.Silent){
+                        moving.Ipcclient.Silent = true;
+                        MessageUpdate("IPC set to silent");
+                    }else{
+                        moving.SetIPCAvtive(true);
+                        alarm.TrySetAlarm("checkIPCConnectStatus", 3.0f, out _, force:true);
+                    }
                     break;
                 }
                 case "OGStartToGrey":{
@@ -1315,6 +1426,13 @@ public class UIUpdate : MonoBehaviour
                             ControlsParse(timingElementName, elementDefaultValueForControlParse);
                             // ControlsParse("TimingButtonsBaseSelect", buttonTimingBaseDropdown.options.IndexOf(buttonTimingBaseDropdown.options.Where(o => o.text == timingButtonName).First()), stringArg:"delete;finish");
                         }
+                    }
+                    else if(alarmFinished.StartsWith("LightOff_")){
+                        string lightType = alarmFinished.Substring("LightOff_".Length);
+                        if(Lights.ContainsKey(lightType)){
+                            Lights[lightType].GetComponent<Image>().color = Color.grey;
+                        }
+
                     }
                     break;
                 }

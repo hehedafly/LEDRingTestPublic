@@ -110,7 +110,7 @@ public class ExeLauncher
         string pythonExePath, 
         string pythonScriptPath, 
         string arguments = "",
-        string workingDirectory = null, // 新增工作目录参数
+        string workingDirectory = null,
         int timeoutMs = 2000)
     {
         try

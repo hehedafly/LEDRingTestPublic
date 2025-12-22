@@ -10,3 +10,5 @@ Buildings/
 *.zip
 *.7z
 *.rar
+.git_bak
+.vs
