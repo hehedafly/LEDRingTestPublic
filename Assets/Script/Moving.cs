@@ -63,11 +63,15 @@ class ContextInfo{
             errorMessage = "pumpPosLs";
             pumpPosLs = new List<int>();
             var _strPumpPos = _pump_pos_array.Split(",");
-            if (_strPumpPos.Count() > 0 && _strPumpPos.Count() >= avaliablePosDict.Count()){
-                foreach (string pos in _strPumpPos){
-                    //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                    pumpPosLs.Add(Convert.ToInt16(pos));
-                    //}
+            if (_strPumpPos.Count() > 0){
+                if(_strPumpPos.Count() >= avaliablePosDict.Count()){
+                    foreach (string pos in _strPumpPos){
+                        pumpPosLs.Add(Convert.ToInt16(pos));
+                    }
+                }
+                else{
+                    errorMessage = "pumpPosLs count less than avaliablePosDict count";
+                    throw new Exception("");
                 }
             }
             else{
@@ -79,11 +83,15 @@ class ContextInfo{
             errorMessage = "lickPosLs";
             lickPosLs = new List<int>();
             var _strLickPos = _lick_pos_array.Split(",");
-            if (_strLickPos.Count() > 0 && _strLickPos.Count() >= avaliablePosDict.Count()){
-                foreach (string pos in _strLickPos){
-                    //if(Convert.ToInt16(pos) < avaliablePosArray.Count()){
-                    lickPosLs.Add(Convert.ToInt16(pos));
-                    //}
+            if (_strLickPos.Count() > 0){
+                if(_strLickPos.Count() >= avaliablePosDict.Count()){
+                    foreach (string pos in _strLickPos){
+                        lickPosLs.Add(Convert.ToInt16(pos));
+                    }
+                }
+                else{
+                    errorMessage = "lickPosLs count less than avaliablePosDict count";
+                    throw new Exception("");
                 }
             }
             else{
@@ -1845,13 +1853,12 @@ public class Moving : MonoBehaviour
         if(!isInit){
             DeviceTriggerExecute(1);
             if(serveWater){ServeWaterInTrial();}//20ms左右，如果放在DeviceTriggerExecute后能正常运行，说明串口影响了定时器中断
-            if(trialReadyWaitForExtraRewardSec > 0) {
-                alarm.TrySetAlarm("DisabletExtraReward", trialReadyWaitForExtraRewardSec, out _);
-            }
+            
             waitSecRec = Time.fixedUnscaledTime;
             
             //lickCount.Clear();
             float _finalTrialReadyWaitSec = Math.Max(trialReadyWaitSec, trialReadyWaitForExtraRewardSec);
+            trialReadyWaitForExtraRewardSec = trialReadyWaitForExtraRewardSec == -2? _finalTrialReadyWaitSec: trialReadyWaitForExtraRewardSec;
             float _temp_waitSec;
             if(contextInfo.trialInterval[0] > 0){
                 if(trialStartTriggerMode == 0){
@@ -1862,25 +1869,30 @@ public class Moving : MonoBehaviour
                     _temp_waitSec = contextInfo.barDelayTime;
                 }
                 waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
-                if(waitSec > 0){
-                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
-                    Debug.Log(Time.fixedUnscaledTime);
-                }
+                // if(waitSec > 0){
+                //     ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
+                // }
             }else{
                 if(trialStartTriggerMode == 0){
                     
                     _temp_waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
                     waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
-                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
+                    // ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
 
                 }else{//其他主动触发模式
                     _temp_waitSec = contextInfo.barDelayTime;
                     waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
 
-                    ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
+                    // ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
                     // ui_update.MessageUpdate($"Interval: {waitSec}");
                     // Debug.Log($"Interval: {waitSec}");
+                }
+            }
+            if(waitSec > 0){
+                ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
+                if(trialReadyWaitForExtraRewardSec > 0) {
+                    alarm.TrySetAlarm("DisabletExtraReward", trialReadyWaitForExtraRewardSec, out _);
                 }
             }
 
