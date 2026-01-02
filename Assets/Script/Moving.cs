@@ -292,7 +292,7 @@ class ContextInfo{
     /// <summary>
     /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
     /// </summary>
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0, int _maxExtraRewardCount = 9999){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
@@ -305,6 +305,7 @@ class ContextInfo{
         stopExtraRewardUseTriggerSelectArea = _stopExtraRewardUseTriggerSelectArea;
         stopExtraRewardLickDelaySec = _stopExtraRewardLickDelaySec;
         minIgnoreLickInterval = _minIgnoreLickInterval;
+        maxExtraRewardCount = _maxExtraRewardCount;
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
         DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialInTarget", "everyTrialInTarget", "nextTrialStart", "nextTrialEnd", "nextTrialInTarget"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
@@ -529,6 +530,7 @@ class ContextInfo{
     public int stopExtraRewardUseTriggerSelectArea {get; set;}
     public float stopExtraRewardLickDelaySec    {get; set;}
     public float        minIgnoreLickInterval   {get;set;}
+    public int          maxExtraRewardCount     {get;set;}
 
     /// <summary>
     /// resore template keys of trigger Dicts:
@@ -1809,6 +1811,8 @@ public class Moving : MonoBehaviour
                 strLickCount += count.ToString() + "\t";
             }
             _tempMsg += $", lickCount before: {strLickCount}";
+        }if(contextInfo.extraRewardTimeInSec > 0 || contextInfo.extraRewardTimeInSec == -2){
+            _tempMsg += $", extra reward before: {rewardServedTimeInTrial.Count(t => t > waitSecRec)}";
         }
         ui_update.MessageUpdate(_tempMsg);
         WriteInfo(recType: 1, _lickPos:activitedPos, addInfo:$"{contextInfo.GetBarShift(nowTrial)}");
@@ -1989,6 +1993,11 @@ public class Moving : MonoBehaviour
                 return 0;
             }
         }
+        if(!contextInfo.stopExtraRewardMethod.Contains("!count")){
+            if(rewardServedTimeInTrial.Count(t => t >= waitSecRec) >= contextInfo.maxExtraRewardCount){
+                return 0;
+            }
+        }
         return -1;
     }
 
@@ -2140,7 +2149,7 @@ public class Moving : MonoBehaviour
         if(lickTypeMark == 1){
             if(lickInd >= 0 ){ui_update.SetLightSignal("lick", true, duration:simulate? 0.2f: 0.5f);}
             // rawLickTime.Add(Time.fixedUnscaledTime);
-            if(nowTrial >= 0){
+            if(lickInd >= 0 && nowTrial >= 0){
                 lickTimeInTrial.Add(Time.fixedUnscaledTime);
             }
             lickCountGetSet("set", lickInd, nowTrial);
@@ -2202,7 +2211,7 @@ public class Moving : MonoBehaviour
                 }else if(trialMode >> 4 == 1){
                     //只能舔对的
                     result = result || lickInd == -2;
-                    TrialResultAdd(result? 1: 0, nowTrial, lickInd == -2? rightLickInd: lickInd, rightLickInd);
+                    TrialResultAdd(lickInd < 0? lickInd : (result? 1: 0), nowTrial, lickInd < 0? rightLickInd: lickInd, rightLickInd);
                     if(result && trialMode == 0x11){
                         ServeWaterInTrial();
                     }
@@ -3272,7 +3281,8 @@ public class Moving : MonoBehaviour
                 iniReader.ReadIniContent(                   "settings"      , "stopExtraRewardMethod"    ,   ""              ),
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "stopExtraRewardUseTriggerSelectArea",   "-1"                     )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "stopExtraRewardLickDelaySec"     ,   "0"              )),
-                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              ))
+                Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              )),
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "maxExtraRewardCount"     ,   "9999"              ))
             );
 
         }
@@ -3708,7 +3718,7 @@ public class Moving : MonoBehaviour
             }
 
             if(posCheckFunctionsStatus != -1 || lickCheckFunctionsStatus != -1){
-                if(posCheckFunctionsStatus == 0 || lickCheckFunctionsStatus == 0)
+                // if(posCheckFunctionsStatus == 0 || lickCheckFunctionsStatus == 0)
                 if(alarm.GetAlarm("DisabletExtraReward") > 0 ){
                     alarm.DeleteAlarm("DisabletExtraReward", true);
                     long _t = alarm.GetAlarm("SetTrialReadyToTrueWithoutExtraRewardSec");
