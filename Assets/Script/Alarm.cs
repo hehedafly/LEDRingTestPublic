@@ -52,7 +52,7 @@ public class Alarm
     }
 
     /// <summary>
-    /// 
+    /// executeCount: alarm触发后重复执行的次数，0为不重复执行
     /// </summary>
     /// <param name="_alarmName"></param>
     /// <param name="frames"></param>

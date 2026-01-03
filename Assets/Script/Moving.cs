@@ -292,7 +292,7 @@ class ContextInfo{
     /// <summary>
     /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
     /// </summary>
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0, int _maxExtraRewardCount = 9999){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0, int _maxExtraRewardCount = 9999, string _randomRewardPerTrial = ""){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
@@ -454,6 +454,9 @@ class ContextInfo{
             //                         MSTriggerMethodLs[0].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)).Concat(
             //                         MSTriggerMethodLs[1].Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key))).ToDictionary(kvp => kvp.Key, kvp => kvp.Value));
         }
+
+        randomRewardPerTrial = new List<int>();
+        RandomParse(_randomRewardPerTrial, randomRewardPerTrial);
     }
 
     /// <summary>
@@ -531,6 +534,7 @@ class ContextInfo{
     public float stopExtraRewardLickDelaySec    {get; set;}
     public float        minIgnoreLickInterval   {get;set;}
     public int          maxExtraRewardCount     {get;set;}
+    public List<int>    randomRewardPerTrial    {get;set;}
 
     /// <summary>
     /// resore template keys of trigger Dicts:
@@ -880,8 +884,8 @@ public class Moving : MonoBehaviour
     bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
     float alarmLickDelaySec = 2;
     List<string> recTypeLs = new List<string>(){
-        // 0        1       2     3         4          5           6           7        8          9            10          11          12
-        "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord"
+        // 0        1       2     3         4          5           6           7        8          9            10          11          12          13
+        "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord", "pump"
     };
     List<string> recTypeAddtion = new List<string>(){"skip", "complete_manually", "null"};
     UIUpdate ui_update;
@@ -1716,7 +1720,7 @@ public class Moving : MonoBehaviour
         return 0;
     }
 
-    int ServeWaterInTrial(bool changeTrialStatus = true){
+    int ServeWaterInTrial(bool changeTrialStatus = true, bool addToTimeList = true){
         int fail = 0;
         if(changeTrialStatus){
             while(CommandVerify(Arduino_var_list[2], 2) == -1){
@@ -1730,8 +1734,9 @@ public class Moving : MonoBehaviour
             DataSend($"{Arduino_var_list[9]}={-2}", needParse:true, inVerifyOrVerifyNeedless:true);
         }
         ui_update.SetLightSignal("reward", true, duration:0.2f);
-        rewardServedTimeInTrial.Add(Time.fixedUnscaledTime);
-        // Debug.Log($"ServeWaterInTrial {(fail == 0? "succes": $"failed for {fail} time")}");
+        if(addToTimeList){rewardServedTimeInTrial.Add(Time.fixedUnscaledTime);}
+        WriteInfo(recType:13, _lickPos:changeTrialStatus? 0: 1);
+        Debug.Log($"ServeWaterInTrial");
         return 0 - fail;
     }
 
@@ -1834,7 +1839,7 @@ public class Moving : MonoBehaviour
     /// </summary>
     int EndTrial(bool isInit = false, bool trialSuccess = false, int rightLickSpout = -1, float trialReadyWaitSec = -1, bool serveWater = false, bool ignoreBarLatstingTime = false, float trialReadyWaitForExtraRewardSec = -1){
         // Debug.Log($"End Trial {nowTrial}");
-        ContextEndSync();
+        // ContextEndSync();
         trialStatus = 0;
         if(isInit || !trialSuccess || ignoreBarLatstingTime){DeactivateBar();}
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
@@ -1849,6 +1854,14 @@ public class Moving : MonoBehaviour
             ipcclient.MDClearTemp();
             ipcclient.SetCurrentTriggerArea(0);
             ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
+        }
+
+        if(contextInfo.randomRewardPerTrial[1] > 0 && !isInit){
+            // float _randVal = UnityEngine.Random.Range(0f, 1f);
+            int randomCount = GetRandom(contextInfo.randomRewardPerTrial);
+            if(randomCount > 0){
+                alarm.TrySetAlarm("ServeRandomRewardInTrial", 10, out _, executeCount:randomCount - 1);
+            }
         }
         
         WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
@@ -1938,7 +1951,7 @@ public class Moving : MonoBehaviour
         }
 
         if(Time.fixedUnscaledTime - waitSecRec >= waitSec){
-            Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
+            // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
         else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
@@ -1957,7 +1970,9 @@ public class Moving : MonoBehaviour
 
     public bool SetIPCAvtive(bool value, bool silent = true, string addInfo = ""){
         if(value){
-            if(!silent && !ipcclient.Silent){ui_update.MessageUpdate($"activate IPC..{(addInfo == ""? "": $"for {addInfo}")}");}
+            if(!silent && ipcclient.Silent && !ipcclient.Activated){
+                ui_update.MessageUpdate($"activate IPC..{(addInfo == ""? "": $"for {addInfo}")}");
+            }
             ipcclient.Silent = false;
         }else{
             if(!silent && ipcclient.Activated){ui_update.MessageUpdate("deactivate IPC..");}
@@ -3010,7 +3025,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord
+    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord, 13-pump
     /// if enqueMsg is not empty, it will enqueue the message and not write in normal format.
     /// mouse leave lick spout marked by addInfo.
     /// </summary>
@@ -3282,7 +3297,8 @@ public class Moving : MonoBehaviour
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "stopExtraRewardUseTriggerSelectArea",   "-1"                     )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "stopExtraRewardLickDelaySec"     ,   "0"              )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              )),
-                Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "maxExtraRewardCount"     ,   "9999"              ))
+                Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "maxExtraRewardCount"     ,   "9999"              )),
+                iniReader.ReadIniContent(                   "settings"      , "ServeRandomRewardInTrial"     ,   "0"              )
             );
 
         }
@@ -3575,6 +3591,10 @@ public class Moving : MonoBehaviour
                 }
                 case "ClosePythonScript":{
                     ipcclient.ClosePythonScript();
+                    break;
+                }
+                case "ServeRandomRewardInTrial":{
+                    ServeWaterInTrial(false, false);
                     break;
                 }
                 default:{
