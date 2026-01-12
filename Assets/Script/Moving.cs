@@ -863,6 +863,7 @@ public class Moving : MonoBehaviour
     // List<float> rawLickTime = new List<float>();
     public List<float> lickTimeInTrial = new List<float>();
     public List<float> rewardServedTimeInTrial = new List<float>();
+    public List<float> otherRewardServedTimeInTrial = new List<float>();
     public GameObject audioSourceSketchObject;
     public Dictionary<int, AudioSource> audioSources = new Dictionary<int, AudioSource>{};
     public List<int> audioPlayModeNow = new List<int>();
@@ -1712,6 +1713,7 @@ public class Moving : MonoBehaviour
         }
         lickTimeInTrial.Clear();
         rewardServedTimeInTrial.Clear();
+        otherRewardServedTimeInTrial.Clear();
         StopSound();
         DeactivateBar();
         trialInitTime = Time.fixedUnscaledTime;
@@ -1735,8 +1737,10 @@ public class Moving : MonoBehaviour
         }
         ui_update.SetLightSignal("reward", true, duration:0.2f);
         if(addToTimeList){rewardServedTimeInTrial.Add(Time.fixedUnscaledTime);}
+        else{otherRewardServedTimeInTrial.Add(Time.fixedUnscaledTime);}
         WriteInfo(recType:13, _lickPos:changeTrialStatus? 0: 1);
-        Debug.Log($"ServeWaterInTrial");
+        ui_update.MessageUpdate();
+        // Debug.Log($"ServeWaterInTrial");
         return 0 - fail;
     }
 
@@ -1856,13 +1860,7 @@ public class Moving : MonoBehaviour
             ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
         }
 
-        if(contextInfo.randomRewardPerTrial[1] > 0 && !isInit){
-            // float _randVal = UnityEngine.Random.Range(0f, 1f);
-            int randomCount = GetRandom(contextInfo.randomRewardPerTrial);
-            if(randomCount > 0){
-                alarm.TrySetAlarm("ServeRandomRewardInTrial", 10, out _, executeCount:randomCount - 1);
-            }
-        }
+
         
         WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
         //Debug.Log("rightLickSpout" + rightLickSpout);
@@ -1910,6 +1908,14 @@ public class Moving : MonoBehaviour
                 ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                 if(trialReadyWaitForExtraRewardSec > 0) {
                     alarm.TrySetAlarm("DisabletExtraReward", trialReadyWaitForExtraRewardSec, out _);
+                }
+            }
+
+            if(contextInfo.randomRewardPerTrial[1] > 0 && !isInit){
+                // float _randVal = UnityEngine.Random.Range(0f, 1f);
+                int randomCount = GetRandom(contextInfo.randomRewardPerTrial);
+                if(randomCount > 0){
+                    alarm.TrySetAlarm("ServeRandomRewardAtEnd", waitSec > 0? (float)(Math.Min(2, waitSec) * 0.5 / Math.Max(3, randomCount + 1)): 0.2f, out _, executeCount:randomCount - 1);
                 }
             }
 
@@ -3298,7 +3304,7 @@ public class Moving : MonoBehaviour
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "stopExtraRewardLickDelaySec"     ,   "0"              )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              )),
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "maxExtraRewardCount"     ,   "9999"              )),
-                iniReader.ReadIniContent(                   "settings"      , "ServeRandomRewardInTrial"     ,   "0"              )
+                iniReader.ReadIniContent(                   "settings"      , "ServeRandomRewardAtEnd"     ,   "0"              )
             );
 
         }
@@ -3593,7 +3599,7 @@ public class Moving : MonoBehaviour
                     ipcclient.ClosePythonScript();
                     break;
                 }
-                case "ServeRandomRewardInTrial":{
+                case "ServeRandomRewardAtEnd":{
                     ServeWaterInTrial(false, false);
                     break;
                 }

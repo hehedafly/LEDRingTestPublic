@@ -82,7 +82,7 @@ public class Alarm
     }
 
     public bool TrySetAlarm(string _alarmName, float _sec, out int alarmInd, int executeCount = 0, string addInfo = "", bool force = false){
-        return TrySetAlarm(_alarmName, (int)(_sec / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount, addInfo, force);
+        return TrySetAlarm(_alarmName, (int)(Math.Max(0.03f, _sec) / Time.fixedUnscaledDeltaTime), out alarmInd, executeCount, addInfo, force);
     }
 
     public int PauseAlarm(int ind){

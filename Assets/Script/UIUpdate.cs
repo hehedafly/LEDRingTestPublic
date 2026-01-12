@@ -719,9 +719,11 @@ public class UIUpdate : MonoBehaviour
             case "IFTimingSet": {
                 string content = inputFieldContent[elementsName];
                 bool clearAndReset = content == " "? true: false;
+                TimingCollection tres;
                 try {
-                    var res = JsonConvert.DeserializeObject<Timing?>(content.Split("||JSON_RECORD||")[0]);
-                    if(res is not null) {
+                    // var res = JsonConvert.DeserializeObject<Timing?>(content);
+                    tres = new TimingCollection(content);
+                    if(tres is not null) {
                         clearAndReset = true;
                     }
                 }
@@ -729,7 +731,7 @@ public class UIUpdate : MonoBehaviour
 
                 if (clearAndReset) {
                     ClearComingButtonTiming();
-                    timings = new TimingCollection(inputFieldContent[elementsName]);
+                    timings = tres;
                     moving.ButtonTriggerDict.Clear();
                     UpdateOptions();
                     alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).Select(a => {
@@ -1110,7 +1112,7 @@ public class UIUpdate : MonoBehaviour
                 if(tempStatus["waitSec"] != -1){
                     temp_context_info += $"interval now: ~{tempStatus["waitSec"]}\n";
                 }
-                temp_context_info += $"total reward count: {moving.rewardServedTimeInTrial.Count}\n";
+                temp_context_info += $"total reward count: {moving.rewardServedTimeInTrial.Count + moving.otherRewardServedTimeInTrial.Count}\n";
 
                 TexContextInfo.text=temp_context_info; 
             }
