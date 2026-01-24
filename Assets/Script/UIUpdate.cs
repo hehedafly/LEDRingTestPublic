@@ -467,7 +467,7 @@ public class UIUpdate : MonoBehaviour
             string targetElementTimingName = $"Timing{_timing.name};{_timing.Id};{_timing.value}";//value仅在dropdown中使用
             if (!ignoreSecondTiming && _TimingId >= 0) {
                 MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {(useSec ? _sec : _trial)} {(useSec ? "s " : "trial")} after {_timingBaseName}");
-                UpdateOptions(selectId: timingSelectedPerHierarchy[0]);
+                UpdateOptions(hierarchy: timingSelectedPerHierarchy.Count - 1, selectId: timingSelectedPerHierarchy[0]);
                 return 1;
             }
             

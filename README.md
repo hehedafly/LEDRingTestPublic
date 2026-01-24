@@ -1,590 +1,584 @@
-# LEDRingTest Documentation
+# LEDRingTest 文档
 
-## Overview
+## 项目概述
 
-LEDRingTest is a Unity-based behavioral training system for rodents, providing visual stimulus control, reward delivery, and behavioral data collection in an automated training environment.
+LEDRingTest 是一个基于 Unity 的啮齿动物行为训练系统，提供视觉刺激控制、奖励发放和行为数据收集功能，适用于自动化训练环境。
 
-![alt text](image.png)
-
----
-
-## UI Interface
-
-The main interface is divided into several control panels for different functions:
-
-### Core Control Panel
-
-| Button/Control | Function | Details |
-|----------------|----------|---------|
-| **Start** | Start Session | Begin the training session with sound cue |
-| **Wait** | Pause/Resume | Toggle pause state (显示"pause"时暂停, 显示"continue"时继续) |
-| **Finish** | Complete Trial | Manually complete current trial as successful |
-| **Skip** | Skip Trial | Skip current trial (marked as manually skipped) |
-| **Exit** | Exit Application | Exit with 1 second delay |
-
-### Status Display Panel
-
-| Display | Content |
-|---------|---------|
-| **High Frequency Info** | Session time (HH:MM:SS), FPS |
-| **Fixed Info** | Trigger mode and interval information |
-| **Trial Info** | Current trial number, position, lick counts, success/fail statistics, accuracy |
-
-### Input Fields
-
-| Input Field | Function | Usage |
-|-------------|----------|-------|
-| **Serial Message** | Send commands | - `/variable=value` - Assign variable<br>- `//command` - Raw command<br>- `///variable=value` - Set context property (debug mode)<br>- `///help` - List all properties |
-| **Timing (sec)** | Set timing by seconds | Enter seconds, then Ctrl+Shift+Click target button |
-| **Timing (trial)** | Set timing by trial count | Enter trial count, then Ctrl+Shift+Click target button |
-| **Timing Config** | Import/Export timing | Paste JSON config to import, or use Export button |
-| **OG Time** | Optogenetics duration | Duration in milliseconds |
-| **MS Time** | Miniscope duration | Duration in milliseconds |
-
-### Dropdowns
-
-| Dropdown | Options | Function |
-|----------|---------|----------|
-| **Mode** | Trial Modes | Select trial mode (see Trial Modes section) |
-| **Trigger Mode** | Trigger Modes | Select trigger mode (0=延时, 1=红外, 2=压杆, 3=位置检测, 4=结束) |
-| **Background** | Materials | Switch background material |
-| **Timing Base** | Timing Hierarchy | Configure button timing chains (use ctrl + shift + left click to create a timming, repeat to cancel) |
-
-### Sound Control Panel
-
-| Button | Function | Details |
-|--------|----------|---------|
-| **Off** | Disable all sounds | Deselects all other sound options |
-| **BeforeTrial** | Play before trial starts | Sound cue before trial begins |
-| **NearStart** | Play near start | After trigger delay, before trial |
-| **BeforeGoCue** | Play before go cue | After trial starts, before go cue |
-| **BeforeLickCue** | Play before lick enabled | After go cue, before licking enabled |
-| **InPos** | Play in position | When mouse is in correct position (not playable) |
-| **EnableReward** | Play on reward available | When reward can be obtained |
-| **AtFail** | Play on failure | When trial fails |
-
-Each sound button has an embedded dropdown to select the audio clip. **Shift+Click** to preview the sound.
-
-### Device Control Panel
-
-| Button | Function | Details |
-|--------|----------|---------|
-| **OG Start** | Start optogenetics | Duration set by OG Time input |
-| **OG Stop** | Stop optogenetics | Immediately stop |
-| **OG Enable** | Toggle OG enable | Green=enabled, default=disabled |
-| **MS Start** | Start miniscope | Duration set by MS Time input |
-| **MS Stop** | Stop miniscope | Immediately stop |
-| **MS Enable** | Toggle MS enable | Green=enabled, default=disabled |
-
-### Simulation Controls
-
-| Button | Function | Details |
-|--------|----------|---------|
-| **Lick Spout 1-8** | Simulate lick | Simulate lick at specified spout |
-| **Water Spout 1-8** | Dispense water | Dispense water for 0.2s |
-| **Water Spout Single 1-8** | Single dispense | Same as above |
-| **Shift+Click Water Spout** | Flush | Flush water spout (`/p_water_flush[n]=1`) |
-| **IR In** | Simulate IR sensor | Trigger entrance detection |
-| **Press Lever** | Simulate lever press | Trigger lever press detection |
-
-### Utility Buttons
-
-| Button | Function |
-|--------|----------|
-| **Debug** | Toggle debug mode (Green=enabled) |
-| **IPC Refresh** | Refresh IPC connection (Green=connecting) |
-| **IPC Disconnect** | Disconnect IPC |
-| **Page Up/Down** | Navigate log pages |
-| **Timing Export** | Export timing config to input field |
-| **Timing Pause** | Pause/resume all timing alarms |
-| **Message Post** | Send WeChat notification |
-
-### Light Indicators
-
-| Light | Color | Meaning |
-|-------|-------|---------|
-| **Lick** | Green (on) / Grey (off) | Lick detected |
-| **Reward** | Cyan (on) / Grey (off) | Reward served |
-| **Stop** | Red (on) / Grey (off) | Stop signal |
-
-### Log Window
-
-- Displays real-time log messages with timestamps
-- Scrollable with Page Up/Down buttons
-- Auto-scrolls when not manually scrolling
+![系统界面](image.png)
 
 ---
 
-## Configuration (config.ini)
+## 系统功能
 
-The configuration file is located at:
-- **Editor**: `Assets/Resources/config.ini`
-- **Build**: `Buildings/LEDRingTest_Data/Resources/config.ini`
+### 核心控制面板
 
-### Value Format: Random Ranges
+| 按钮/控件 | 功能             | 说明                                   |
+|-----------|------------------|----------------------------------------|
+| **Start** | 开始训练         | 启动训练会话并播放提示音              |
+| **Wait**  | 暂停/继续        | 切换暂停状态（显示"pause"时暂停）     |
+| **Finish**| 完成当前试验     | 手动标记当前试验为成功                |
+| **Skip**  | 跳过当前试验     | 手动跳过当前试验                      |
+| **Exit**  | 退出程序         | 延迟1秒后退出                         |
 
-Many parameters support random value specification using the format `randomX~Y`:
-- `random2.5~4` - Random value between 2.5 and 4
-- `5` - Fixed value of 5
+### 状态显示面板
 
-### Settings Section
+| 显示项             | 内容                                   |
+|--------------------|----------------------------------------|
+| **高频信息**       | 会话时间（HH:MM:SS）、FPS             |
+| **固定信息**       | 触发模式和间隔信息                    |
+| **试验信息**       | 当前试验编号、位置、舔次数、成功/失败统计 |
 
-| Parameter | Format | Description |
-|-----------|--------|-------------|
-| `start_mode` | hex (0x00, 0x01, 0x10, 0x11, 0x21, 0x22) | Trial reward mode. **First hex digit**: 0x0_=reward at trial start, 0x1_=reward on success. **Second hex digit**: _0=any lick advances, _1=correct lick advances, _2=position-based |
-| `triggerMode` | int (0-4) | 0=delay, 1=IR sensor, 2=lever press, 3=position detection, 4=trial end |
-| `start_method` | string | Position selection method: `random` or `assign`. Append positions after `random` (e.g., `random0,90,180`) to limit random selection to specific indices |
-| `available_pos` | comma-separated ints | Available bar positions in degrees (0-359). Index mapping: 0→first value, 1→second, etc. |
-| `assign_pos` | pattern | Position assignment pattern (see Position Assignment Syntax below) |
-| `barShiftLs` | pattern or randomX~Y | Bar position offset per trial (supports same patterns as `assign_pos`, or `random-80~80` for random range) |
-| `barOffset` | int | Constant display offset in degrees (added to all positions) |
-| `pump_pos` | comma-separated ints | Pump number for each `available_pos` index (count must ≥ `available_pos` count, or empty for auto-index 0,1,2...) |
-| `lick_pos` | comma-separated ints | TouchPanel/lick spout number for each `available_pos` index (same rules as `pump_pos`) |
-| `MatStartMethod` | string | Material selection method: `random` or `assign` |
-| `MatAssign` | pattern | Material assignment pattern (same syntax as `assign_pos`) |
-| `MatAvailable` | comma-separated | Available material names (must match `[matSettings] matList`) |
-| `max_trial` | int | Maximum number of trials |
-| `barDelayTime` | float | Minimum time between trials (active trigger modes) |
-| `barLastingTime` | float | Bar display duration after successful trial (0=immediate hide) |
-| `triggerModeDelay` | randomX~Y or float | Delay before trial starts (trigger mode 0: sound cue lead time; modes 1-3: post-trigger delay) |
-| `trialInterval` | randomX~Y or float | Interval between trials (mode 0: actual interval; modes 1-4: minimum interval) |
-| `success_wait_sec` | randomX~Y or float | Wait time after success (used when `trialInterval` not set) |
-| `fail_wait_sec` | randomX~Y or float | Wait time after failure (used when `trialInterval` not set) |
-| `waitFromStart` | randomX~Y or float | Go cue delay after trial starts |
-| `waitFromLastLick` | float | Delay trial start if mouse licking at session start |
-| `trialExpireTime` | float | Trial timeout before auto-fail |
-| `backgroundLight` | int (0-255) | Background brightness level |
-| `backgroundLightRed` | int (-1 to 255) | Red component override; -1=grayscale mode, 0-255=fixed red level |
-| `seed` | int | Random seed (-1=use current time) |
-| `standingSecInTrial` | float | Standing time required in trigger/destination zones |
+### 输入字段
 
-### Position/Material Assignment Syntax
+| 输入字段           | 功能             | 用法                                   |
+|--------------------|------------------|----------------------------------------|
+| **Serial Message**| 发送命令         | `/变量=值` - 赋值<br>`//命令` - 原始命令 |
+| **Timing (sec)**  | 设置时间（秒）   | 输入秒数后按 Ctrl+Shift+点击目标按钮   |
+| **Timing Config** | 导入/导出配置    | 粘贴 JSON 配置以导入，或使用导出按钮   |
 
-Used by: `assign_pos`, `MatAssign`, `barShiftLs` (when not using random range)
+### 下拉菜单
 
-| Pattern | Example | Description |
-|---------|---------|-------------|
-| Single value | `0` | Use index 0 for one trial |
-| Comma sequence | `0,1,2,3` | Use indices 0,1,2,3 in order |
-| Repeat with `..` | `0..` | Use index 0 for all remaining trials |
-| Multiplier | `0*10` | Use index 0 for 10 trials |
-| Sum pattern | `(0+90+180+270)*4..` | Treat sum as sequence, repeat 4 times, then continue |
-| Range pattern | `(0-1-2)*5..` | Sequence 0,1,2 repeated 5 times, then continue |
-| Combined | `0*30,1*30` | Index 0 for 30 trials, then index 1 for 30 trials |
-| Random unit | `random0~20*10` | Random value 0-20 for 10 trials (in `barShiftLs` only) |
+| 下拉菜单           | 选项             | 功能                                   |
+|--------------------|------------------|----------------------------------------|
+| **Mode**          | 试验模式         | 选择试验模式（详见试验模式部分）       |
+| **Trigger Mode**  | 触发模式         | 选择触发模式（0=延时，1=红外等）      |
+| **Background**    | 背景材料         | 切换背景材质                          |
 
-**Note**: Position indices refer to `available_pos` index (0-7), NOT degrees. Material indices refer to `MatAvailable`.
+### 声音控制面板
 
-### Device Trigger Methods
+| 按钮               | 功能             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| **Off**            | 禁用所有声音     | 取消选择其他声音选项                  |
+| **BeforeTrial**    | 试验前播放声音   | 试验开始前播放提示音                  |
+| **NearStart**      | 接近开始时播放   | 触发延迟后，试验开始前播放            |
+| **BeforeGoCue**    | 开始提示前播放   | 试验开始后，开始提示前播放            |
+| **BeforeLickCue**  | 启用舔食前播放   | 开始提示后，舔食启用前播放            |
+| **InPos**          | 位置正确时播放   | 当鼠标在正确位置时播放（不可播放）    |
+| **EnableReward**   | 奖励可用时播放   | 当奖励可以获得时播放                  |
+| **AtFail**         | 失败时播放       | 当试验失败时播放                      |
 
-Format: `[start]{...};[end]{...}` - Each section contains `eventType:trialPattern` separated by `|`
+每个声音按钮都有一个嵌入式下拉菜单用于选择音频剪辑。**Shift+Click** 预览声音。
 
-**Event Types**: `certainTrialStart`, `everyTrialStart`, `certainTrialEnd`, `everyTrialEnd`, `certainTrialInTarget`, `everyTrialInTarget`, `nextTrialStart`, `nextTrialEnd`, `nextTrialInTarget`
+### 设备控制面板
 
-**Trial Patterns** support:
-- `n` - Every nth trial: `80*n` → trials 80, 160, 240...
-- `*(n+1)` - Offset by 1: `80*(n+1)` → trials 80, 161, 242...
-- Combined: `80*n40+` → trials 120, 200, 280... (80×(n+0)+40)
-- `~length` - Range: `1~3` → 3 consecutive trials
-- `+offset` / `-offset` - Add/subtract offset
-- Comma-separated values: `10,20,30`
-- `0` or `1` - Special values (0=not active, 1=active, for `every...` events)
+| 按钮               | 功能             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| **OG Start**       | 开始光遗传学     | 持续时间由 OG Time 输入设置            |
+| **OG Stop**        | 停止光遗传学     | 立即停止                               |
+| **OG Enable**      | 切换 OG 启用     | 绿色=启用，默认=禁用                   |
+| **MS Start**       | 开始显微镜       | 持续时间由 MS Time 输入设置            |
+| **MS Stop**        | 停止显微镜       | 立即停止                               |
+| **MS Enable**      | 切换 MS 启用     | 绿色=启用，默认=禁用                   |
 
-**Example**: `OGTriggerMethod=[start]{everyTrialEnd:30};[end]{nextTrialInTarget:0}`
-- Start OG on trial 30 end
-- End OG when next trial in-target occurs
+### 仿真控制
 
-### Additional Settings
+| 按钮               | 功能             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| **Lick Spout 1-8** | 模拟舔食         | 在指定的舔管上模拟舔食                |
+| **Water Spout 1-8**| 喷水             | 喷水 0.2 秒                           |
+| **Water Spout Single 1-8** | 单次喷水 | 同上                                   |
+| **Shift+Click Water Spout** | 冲洗    | 冲洗水喷嘴 (`/p_water_flush[n]=1`)   |
+| **IR In**          | 模拟红外传感器   | 触发入口检测                          |
+| **Press Lever**    | 模拟压杆         | 触发压杆按下检测                      |
 
-| Parameter | Format | Description |
-|-----------|--------|-------------|
-| `refSegement` | int | Reference segment angle (0-359) |
-| `destAreaFollow` | bool | If `true`, destination area rotates with bar position; if `false`, uses fixed area |
-| `extraRewardTimeInSec` | float | Extra reward period duration after trial success (0=disabled, -2=unlimited) |
-| `stopExtraRewardMethod` | comma-separated | Methods to stop extra reward: `lick`, `pos`, or `lick,pos` |
-| `stopExtraRewardUseTriggerSelectArea` | int | Which trigger area index to use for position-based stopping |
-| `stopExtraRewardLickDelaySec` | float | Delay after lick before stopping extra reward |
-| `ServeRandomRewardAtEnd` | randomX~Y or int | Number of random rewards to serve at session end |
-| `refSegement` | int | Reference segment angle (0-359) |
-| `checkConfigContent` | bool | Enable config validation checks |
-| `openLogevent` | bool | Enable external logging via LogEvent.exe |
-| `logEventPath` | string | Path to LogEvent.exe |
-| `openPythonScript` | bool | Enable Python script integration (for video tracking) |
-| `PythonScriptCommand` | string | Python script command line |
-| `closePythonScriptBeforeExit` | bool | Close Python script on exit |
+### 实用按钮
 
-### Sound Settings
+| 按钮               | 功能             |
+|--------------------|------------------|
+| **Debug**          | 切换调试模式（绿色=启用） |
+| **IPC Refresh**    | 刷新 IPC 连接（绿色=连接中） |
+| **IPC Disconnect** | 断开 IPC 连接     |
+| **Page Up/Down**   | 导航日志页面      |
+| **Timing Export**  | 导出时间配置到输入字段 |
+| **Timing Pause**   | 暂停/恢复所有定时警报 |
+| **Message Post**   | 发送微信通知      |
 
-| Parameter | Format | Description |
-|-----------|--------|-------------|
-| `soundLength` | float | Sound cue duration in seconds (0=disabled) |
-| `cueVolume` | float (0-1) | Cue sound volume (0=mute, 1=max) |
-| `TrialSoundPlayMode` | string | Format: `ModeNumber:SoundName` (e.g., `6:6000hz`). Modes: 0=Off, 1=BeforeTrial, 2=NearStart, 3=BeforeGoCue, 4=BeforeLickCue, 5=InPos, 6=EnableReward, 7=AtFail. Separate multiple with `;` |
-| `alarmPlayTimeInterval` | float | Minimum interval between alarm sounds (seconds, only used when `soundLength` > 0) |
+### 灯光指示器
 
-### Display Settings
+| 灯光               | 颜色             | 意义                                   |
+|--------------------|------------------|----------------------------------------|
+| **Lick**           | 绿色（开）/灰色（关） | 检测到舔食                             |
+| **Reward**         | 青色（开）/灰色（关） | 奖励已发放                             |
+| **Stop**           | 红色（开）/灰色（关） | 停止信号                               |
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `barWidth` | int | Bar display width in pixels |
-| `barHeight` | int | Bar display height in pixels |
-| `displayPixelsLength` | int | Screen horizontal width in pixels |
-| `displayPixelsHeight` | int | Screen vertical height in pixels |
-| `isRing` | bool | Enable ring display mode (repeats bar pattern) |
-| `separate` | bool | Use separate display regions |
-| `displayVerticalPos` | float (0-1) | Vertical screen position (0.5=center) |
+### 日志窗口
 
-### Serial Settings
-
-| Parameter | Format | Description |
-|-----------|--------|-------------|
-| `serialSpeed` | int | Baud rate (e.g., 250000) |
-| `blackList` | comma-separated | COM ports to ignore (e.g., `COM1,COM3`) |
-| `compatibleVersion` | comma-separated | Arduino firmware versions to accept (e.g., `V2.2`) |
-
-### Material Settings
-
-| Parameter | Format | Description |
-|-----------|--------|-------------|
-| `matList` | comma-separated | All available material names defined in config |
-| `centerShaft` | bool | Enable center reference shaft display |
-
-#### Per-Material Properties (e.g., `[barMat]`, `[barMat2]`, `[centerShaft]`)
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `isDriftGrating` | bool | Use animated drifting grating stimulus |
-| `isCircleBar` | bool | Render bar as circle instead of rectangle |
-| `speed` | float | Drift animation speed |
-| `frequency` | int | Grating stripe frequency |
-| `direction` | `left` or `right` | Drift direction |
-| `horizontal` | float (0-1) | Motion angle: 0=horizontal, 1=vertical, values between=diagonal |
-| `mat` | string or #RRGGBB | Texture name (without .png) or hex color code |
-
-### Default Option Settings
-
-Stored in `InputfieldContent` as JSON-encoded timing chains for automated UI control.
-
-Format: `IFTimingSet=>JSON1|||JSON_RECORD|||JSON2|||JSON_RECORD|||...`
+- 实时显示带时间戳的日志消息
+- 可通过 Page Up/Down 按钮滚动
+- 非手动滚动时自动滚动
 
 ---
 
-## UI Controls Reference
+## 配置文件（config.ini）
 
-### Core Buttons
+配置文件位于：
+- **编辑器**: `Assets/Resources/config.ini`
+- **构建**: `Buildings/LEDRingTest_Data/Resources/config.ini`
 
-| Button Name | Function | Description |
-|-------------|----------|-------------|
-| `StartButton` | Start Session | Begin trial session with sound cue |
-| `WaitButton` | Pause/Resume | Toggle pause state |
-| `FinishButton` | Complete Trial | Manually complete current trial |
-| `SkipButton` | Skip Trial | Skip current trial |
-| `ExitButton` | Exit | Exit application (1s delay) |
-| `DebugButton` | Debug Mode | Toggle debug mode |
+### 值格式：随机范围
 
-### Input Fields
+许多参数支持使用 `randomX~Y` 格式的随机值指定：
+- `random2.5~4` - 2.5 到 4 之间的随机值
+- `5` - 固定值 5
 
-| Input Field | Function | Usage |
-|-------------|----------|-------|
-| `IFSerialMessage` | Serial Commands | Send commands to Arduino (prefix with `/` for variable assignment, `//` for raw) |
-| `IFTimingBySec` | Timing (sec) | Set button timing in seconds |
-| `IFTimingByTrial` | Timing (trial) | Set button timing by trial count |
-| `IFTimingSet` | Timing Config | Import/export timing configuration |
-| `OGTime` / `MSTime` | Device Duration | Set optogenetics/miniscope duration (ms) |
-| `MouseInfoName` | Mouse Name | Set mouse identifier |
-| `MouseInfoIndex` | Mouse Index | Set mouse index |
+### 设置部分
 
-### Dropdowns
+| 参数               | 格式             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `start_mode`       | hex (0x00, 0x01, 0x10, 0x11, 0x21, 0x22) | 试验奖励模式。**第一个十六进制数字**：0x0_=试验开始时奖励，0x1_=成功时奖励。**第二个十六进制数字**：_0=任意舔食推进，_1=正确舔食推进，_2=基于位置推进 |
+| `triggerMode`      | int (0-4)        | 0=延时，1=红外传感器，2=压杆按下，3=位置信息，4=试验结束 |
+| `start_method`     | string           | 位置选择方法：`random` 或 `assign`。在 `random` 后附加位置（例如，`random0,90,180`）以限制随机选择特定索引 |
+| `available_pos`    | 以逗号分隔的整数 | 可用的杆位置（以度为单位）。索引映射：0→第一个值，1→第二个，依此类推。 |
+| `assign_pos`       | pattern          | 位置分配模式（见位置分配语法部分）    |
+| `barShiftLs`       | pattern or randomX~Y | 每个试验的杆位置偏移（支持与 `assign_pos` 相同的模式，或 `random-80~80` 的随机范围） |
+| `barOffset`        | int              | 以度为单位的常量显示偏移（添加到所有位置） |
+| `pump_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的泵编号（数量必须 ≥ `available_pos` 数量，或为空以自动索引 0,1,2...） |
+| `lick_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的触摸面板/舔喷嘴编号（与 `pump_pos` 相同规则） |
+| `MatStartMethod`   | string           | 材料选择方法：`random` 或 `assign`   |
+| `MatAssign`        | pattern          | 材料分配模式（与 `assign_pos` 相同语法） |
+| `MatAvailable`     | 以逗号分隔的字符串 | 可用的材料名称（必须与 `[matSettings] matList` 匹配） |
+| `max_trial`        | int              | 最大试验次数                           |
+| `barDelayTime`     | float            | 试验之间的最小时间（主动触发模式）    |
+| `barLastingTime`   | float            | 成功试验后杆显示持续时间（0=立即隐藏） |
+| `triggerModeDelay` | randomX~Y or float | 试验开始前的延迟（触发模式 0：声音提示前导时间；模式 1-3：触发后延迟） |
+| `trialInterval`    | randomX~Y or float | 试验之间的间隔（模式 0：实际间隔；模式 1-4：最小间隔） |
+| `success_wait_sec` | randomX~Y or float | 成功后的等待时间（在未设置 `trialInterval` 时使用） |
+| `fail_wait_sec`   | randomX~Y or float | 失败后的等待时间（在未设置 `trialInterval` 时使用） |
+| `waitFromStart`    | randomX~Y or float | 试验开始后提示开始的延迟             |
+| `waitFromLastLick` | float            | 如果鼠标在会话开始时舔食，则延迟试验开始 |
+| `trialExpireTime`  | float            | 自动失败前的试验超时                 |
+| `backgroundLight`  | int (0-255)      | 背景亮度级别                          |
+| `backgroundLightRed`| int (-1 to 255) | 红色分量覆盖；-1=灰度模式，0-255=固定红色级别 |
+| `seed`             | int              | 随机种子（-1=使用当前时间）         |
+| `standingSecInTrial`| float           | 在触发/目标区域内所需的站立时间      |
 
-| Dropdown | Options | Function |
-|----------|---------|----------|
-| `ModeSelect` | Trial Modes | Select trial mode (0x00, 0x01, 0x10, 0x11, 0x21, 0x22) |
-| `TriggerModeSelect` | Trigger Modes | Select trigger mode (0-4) |
-| `BackgroundSwitch` | Materials | Switch background material |
-| `TimingBaseDropdown` | Timing Config | Configure button timing hierarchy |
+### 位置/材料分配语法
 
-### Sound Controls (sound Options)
+由以下参数使用：`assign_pos`，`MatAssign`，`barShiftLs`（不使用随机范围时）
 
-| Button | Function |
-|--------|----------|
-| `soundOff` | Disable all sounds |
-| `soundBeforeTrial` | Play sound before trial starts |
-| `soundNearStart` | Play sound near trial start |
-| `soundBeforeGoCue` | Play sound before go cue |
-| `soundBeforeLickCue` | Play sound before lick cue |
-| `soundInPos` | Play sound in position |
-| `soundEnableReward` | Play sound when reward enabled |
-| `soundAtFail` | Play sound on failure |
+| 模式               | 示例             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| 单一值             | `0`              | 在一个试验中使用索引 0                 |
+| 逗号序列           | `0,1,2,3`        | 按顺序使用索引 0,1,2,3                 |
+| 重复与 `..`        | `0..`            | 对所有剩余试验使用索引 0               |
+| 乘法器             | `0*10`           | 对 10 个试验使用索引 0                 |
+| 和模式             | `(0+90+180+270)*4..` | 将和视为序列，重复 4 次，然后继续     |
+| 范围模式           | `(0-1-2)*5..`    | 序列 0,1,2 重复 5 次，然后继续        |
+| 组合               | `0*30,1*30`      | 索引 0 进行 30 次试验，然后索引 1 进行 30 次试验 |
+| 随机单位           | `random0~20*10`  | 在 10 个试验中随机值 0-20（仅在 `barShiftLs` 中） |
 
-Each sound button has an embedded dropdown to select the audio clip.
+**注意**：位置索引指的是 `available_pos` 索引（0-7），而不是角度。材料索引指的是 `MatAvailable`。
 
-### Device Controls
+### 设备触发方法
 
-| Button | Function |
-|--------|----------|
-| `OGStart` | Start optogenetics device |
-| `OGStop` | Stop optogenetics device |
-| `OGEnable` | Toggle optogenetics enable |
-| `MSStart` | Start miniscope device |
-| `MSStop` | Stop miniscope device |
-| `MSEnable` | Toggle miniscope enable |
+格式：`[start]{...};[end]{...}` - 每个部分包含由 `|` 分隔的 `eventType:trialPattern`
 
-### Lick Spout Simulation
+**事件类型**：`certainTrialStart`，`everyTrialStart`，`certainTrialEnd`，`everyTrialEnd`，`certainTrialInTarget`，`everyTrialInTarget`，`nextTrialStart`，`nextTrialEnd`，`nextTrialInTarget`
 
-| Button | Function |
-|--------|----------|
-| `LickSpout1-8` | Simulate lick at spout 1-8 |
+**试验模式** 支持：
+- `n` - 每第 n 个试验：`80*n` → 试验 80, 160, 240...
+- `*(n+1)` - 偏移 1：`80*(n+1)` → 试验 80, 161, 242...
+- 组合：`80*n40+` → 试验 120, 200, 280... (80×(n+0)+40)
+- `~length` - 范围：`1~3` → 3 个连续试验
+- `+offset` / `-offset` - 加/减偏移量
+- 以逗号分隔的值：`10,20,30`
+- `0` 或 `1` - 特殊值（0=不活动，1=活动，用于 `every...` 事件）
 
-### Water Spout Controls
+**示例**：`OGTriggerMethod=[start]{everyTrialEnd:30};[end]{nextTrialInTarget:0}`
+- 在试验 30 结束时启动 OG
+- 在下一个试验目标发生时结束 OG
 
-| Button | Function |
-|--------|----------|
-| `WaterSpout1-8` | Dispense water at spout 1-8 |
-| `WaterSpoutSingle1-8` | Single dispense mode |
-| Shift + Click | Flush water spout |
+### 附加设置
 
-### Timing Controls
+| 参数               | 格式             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `refSegement`      | int              | 参考段角度（0-359）                   |
+| `destAreaFollow`   | bool             | 如果为 `true`，目标区域随杆位置旋转；如果为 `false`，使用固定区域 |
+| `extraRewardTimeInSec` | float         | 试验成功后额外奖励期的持续时间（0=禁用，-2=无限制） |
+| `stopExtraRewardMethod` | 以逗号分隔的字符串 | 停止额外奖励的方法：`lick`，`pos`，或 `lick,pos` |
+| `stopExtraRewardUseTriggerSelectArea` | int | 用于基于位置的停止的触发区域索引 |
+| `stopExtraRewardLickDelaySec` | float   | 在舔食后停止额外奖励的延迟           |
+| `ServeRandomRewardAtEnd` | randomX~Y or int | 会话结束时提供的随机奖励数量       |
+| `refSegement`      | int              | 参考段角度（0-359）                   |
+| `checkConfigContent` | bool            | 启用配置验证检查                     |
+| `openLogevent`     | bool             | 启用通过 LogEvent.exe 的外部日志记录 |
+| `logEventPath`     | string           | LogEvent.exe 的路径                   |
+| `openPythonScript` | bool             | 启用 Python 脚本集成（用于视频跟踪） |
+| `PythonScriptCommand` | string         | Python 脚本命令行                     |
+| `closePythonScriptBeforeExit` | bool    | 退出时关闭 Python 脚本               |
 
-| Button | Function |
-|--------|----------|
-| `TimingConfigExport` | Export timing config to input field |
-| `TimingPause` | Pause/resume all timing alarms |
+### 声音设置
 
-### Utility Buttons
+| 参数               | 格式             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `soundLength`      | float            | 声音提示持续时间（秒）（0=禁用）     |
+| `cueVolume`        | float (0-1)      | 提示音量（0=静音，1=最大）           |
+| `TrialSoundPlayMode` | string         | 格式：`模式编号:声音名称`（例如，`6:6000hz`）。模式：0=关闭，1=试验前，2=接近开始，3=开始提示前，4=启用舔食前，5=在位时，6=奖励可用时，7=失败时。多个用 `;` 分隔 |
+| `alarmPlayTimeInterval` | float       | 警报声音之间的最小间隔（秒，仅在 `soundLength` > 0 时使用） |
 
-| Button | Function |
-|--------|----------|
-| `PageUp` / `PageDown` | Navigate log pages |
-| `IPCRefreshButton` | Refresh IPC connection |
-| `IPCDisconnect` | Disconnect IPC |
-| `MessagePost` | Send WeChat notification |
+### 显示设置
+
+| 参数               | 类型             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `barWidth`         | int              | 杆显示宽度（像素）                   |
+| `barHeight`        | int              | 杆显示高度（像素）                   |
+| `displayPixelsLength` | int            | 屏幕水平宽度（像素）                 |
+| `displayPixelsHeight` | int           | 屏幕垂直高度（像素）                 |
+| `isRing`           | bool             | 启用环形显示模式（重复杆模式）       |
+| `separate`         | bool             | 使用单独的显示区域                   |
+| `displayVerticalPos` | float (0-1)    | 垂直屏幕位置（0.5=居中）            |
+
+### 串口设置
+
+| 参数               | 格式             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `serialSpeed`      | int              | 波特率（例如，250000）                |
+| `blackList`        | 以逗号分隔的字符串 | 要忽略的 COM 端口（例如，`COM1,COM3`） |
+| `compatibleVersion` | 以逗号分隔的字符串 | 接受的 Arduino 固件版本（例如，`V2.2`） |
+
+### 材料设置
+
+| 参数               | 格式             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `matList`          | 以逗号分隔的字符串 | 配置中定义的所有可用材料名称         |
+| `centerShaft`      | bool             | 启用中心参考轴显示                   |
+
+#### 每种材料的属性（例如，`[barMat]`，`[barMat2]`，`[centerShaft]`）
+
+| 参数               | 类型             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `isDriftGrating`   | bool             | 使用动画漂移格栅刺激                   |
+| `isCircleBar`      | bool             | 将杆渲染为圆形而不是矩形             |
+| `speed`            | float            | 漂移动画速度                          |
+| `frequency`        | int              | 格栅条纹频率                          |
+| `direction`        | `left` or `right` | 漂移方向                             |
+| `horizontal`       | float (0-1)      | 运动角度：0=水平，1=垂直，介于两者之间=对角线 |
+| `mat`              | string or #RRGGBB | 纹理名称（不带 .png）或十六进制颜色代码 |
+
+### 默认选项设置
+
+存储在 `InputfieldContent` 中，作为 JSON 编码的定时链，用于自动化 UI 控制。
+
+格式：`IFTimingSet=>JSON1|||JSON_RECORD|||JSON2|||JSON_RECORD|||...`
 
 ---
 
-## ContextInfo Properties (Runtime Modifiable)
+## UI 控件参考
 
-These properties can be modified at runtime using the serial command `///variableName=value` when debug mode is enabled.
+### 核心按钮
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `startMethod` | string | Position selection method |
-| `avaliablePosDict` | Dictionary<int,int> | Available position mapping |
-| `matStartMethod` | string | Material selection method |
-| `matAvaliableArray` | List<string> | Available materials |
-| `lickPosLs` | List<int> | Lick position assignments |
-| `pumpPosLs` | List<int> | Pump position assignments |
-| `trackMarkLs` | List<int> | Tracking mark assignments |
-| `barShiftLs` | List<int> | Bar shift values |
-| `barOffset` | int | Display offset |
-| `destAreaFollow` | bool | Track actual bar position |
-| `standingSecInTrigger` | float | Standing time in trigger zone |
-| `standingSecInDest` | float | Standing time in destination |
-| `maxTrial` | int | Maximum trials |
-| `seed` | int | Random seed |
-| `barDelayTime` | float | Bar delay |
-| `barLastingTime` | float | Bar duration |
-| `waitFromStart` | List<float> | Go cue delay range |
-| `waitFromLastLick` | float | Post-lick delay |
-| `backgroundLight` | int | Background brightness |
-| `backgroundRedMode` | int | Red component |
-| `trialInterval` | List<float> | Inter-trial interval |
-| `sWaitSec` | List<float> | Success wait time |
-| `fWaitSec` | List<float> | Failure wait time |
-| `trialTriggerMode` | int | Trigger mode |
-| `trialTriggerDelay` | List<float> | Trigger delay |
-| `trialExpireTime` | float | Trial timeout |
-| `soundLength` | float | Sound duration |
-| `cueVolume` | float | Sound volume |
-| `countAfterLeave` | bool | Count licks after leaving |
-| `extraRewardTimeInSec` | float | Extra reward duration |
-| `stopExtraRewardMethod` | string | Extra reward stop method |
-| `stopExtraRewardUseTriggerSelectArea` | int | Stop area index |
-| `stopExtraRewardLickDelaySec` | float | Stop lick delay |
-| `minIgnoreLickInterval` | float | Minimum ignore interval |
-| `maxExtraRewardCount` | int | Maximum extra rewards |
-| `randomRewardPerTrial` | List<int> | Random rewards per trial |
-| `userName` | string | User/mouse name |
-| `mouseInd` | string | Mouse index |
+| 按钮名称           | 功能             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `StartButton`      | 开始会话         | 开始试验会话并播放提示音              |
+| `WaitButton`       | 暂停/继续        | 切换暂停状态                          |
+| `FinishButton`     | 完成试验         | 手动完成当前试验                      |
+| `SkipButton`       | 跳过试验         | 跳过当前试验                          |
+| `ExitButton`       | 退出             | 退出应用程序（延迟1秒）               |
+| `DebugButton`      | 调试模式         | 切换调试模式                          |
+
+### 输入字段
+
+| 输入字段           | 功能             | 用法                                   |
+|--------------------|------------------|----------------------------------------|
+| `IFSerialMessage`  | 串口命令         | 发送命令到 Arduino（前缀 `/` 表示变量赋值，`//` 表示原始命令） |
+| `IFTimingBySec`    | 定时（秒）       | 以秒为单位设置按钮定时               |
+| `IFTimingByTrial`  | 定时（试验）     | 按试验计数设置按钮定时               |
+| `IFTimingSet`      | 定时配置         | 导入/导出定时配置                     |
+| `OGTime` / `MSTime`| 设备持续时间     | 设置光遗传学/显微镜持续时间（毫秒）  |
+| `MouseInfoName`    | 鼠标名称         | 设置鼠标标识符                        |
+| `MouseInfoIndex`   | 鼠标索引         | 设置鼠标索引                          |
+
+### 下拉菜单
+
+| 下拉菜单           | 选项             | 功能                                   |
+|--------------------|------------------|----------------------------------------|
+| `ModeSelect`       | 试验模式         | 选择试验模式（0x00, 0x01, 0x10, 0x11, 0x21, 0x22） |
+| `TriggerModeSelect`| 触发模式         | 选择触发模式（0-4）                   |
+| `BackgroundSwitch` | 材料             | 切换背景材质                          |
+| `TimingBaseDropdown` | 定时配置       | 配置按钮定时层级                      |
+
+### 声音控制（声音选项）
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `soundOff`         | 禁用所有声音     |
+| `soundBeforeTrial` | 试验前播放声音   |
+| `soundNearStart`   | 接近开始时播放   |
+| `soundBeforeGoCue` | 开始提示前播放   |
+| `soundBeforeLickCue` | 启用舔食前播放 |
+| `soundInPos`       | 位置正确时播放   |
+| `soundEnableReward`| 奖励可用时播放   |
+| `soundAtFail`      | 失败时播放       |
+
+每个声音按钮都有一个嵌入式下拉菜单用于选择音频剪辑。
+
+### 设备控制
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `OGStart`          | 开始光遗传学设备 |
+| `OGStop`           | 停止光遗传学设备 |
+| `OGEnable`         | 切换光遗传学启用 |
+| `MSStart`          | 开始显微镜设备   |
+| `MSStop`           | 停止显微镜设备   |
+| `MSEnable`         | 切换显微镜启用   |
+
+### 舔喷嘴仿真
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `LickSpout1-8`     | 在喷嘴 1-8 上模拟舔食 |
+
+### 喷水控制
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `WaterSpout1-8`    | 在喷嘴 1-8 上喷水 |
+| `WaterSpoutSingle1-8` | 单次喷水模式   |
+| Shift + Click       | 冲洗水喷嘴       |
+
+### 定时控制
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `TimingConfigExport` | 导出定时配置到输入字段 |
+| `TimingPause`      | 暂停/恢复所有定时警报 |
+
+### 实用按钮
+
+| 按钮               | 功能             |
+|--------------------|------------------|
+| `PageUp` / `PageDown` | 导航日志页面   |
+| `IPCRefreshButton` | 刷新 IPC 连接    |
+| `IPCDisconnect`    | 断开 IPC 连接    |
+| `MessagePost`      | 发送微信通知     |
 
 ---
 
-## Serial Commands
+## ContextInfo 属性（运行时可修改）
 
-### Variable Assignment
+这些属性可以在调试模式启用时通过串口命令 `///variableName=value` 在运行时修改。
+
+| 属性               | 类型             | 说明                                   |
+|--------------------|------------------|----------------------------------------|
+| `startMethod`      | string           | 位置选择方法                          |
+| `avaliablePosDict` | Dictionary<int,int> | 可用位置映射                          |
+| `matStartMethod`   | string           | 材料选择方法                          |
+| `matAvaliableArray`| List<string>     | 可用材料                              |
+| `lickPosLs`        | List<int>       | 舔食位置分配                          |
+| `pumpPosLs`        | List<int>       | 泵位置分配                            |
+| `trackMarkLs`      | List<int>       | 跟踪标记分配                          |
+| `barShiftLs`       | List<int>       | 杆偏移值                              |
+| `barOffset`        | int              | 显示偏移                              |
+| `destAreaFollow`   | bool             | 跟踪实际杆位置                        |
+| `standingSecInTrigger` | float        | 在触发区域的站立时间                  |
+| `standingSecInDest`| float            | 在目标区域的站立时间                  |
+| `maxTrial`         | int              | 最大试验次数                          |
+| `seed`             | int              | 随机种子                              |
+| `barDelayTime`     | float            | 杆延迟时间                            |
+| `barLastingTime`   | float            | 杆持续时间                            |
+| `waitFromStart`    | List<float>      | 开始提示延迟范围                      |
+| `waitFromLastLick` | float            | 最后舔食后的延迟                      |
+| `backgroundLight`  | int              | 背景亮度                              |
+| `backgroundRedMode`| int              | 红色分量                              |
+| `trialInterval`    | List<float>      | 试验间隔                              |
+| `sWaitSec`         | List<float>      | 成功等待时间                          |
+| `fWaitSec`         | List<float>      | 失败等待时间                          |
+| `trialTriggerMode` | int              | 触发模式                              |
+| `trialTriggerDelay`| List<float>      | 触发延迟                              |
+| `trialExpireTime`  | float            | 试验超时                              |
+| `soundLength`      | float            | 声音持续时间                          |
+| `cueVolume`        | float            | 声音音量                              |
+| `countAfterLeave`  | bool             | 离开后计算舔食                        |
+| `extraRewardTimeInSec` | float        | 额外奖励时间                          |
+| `stopExtraRewardMethod` | string       | 额外奖励停止方法                      |
+| `stopExtraRewardUseTriggerSelectArea` | int | 停止区域索引                  |
+| `stopExtraRewardLickDelaySec` | float   | 停止舔食延迟                        |
+| `minIgnoreLickInterval` | float       | 最小忽略间隔                          |
+| `maxExtraRewardCount` | int           | 最多额外奖励                          |
+| `randomRewardPerTrial` | List<int>    | 每个试验的随机奖励                    |
+| `userName`         | string           | 用户/鼠标名称                        |
+| `mouseInd`         | string           | 鼠标索引                              |
+
+---
+
+## 串口命令
+
+### 变量赋值
 ```
 /variableName=value
 ```
-Example: `/p_water_flush[1]=1`
+示例：`/p_water_flush[1]=1`
 
-### Raw Commands
+### 原始命令
 ```
 //command
 ```
 
-### Runtime Property Modification (Debug Mode Only)
+### 运行时属性修改（仅限调试模式）
 ```
 ///variableName=value
 ```
 
-### Help Command
+### 帮助命令
 ```
 ///help
 ```
-Lists all available properties and their types.
+列出所有可用属性及其类型。
 
 ---
 
-## Trial Modes
+## 试验模式
 
-| Mode | Hex | Reward Timing | Advancement Condition |
-|------|-----|---------------|----------------------|
-| Always, Any Lick | 0x00 | At trial start | Any lick advances |
-| Result-Based, Correct Lick | 0x01 | On success only | Correct lick only advances |
-| Always, Complete | 0x10 | At trial start | Must complete in position |
-| Result-Based, Complete | 0x11 | On success only | Must complete in position |
-| Always, Position | 0x21 | At trial start | Position-based advancement |
-| Result-Based, Position | 0x22 | On success only | Position-based advancement |
+| 模式                 | 十六进制 | 奖励时机         | 推进条件               |
+|----------------------|----------|------------------|------------------------|
+| 始终，任意舔食       | 0x00    | 试验开始时       | 任意舔食推进           |
+| 基于结果，正确舔食   | 0x01    | 仅在成功时       | 仅正确舔食推进         |
+| 始终，完成           | 0x10    | 试验开始时       | 必须在位置内完成       |
+| 基于结果，完成       | 0x11    | 仅在成功时       | 必须在位置内完成       |
+| 始终，基于位置       | 0x21    | 试验开始时       | 基于位置的推进         |
+| 基于结果，基于位置   | 0x22    | 仅在成功时       | 基于位置的推进         |
 
-**Hex digit breakdown**: `0xAB`
-- **A (first digit)**: Reward timing - `0`=at trial start, `1`=on success
-- **B (second digit)**: Advancement condition - `0`=any lick, `1`=correct lick, `2`=position-based
-
----
-
-## Trigger Modes
-
-| Mode | Description |
-|------|-------------|
-| 0 | Delay - Fixed interval between trials |
-| 1 | IR Sensor - Infrared sensor triggers trial |
-| 2 | Lever Press - Pressing lever triggers trial |
-| 3 | Position Detection - Video position detection |
-| 4 | Trial End - Start immediately after previous trial |
+**十六进制数字解析**：`0xAB`
+- **A（第一个数字）**：奖励时机 - `0`=在试验开始时，`1`=在成功时
+- **B（第二个数字）**：推进条件 - `0`=任意舔食，`1`=正确舔食，`2`=基于位置
 
 ---
 
-## Position Assignment Syntax
+## 触发模式
 
-See [Configuration - Position/Material Assignment Syntax](#configuration) for complete documentation.
-
-**Quick reference**:
-- `0..` - Repeat index 0 for all trials
-- `0*30,1*30` - Index 0 for 30 trials, then index 1 for 30 trials
-- `(0-1-2)*5..` - Sequence 0,1,2 repeated 5 times, then continued
-- `random0,90,180` - Random selection from specified indices
-
----
-
-## Sound Modes
-
-| Mode | Trigger Point |
-|------|---------------|
-| 0 (Off) | No sound |
-| 1 (BeforeTrial) | Before trial starts |
-| 2 (NearStart) | Near trial start (after delay) |
-| 3 (BeforeGoCue) | Before go cue |
-| 4 (BeforeLickCue) | Before lick is enabled |
-| 5 (InPos) | When in correct position |
-| 6 (EnableReward) | When reward is available |
-| 7 (AtFail) | On trial failure |
+| 模式 | 说明             |
+|------|------------------|
+| 0    | 延时 - 试验之间固定间隔 |
+| 1    | 红外传感器 - 红外传感器触发试验 |
+| 2    | 压杆按下 - 按下压杆触发试验 |
+| 3    | 位置检测 - 视频位置检测 |
+| 4    | 试验结束 - 在上一个试验结束后立即开始 |
 
 ---
 
-## Logging and Data
+## 位置分配语法
 
-### Record Types
-- `lick` - Lick event
-- `start` - Trial start
-- `end` - Trial end
-- `init` - Initialization
-- `entrance` - Entrance detected
-- `press` - Lever press
-- `lickExpire` - Lick timeout
-- `trigger` - Trigger event
-- `stay` - Stay event
-- `soundplay` - Sound playback
-- `OGManuplate` - Optogenetics manipulation
-- `sync` - Sync event
-- `miniscopeRecord` - Miniscope recording
-- `pump` - Pump activation
+有关完整文档，请参见 [配置 - 位置/材料分配语法](#配置)。
 
-### Log File Output
-- Trial information logged to file with timestamps
-- Context info exported as JSON at session end
-- Real-time display in UI log window
+**快速参考**：
+- `0..` - 对所有试验重复使用索引 0
+- `0*30,1*30` - 对 30 次试验使用索引 0，然后对 30 次试验使用索引 1
+- `(0-1-2)*5..` - 序列 0,1,2 重复 5 次，然后继续
+- `random0,90,180` - 从指定索引中随机选择
 
 ---
 
-## Timing System
+## 声音模式
 
-### Button Timing
-
-Set timed button presses using Ctrl+Shift+Click or specify timing values:
-
-#### By Time (seconds)
-1. Enter value in `IFTimingBySec` input field
-2. Ctrl+Shift+Click target button
-3. Button executes after specified time
-
-#### By Trial Count
-1. Enter value in `IFTimingByTrial` input field
-2. Ctrl+Shift+Click target button
-3. Button executes after specified trial count
-
-### Hierarchy Timing
-
-Create complex timing chains:
-1. Select base timing from dropdown
-2. Add child timings with delay
-3. Export/import timing configurations
-
-### Timing Commands
-- Ctrl+Click button - Remove timing
-- Shift+Click sound button - Preview sound
+| 模式 | 触发点           |
+|------|------------------|
+| 0    | 关闭声音         |
+| 1    | 试验前           |
+| 2    | 接近试验开始（经过延迟） |
+| 3    | 开始提示前       |
+| 4    | 启用舔食前       |
+| 5    | 当在正确位置时   |
+| 6    | 当奖励可用时     |
+| 7    | 在试验失败时     |
 
 ---
 
-## Keyboard Shortcuts
+## 日志和数据
 
-| Key | Function |
-|-----|----------|
-| Return | Execute input field command |
-| Up/Down Arrow | Navigate serial command history |
-| Ctrl+Shift+Click | Set button timing |
-| Shift+Click | Preview sound |
+### 记录类型
+- `lick` - 舔食事件
+- `start` - 试验开始
+- `end` - 试验结束
+- `init` - 初始化
+- `entrance` - 入口检测
+- `press` - 压杆事件
+- `lickExpire` - 舔食超时
+- `trigger` - 触发事件
+- `stay` - 停留事件
+- `soundplay` - 声音播放
+- `OGManuplate` - 光遗传学操作
+- `sync` - 同步事件
+- `miniscopeRecord` - 显微镜记录
+- `pump` - 泵激活
 
----
-
-## Build Configuration
-
-Custom images should be placed in the same directory as the config file.
-
----
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Serial Connection Failed**
-   - Check `serialSettings.blackList` in config.ini
-   - Verify Arduino is connected
-
-2. **IPC Connection Failed**
-   - Click `IPCRefreshButton` to reconnect
-   - Check Python script path
-
-3. **Config Parse Error**
-   - Verify syntax in config.ini
-   - Check for typos in parameter names
-
-4. **Position Assignment Error or something like this**
-   - Ensure position indices are within `available_pos` range
-   - Verify pattern syntax in the config
+### 日志文件输出
+- 带时间戳的试验信息记录到文件
+- 会话结束时以 JSON 格式导出上下文信息
+- UI 日志窗口实时显示
 
 ---
 
-## Version History
+## 定时系统
 
-See git log for detailed changes.
+### 按钮定时
+
+使用 Ctrl+Shift+Click 设置定时按钮按下，或指定定时值：
+
+#### 按时间（秒）
+1. 在 `IFTimingBySec` 输入字段中输入值
+2. Ctrl+Shift+Click 目标按钮
+3. 按钮在指定时间后执行
+
+#### 按试验计数
+1. 在 `IFTimingByTrial` 输入字段中输入值
+2. Ctrl+Shift+Click 目标按钮
+3. 按钮在指定的试验计数后执行
+
+### 层级定时
+
+创建复杂的定时链：
+1. 从下拉菜单中选择基础定时
+2. 添加子定时和延迟
+3. 导出/导入定时配置
+
+### 定时命令
+- Ctrl+Click 按钮 - 移除定时
+- Shift+Click 声音按钮 - 预览声音
+
+---
+
+## 键盘快捷键
+
+| 键                 | 功能             |
+|--------------------|------------------|
+| Return             | 执行输入字段命令 |
+| Up/Down Arrow      | 导航串口命令历史 |
+| Ctrl+Shift+Click   | 设置按钮定时     |
+| Shift+Click        | 预览声音         |
+
+---
+
+## 构建配置
+
+自定义图像应放置在与配置文件相同的目录中。
+
+---
+
+## 故障排除
+
+### 常见问题
+
+1. **串口连接失败**
+   - 检查 `serialSettings.blackList` 在 config.ini 中的设置
+   - 确保 Arduino 已连接
+
+2. **IPC 连接失败**
+   - 点击 `IPCRefreshButton` 重新连接
+   - 检查 Python 脚本路径
+
+3. **配置解析错误**
+   - 验证 config.ini 中的语法
+   - 检查参数名称中的拼写错误
+
+4. **位置分配错误或类似问题**
+   - 确保位置索引在 `available_pos` 范围内
+   - 验证配置中的模式语法
+
+---
+
+## 版本历史
+
+有关详细更改，请参见 git 日志。
 
 ---

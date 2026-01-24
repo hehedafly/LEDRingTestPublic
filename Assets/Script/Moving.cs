@@ -2014,8 +2014,8 @@ public class Moving : MonoBehaviour
                 return 0;
             }
         }
-        if(!contextInfo.stopExtraRewardMethod.Contains("!count")){
-            if(rewardServedTimeInTrial.Count(t => t >= waitSecRec) >= contextInfo.maxExtraRewardCount){
+        if(contextInfo.stopExtraRewardMethod.Contains("count")){
+            if(contextInfo.maxExtraRewardCount > 0 && rewardServedTimeInTrial.Count(t => t >= waitSecRec) >= contextInfo.maxExtraRewardCount){
                 return 0;
             }
         }
@@ -3152,6 +3152,7 @@ public class Moving : MonoBehaviour
         barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barWidth", "100"));
         barHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barHeight", "1080"));
         bool disableMainDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMainDisplay", "false") == "true";
+        bool disableMonitorDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMonitorDisplay", "false") == "true";
         displayPixelsLength = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsLength", "1920"));
         displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
         displayVerticalPos  = Convert.ToSingle(iniReader.ReadIniContent(  "displaySettings", "displayVerticalPos", "0.5"));
@@ -3182,7 +3183,7 @@ public class Moving : MonoBehaviour
                 if(separate){
                     try{
                     
-                        if (Display.displays.Length > 3){//无监视屏
+                        if (Display.displays.Length > 3){//有监视屏
                             monitorDisplay = Display.displays[1];
                         }
                         for (int i = (monitorDisplay == null? 1: 2); i < Math.Min(4, Display.displays.Length); i++){
@@ -3192,9 +3193,9 @@ public class Moving : MonoBehaviour
                         }
                         
                         SecondCamera.enabled = true;
-                        MainCamera.targetDisplay = 2;
+                        MainCamera.targetDisplay = monitorDisplay == null? 1: 2;
                         MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
-                        SecondCamera.targetDisplay = 3;
+                        SecondCamera.targetDisplay = monitorDisplay == null? 2: 3;
                         SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
                     catch(Exception e){
@@ -3202,7 +3203,7 @@ public class Moving : MonoBehaviour
                     }
                 }else{
                     try{
-                        if (Display.displays.Length > 2){//无监视屏
+                        if (Display.displays.Length > 2){//有监视屏
                             monitorDisplay = Display.displays[1];
                         }
                         Display LEDRing = monitorDisplay == null ? Display.displays[1] : Display.displays[2];
@@ -3222,6 +3223,13 @@ public class Moving : MonoBehaviour
                     tempChildTs.targetDisplay = 1;
                 }
             }else{
+                if (!disableMonitorDisplay && Display.displays.Length > 1){//有监视屏
+                    CameraMonitor.targetDisplay = 1;
+                    Display monitorDisplay = Display.displays[1];
+                    monitorDisplay.Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                    tempChildTs.targetDisplay = 1;
+                }
                 MainCamera.enabled = false;
                 SecondCamera.enabled = false;
             }
@@ -3253,9 +3261,13 @@ public class Moving : MonoBehaviour
                     MainCamera.enabled = false;
                     SecondCamera.enabled = false;
                 }
-                CameraMonitor.targetDisplay = 1;
-                Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                tempChildTs.targetDisplay = 1;
+                if(!disableMonitorDisplay && Display.displays.Length > 1){//有监视屏
+                    CameraMonitor.targetDisplay = 1;
+                    Display monitorDisplay = Display.displays[1];
+                    monitorDisplay.Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                    tempChildTs.targetDisplay = 1;
+                }
             }
 
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");

@@ -13566,7 +13566,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1407331290}
   m_HandleRect: {fileID: 1407331287}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -22139,6 +22139,7 @@ MonoBehaviour:
   trialStatus: -1
   lickTimeInTrial: []
   rewardServedTimeInTrial: []
+  otherRewardServedTimeInTrial: []
   audioSourceSketchObject: {fileID: 7130182045408806918, guid: 041d83ba357df3f468190a678fb9f929, type: 3}
   audioPlayModeNow: 
   TrialSoundPlayModeExplain:
@@ -25862,7 +25863,7 @@ Canvas:
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
   m_SortingOrder: 0
-  m_TargetDisplay: 2
+  m_TargetDisplay: 3
 --- !u!1 &1955322015
 GameObject:
   m_ObjectHideFlags: 0
