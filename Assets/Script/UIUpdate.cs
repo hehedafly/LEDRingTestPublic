@@ -455,7 +455,12 @@ public class UIUpdate : MonoBehaviour
             }
             else {
                 _TimingId = TimingBaseScrDropdown.nowSelectedTimingId;
-                _timingBaseName = TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
+                // _timingBaseName = TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy;
+                _timingBaseName = timings.GetName(_TimingId);
+                if(_TimingId != -1 && _timingBaseName == ""){
+                    Debug.Log($"invalid timing id: {_TimingId}, from buttonTimingBaseScrDropdown, addInfo:{stringArg}");
+                    return -1;
+                }
                 useSec = _sec > 0;
                 if (buttons.FindAll(b => b.name == elementsName).Any()) { timingElementType = "button"; }
                 else if (dropdowns.FindAll(d => d.name == elementsName).Any()) { timingElementType = "dropdown"; }
@@ -940,7 +945,7 @@ public class UIUpdate : MonoBehaviour
                             TimingBaseScrDropdown.nowSelectedTimingId = _nowTimingId;
                             TimingBaseScrDropdown.nowSelectedSubHierarchy = hierarchy;
                             TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy = timings.GetName(_nowTimingId);
-                            Debug.Log($"optionSelectedIncludeHigerHierarchy changed to {TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy}");
+                            // Debug.Log($"optionSelectedIncludeHigerHierarchy changed to {TimingBaseScrDropdown.optionSelectedIncludeHigerHierarchy}");
                             int targetId = _nowTimingId;
                             timingSelectedPerHierarchy = Enumerable.Range(0, _t.Value.hierarchy + 1).Reverse()
                                         .Select(i => {
@@ -1313,6 +1318,15 @@ public class UIUpdate : MonoBehaviour
                 focus_input_field.text="";
                 // inputFieldContent[focus_input_field.name] = "null";
             }
+            if(focus_input_field.name.StartsWith("IFTimingBy")){
+                foreach (var inputfield in inputFields.FindAll(inputfield => inputfield.name.StartsWith("IFTimingBy"))){
+                    if( inputfield.name == focus_input_field.name){
+                        continue;
+                    }
+                    inputfield.text = "";
+                    inputFieldContent[$"{inputfield.name}"] = "null";
+                }
+            }
         }
         // MessageUpdate();
         if(Input.GetMouseButtonDown(0) && logWindowDraging >= 0){
@@ -1400,7 +1414,7 @@ public class UIUpdate : MonoBehaviour
                         int elementDefaultValueForControlParse = 1;
                         string alarmAddInfo = alarm.GetAlarmAddInfo(alarmFinished);
                         if (_tempTiming.HasValue){
-                            Debug.Log($"Timing{_tempTiming.Value.name} finished, , Id: {TimingId}, Info: {alarmAddInfo}");
+                            // Debug.Log($"Timing{_tempTiming.Value.name} finished, , Id: {TimingId}, Info: {alarmAddInfo}");
                             if(timings.Count > 0 && timings[0].ContainsKey(timingElementName)){
                                 // string _tempTimingMethod = timings[0].GetTimingMethod(-1, timingButtonName).Trim(';');
                                 foreach(Timing _timing in timings.GetTimingChildren(TimingId)){

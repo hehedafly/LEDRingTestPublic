@@ -29,7 +29,7 @@ public class ScrDropDown : MonoBehaviour
     /// <summary>
     /// 存储每一个定时的按键名称及其存储其定时方式
     /// </summary>
-    public Dictionary<int, string> optionsNowHierarchy = new Dictionary<int, string>();
+    public Dictionary<int, string> optionsNowHierarchy = new Dictionary<int, string>();//dropdown需要区分同名不同id，并且需要管理基于id的增删，留给dropdown而非UIUpdate管理更方便
     List<int> optionsPerHierarchyKeys = new List<int>();
     public int nowSelectedTimingId = -1;
     public int nowSelectedSubHierarchy = -1;

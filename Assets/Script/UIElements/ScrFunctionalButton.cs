@@ -21,7 +21,7 @@ public class ScrFunctionalButton : MonoBehaviour
         if(ui_update != null){
             // if(isCheckBox){ui_update.CheckBoxControlsParse(name, 1);}
             // else{ui_update.ControlsParse(name, 1);}
-            Debug.Log($"{Type} from {parentItem.name} id is {Id}");
+            // Debug.Log($"{Type} from {parentItem.name} id is {Id}");
             ui_update.ControlsParsePublic(parentDropdownName, Id, ignoreTiming:false, stringArg:$"{Type};{parentItem.position.x}:{parentItem.position.y}");
         }
     }
