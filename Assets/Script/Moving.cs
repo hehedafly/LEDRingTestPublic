@@ -2532,8 +2532,10 @@ public class Moving : MonoBehaviour
         foreach(string elementName in ElementTrigger){
             //  $"Timing{_timing.name};{_timing.Id};{value}"
             var buttonNameSplit = elementName.Split(";");
-            ui_update.SetTiming(string.Join(";", buttonNameSplit[..2]), int.Parse(buttonNameSplit[2]));
-            ButtonTriggerDict.Remove(elementName);
+            if(buttonNameSplit[3] == ui_update.buttonTimingMethods[triggerType + 1]){
+                ui_update.SetTiming(string.Join(";", buttonNameSplit[..2]), int.Parse(buttonNameSplit[2]));
+                ButtonTriggerDict.Remove(elementName);
+            }
         }
 
         return true;
