@@ -46,10 +46,12 @@ public class UIUpdate : MonoBehaviour
     float manualWaitSec = 5;
     public Dropdown TimingBaseDropdown;
     ScrDropDown TimingBaseScrDropdown;
+    public Dropdown TimingMethodDropdown;
     /// <summary>
     /// 包含不同层级定时字典，字典键为alarm名称，值以“;”分割，包含一个或多个定时方式（按钮名称:定时方式:具体值）
     /// </summary> 
     TimingCollection timings = null;
+    [HideInInspector]
     /// <summary>
     /// like {"delete", "spread"} or...
     /// </summary>
@@ -58,11 +60,18 @@ public class UIUpdate : MonoBehaviour
     /// 每个元素存储每级选择的timing id
     /// </summary>
     List<int> timingSelectedPerHierarchy = new List<int>();
-
     /// <summary>
-    /// "sec", "trialStart", "trialEnd"
+    /// "sec", "trialStart", "trialEnd", "trialInTarget", "IPCConnect"...
+    /// 目前暂时sec和trial需要解析值，其他默认不解析，需要值未提供逻辑暂时在controlsparse中处理
     /// </summary>
-    public List<string> buttonTimingMethods = new List<string>(){"sec", "trialStart", "trialEnd","trialFinish"};
+    List<string> buttonTimingMethods = new List<string>(){"sec", "trialStart", "trialEnd","trialInTarget","IPCConnect"};    
+    /// <summary>
+    /// "sec", "trialStart", "trialEnd", "trialInTarget", "IPCConnect"...
+    /// </summary>
+    public List<string> ButtonTimingMethods { get { return buttonTimingMethods; } }
+    [HideInInspector]
+    public Dictionary<string, int> buttonTimingSpecialValues = new Dictionary<string, int>{{"IPCConnect", 0}};
+    Dictionary<string, List<string>> buttonTimingSpecialTimingMethods = new Dictionary<string, List<string>>();
     public GameObject pref_buttonTimingBaseSubDropdown;
     List<GameObject> createdTimingBaseSubDropdowns = new List<GameObject>();
     public string IFContentLoaded = "";
@@ -70,7 +79,9 @@ public class UIUpdate : MonoBehaviour
     bool IFSerialMessageEdited = true;
     string IFSerialMessageRecLastFrame = "";
     int IFSerialMessageHistoryInvId = 0;
+    [HideInInspector]
     public List<GameObject> LightObjects = new List<GameObject>();
+    [HideInInspector]
     public Dictionary<string, GameObject> Lights = new Dictionary<string, GameObject>();
     Dictionary<string, Color> LightDefaultColors = new Dictionary<string, Color>{
         {"lick", Color.green},
@@ -264,16 +275,16 @@ public class UIUpdate : MonoBehaviour
                     else {
                         childId.Add(key);
                         timings[key] = timings[key].SetLowerHierarchy();
-                        Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
+                        // Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
                     }
                 }
                 else if (childId.Contains(timings[key].parentId)) {
                     childId.Add(key);
                     timings[key] = timings[key].SetLowerHierarchy();
-                    Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
+                    // Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
                 }
             }
-            if (maxId > 100 && timings.Count() == 0) {//应该没问题
+            if (timings.Count() == 0) {//应该没问题
                 maxId = 0;
             }
             return removedTiming;
@@ -396,17 +407,9 @@ public class UIUpdate : MonoBehaviour
         return 1;
     }
 
-    string CheckButtonTimingMethod(float useSec = -1, int trialStart = -1, int trialEnd = -1) {
-        if(useSec >= 0) {
-            return buttonTimingMethods[0];
-        }
-        else if(trialStart >= 0) {
-            return buttonTimingMethods[1];
-        }
-        else if(trialEnd >= 0) {
-            return buttonTimingMethods[2];
-        }
-        return "";
+    string CheckButtonTimingMethod() {
+        string method = TimingMethodDropdown.options[TimingMethodDropdown.value].text;
+        return method;
     }
     
     int CheckButtonTimingMethod(string method) {
@@ -450,24 +453,23 @@ public class UIUpdate : MonoBehaviour
         bool input_control_pressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
         bool input_shift_pressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
         if(! ignoreTiming && (input_control_pressed && input_shift_pressed || forceTiming) || stringArg.Contains("cancelTiming")){//按trial定时事件执行在DeviceTriggerExecute最后处理
-
-            float _sec = -1;int _trialStart = -1;int _trialEnd = -1;string _timingMethodRecognizedStr = "";int _timingMethodRecognized = -1;
-            List<float> _timingValues = new List<float>(){-1, -1, -1};//sec, trialStart, trialEnd
+            // _res仅在sec和trial定时使用，其他情况不检测-1
+            float _res = -1;string _timingMethodRecognizedStr = "";int _timingMethodRecognized = -1;
             string timingElementType;
             if (stringArg.StartsWith("type_")){ timingElementType = stringArg.Split(";")[0][5..]; stringArg = stringArg.Contains(";")? string.Join(";", stringArg.Split(";")[1]) : "";}
             if (stringArg.Contains(";")) {
                 int timingMethodInArg = CheckButtonTimingMethod(stringArg.Split(";")[0]);
                 if(timingMethodInArg >= 0){
-                    _timingValues[timingMethodInArg] = float.Parse(stringArg.Split(";")[1]);
+                    _res = float.Parse(stringArg.Split(";")[1]);
                 }
             }
             else {
-                if(!float.TryParse( inputFieldContent["IFTimingBySec"],         out _sec        )){_sec = -1;};
-                if(!int.TryParse(   inputFieldContent["IFTimingByTrialStart"],  out _trialStart )){_trialStart = -1;};
-                if(!int.TryParse(   inputFieldContent["IFTimingByTrialEnd"],    out _trialEnd   )){_trialEnd = -1;};
-                _timingValues = new List<float>(){_sec, _trialStart, _trialEnd};
+                if(!float.TryParse(inputFieldContent["IFTimingValue"], out _res)){
+                    // MessageUpdate("please input a valid number for button timing");
+                    _res = -1;
+                }
             }
-            _timingMethodRecognizedStr = CheckButtonTimingMethod(_sec, _trialStart, _trialEnd);
+            _timingMethodRecognizedStr = CheckButtonTimingMethod();
             _timingMethodRecognized = CheckButtonTimingMethod(_timingMethodRecognizedStr);
             if(_timingMethodRecognized == -1 && !timing.HasValue){
                 MessageUpdate("please input a valid number for button timing");
@@ -490,7 +492,7 @@ public class UIUpdate : MonoBehaviour
                     return -1;
                 }
                 _timingMethodRecognized = CheckButtonTimingMethod(_timingMethodRecognizedStr);
-                _timingValues[_timingMethodRecognized] = float.Parse(_timingMethod.Split(";")[1].Split(":")[2]);
+                _res = float.Parse(_timingMethod.Split(";")[1].Split(":")[2]);
                 timingElementType = timing.Value.type;
                 value = timing.Value.value;
             }
@@ -505,30 +507,47 @@ public class UIUpdate : MonoBehaviour
                 if (buttons.FindAll(b => b.name == elementsName).Any()) { timingElementType = "button"; }
                 else if (dropdowns.FindAll(d => d.name == elementsName).Any()) { timingElementType = "dropdown"; }
                 else{ timingElementType = "unknow"; }
-                _timingMethod = $"type_{timingElementType};{elementsName}:{_timingMethodRecognizedStr}:{_timingValues[_timingMethodRecognized]};";
+                _timingMethod = $"type_{timingElementType};{elementsName}:{_timingMethodRecognizedStr}:{_res};";
+            }
+
+            if((_timingMethodRecognizedStr.StartsWith("sec") || _timingMethodRecognizedStr.StartsWith("trial")) && _res < 0){
+                MessageUpdate("please input a valid number for button timing");
+                return -1;
             }
             
             Timing _timing = timing.HasValue? timing.Value: timings.Add(elementsName, _timingMethod, timingElementType, parentId:_TimingId, parentName:_timingBaseName, value:value);
             string targetElementTimingName = $"Timing{_timing.name};{_timing.Id};{_timing.value};{_timingMethodRecognizedStr}";//value仅在dropdown中使用
             if (!ignoreSecondTiming && _TimingId >= 0) {
-                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {_timingValues[_timingMethodRecognized]} {(_timingMethodRecognizedStr.StartsWith("sec") ? "s " : "trial")} after {_timingBaseName}");
+                string msg = $"{elementsName} timing (id: {_timing.Id}) set to ";
+                if (_timingMethodRecognizedStr.StartsWith("sec")) {msg += $"{_res}s after {_timingBaseName}";}
+                else if(_timingMethodRecognizedStr.StartsWith("trial")) { msg += $"trial {Math.Max(0, moving.NowTrial) + (int)_res} after {_timingBaseName}"; }
+                else if(_timingMethodRecognizedStr == "IPCConnect") { msg += $"IPC connection after {_timingBaseName}"; }
+                MessageUpdate(msg);
                 UpdateOptions(hierarchy: timingSelectedPerHierarchy.Count - 1, selectId: timingSelectedPerHierarchy[0]);
                 return 1;
             }
             
-            if(_timingValues[0] > 0){
-                alarm.TrySetAlarm(targetElementTimingName, _timingValues[_timingMethodRecognized], out _, addInfo:$"FromTiming;{value}", force:true);
-                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {_timingValues[_timingMethodRecognized]}s");
-                inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
-                inputFieldContent[$"IFTimingBySec"] = "null";
+            if(_timingMethodRecognizedStr == buttonTimingMethods[0] && _res >= 0){//sec定时
+                alarm.TrySetAlarm(targetElementTimingName, _res, out _, addInfo:$"FromTiming;{value}", force:true);
+                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to {_res}s");
+                // inputFields.Find(inputfield => inputfield.name == "IFTimingBySec").text = "";
+                // inputFieldContent[$"IFTimingBySec"] = "null";
                 
-            }else if(_timingValues[1] >= 0 || _timingValues[2] >= 0){//默认按trial start，暂时不考虑finish
-                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to trial {Math.Max(0, moving.NowTrial) + _timingValues[_timingMethodRecognized]}");
-                moving.ButtonTriggerDict.TryAdd(targetElementTimingName, Math.Max(0, moving.NowTrial) + (int)_timingValues[_timingMethodRecognized]);
-                inputFields.Find(inputfield => inputfield.name == $"IFTimingByTrial{_timingMethodRecognizedStr[5..]}").text = "";
-                inputFieldContent[$"IFTimingByTrial{_timingMethodRecognizedStr[5..]}"] = "null";
+            }else if(buttonTimingMethods.FindAll(m => m.StartsWith("trial")).Contains(_timingMethodRecognizedStr) && _res >= 0){
+                MessageUpdate($"{elementsName} timing (id: {_timing.Id}) set to trial {Math.Max(0, moving.NowTrial) + _res}");
+                moving.ButtonTriggerDict.TryAdd(targetElementTimingName, Math.Max(0, moving.NowTrial) + (int)_res);
+                // inputFields.Find(inputfield => inputfield.name == $"IFTimingByTrial{_timingMethodRecognizedStr[5..]}").text = "";
+                // inputFieldContent[$"IFTimingByTrial{_timingMethodRecognizedStr[5..]}"] = "null";
             }else{
-                return -1;
+                if(!buttonTimingMethods.Contains(_timingMethodRecognizedStr)){
+                    MessageUpdate($"invalid timing method: {_timingMethodRecognizedStr}");
+                    return -1;
+                }else{
+                    if(!buttonTimingSpecialTimingMethods.ContainsKey(_timingMethodRecognizedStr)){
+                        buttonTimingSpecialTimingMethods.Add(_timingMethodRecognizedStr, new List<string>());
+                    }
+                    buttonTimingSpecialTimingMethods[_timingMethodRecognizedStr].Add(targetElementTimingName);
+                }
             }
 
             UpdateOptions();
@@ -586,6 +605,7 @@ public class UIUpdate : MonoBehaviour
             case "IFSerialMessage":{
                 // string temp_str=serialMessageInputs.text;
                 string temp_str=stringArg.Length >0? stringArg: inputFieldContent[serialMessageInputs.name];
+                if(temp_str.Length == 0){break;}
                 if (temp_str.StartsWith("///")) {
                     if (!temp_str.Contains("=")){
                         if (temp_str.StartsWith("///help")) {
@@ -1291,6 +1311,13 @@ public class UIUpdate : MonoBehaviour
                 inputFieldContent[inputField.name] = "null";
             }
         }
+        
+        TimingMethodDropdown.ClearOptions();
+        foreach(string m in buttonTimingMethods){
+            TimingMethodDropdown.AddOptions(new List<string>{m});
+        }
+        TimingMethodDropdown.value = 0;
+        TimingMethodDropdown.RefreshShownValue();
 
         if (IFContentLoaded != "") {
             foreach (string content in IFContentLoaded.Split(";;;")) {
@@ -1358,15 +1385,15 @@ public class UIUpdate : MonoBehaviour
                 focus_input_field.text="";
                 // inputFieldContent[focus_input_field.name] = "null";
             }
-            if(focus_input_field.name.StartsWith("IFTimingBy")){
-                foreach (var inputfield in inputFields.FindAll(inputfield => inputfield.name.StartsWith("IFTimingBy"))){
-                    if( inputfield.name == focus_input_field.name){
-                        continue;
-                    }
-                    inputfield.text = "";
-                    inputFieldContent[$"{inputfield.name}"] = "null";
-                }
-            }
+            // if(focus_input_field.name.StartsWith("IFTimingBy")){
+            //     foreach (var inputfield in inputFields.FindAll(inputfield => inputfield.name.StartsWith("IFTimingBy"))){
+            //         if( inputfield.name == focus_input_field.name){
+            //             continue;
+            //         }
+            //         inputfield.text = "";
+            //         inputFieldContent[$"{inputfield.name}"] = "null";
+            //     }
+            // }
         }
         // MessageUpdate();
         if(Input.GetMouseButtonDown(0) && logWindowDraging >= 0){
@@ -1396,6 +1423,15 @@ public class UIUpdate : MonoBehaviour
 
     void FixedUpdate() {
         List<string> tempFInishedLs = alarm.GetAlarmFinish();
+        foreach(string k in buttonTimingSpecialValues.Keys.ToList()){
+            if(buttonTimingSpecialValues[k] > 0){
+                foreach(string _targetElementTimingName in buttonTimingSpecialTimingMethods[k]){
+                    tempFInishedLs.Add(_targetElementTimingName);
+                }
+                buttonTimingSpecialTimingMethods[k].Clear();
+                buttonTimingSpecialValues[k] = 0;
+            }
+        }
         foreach (string alarmFinished in tempFInishedLs){
             switch(alarmFinished){
                 case "Exit":{

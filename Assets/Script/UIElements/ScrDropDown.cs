@@ -12,7 +12,9 @@ public class ScrDropDown : MonoBehaviour
     public UIUpdate ui_update;
     // public bool isPassive = false;
     Dropdown dropdown = null;
-    bool isShow = false; public bool IsShow{get{return isShow;} set{isShow = value;} }
+    bool isShow = false; public bool IsShow{get{return isShow;} set{
+        isShow = value;
+        } }
     bool updated = false;
 
     // special for options function enable status
@@ -24,7 +26,7 @@ public class ScrDropDown : MonoBehaviour
     /// </summary>
     List<bool[]> certainButtonFunctionDefault = new List<bool[]>{new bool[]{true, false}, new bool[]{true, true}};
 
-    public List<bool[]> functionEnableList = new List<bool[]> { };//bool[0]: delete, bool[1]:spread
+    List<bool[]> functionEnableList = new List<bool[]> { };//bool[0]: delete, bool[1]:spread
     public int noneOptionCount = 0;
     /// <summary>
     /// 存储每一个定时的按键名称及其存储其定时方式
@@ -65,7 +67,7 @@ public class ScrDropDown : MonoBehaviour
     }
 
     public int UpdateOptions(Dictionary<int, string> timingMethods = null, List<int> enableList = null, int selectId = -2, string selectText = "") {//每次提供全部列表
-        
+        // Debug.Log($"UpdateOptions called with timingMethods count {(timingMethods is null? "null": timingMethods.Count.ToString())}, enableList count {(enableList is null? "null": enableList.Count.ToString())}, selectId {selectId}, selectText {selectText}");
         dropdown.Hide();
         optionsNowHierarchy = optionsNowHierarchy.Where(o => o.Key == -1).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
         functionEnableList = functionEnableList.Take(optionsNowHierarchy.Count).ToList();
@@ -103,7 +105,7 @@ public class ScrDropDown : MonoBehaviour
         ignoreValueChange = false;
         optionSelectedIncludeHigerHierarchy = selectText == "" ? optionSelectedIncludeHigerHierarchy : selectText;
         UpdateCaptionText();
-        // Debug.Log($"UpdateOptions, timing methods: {timingMethods.Count()}, now dropdown options: {string.Join(";" ,optionsNowHierarchy.Values.ToList())}, nowSelectedTimingId: {nowSelectedTimingId}, nowSelectedSubHierarchy: {nowSelectedSubHierarchy}, nowSubHierarchyIndex: {nowSubHierarchyIndex}, optionSelectedIncludeHigerHierarchy: {optionSelectedIncludeHigerHierarchy}, ");
+        // Debug.Log($"functionEnableList count: {functionEnableList.Count}, optionsNowHierarchy count: {optionsNowHierarchy.Count}");
         if(name == "TimingBaseSelect") {
             // Debug.Log($"nowSelectTimingId: {nowSelectedTimingId}, selectText: {optionSelectedIncludeHigerHierarchy}");
         }
@@ -119,11 +121,12 @@ public class ScrDropDown : MonoBehaviour
         List<Transform> _optionLists = (from t in transform.GetComponentsInChildren<Transform>() where t.name == "Content" select t).ToList();
         if(_optionLists.Count == 0){return;}
         Transform optionList = _optionLists[0];
-        List<Transform> options = (from Transform child in optionList where child.name.StartsWith("Item ") select child).ToList();
+        List<Transform> options = (from Transform child in optionList where child.name.StartsWith("Item ") select child).Take(optionsNowHierarchy.Count).ToList();//加入take防止选项未及时更新
+        // Debug.Log($"options: {string.Join(",", options.Select(o => o.name).ToList())}");
         for(int i = 0; i < options.Count; i ++){
             Transform option = options[i];
             List<ScrFunctionalButton> functionalButtons = option.GetComponentsInChildren<ScrFunctionalButton>(includeInactive:true).ToList();
-            int[] functionalButtonsNow = (from func in functionalButtons select (func.gameObject.activeSelf? buttonFunctionsLs.IndexOf(func.Type): -1)).ToArray();
+            // int[] functionalButtonsNow = (from func in functionalButtons select (func.gameObject.activeSelf? buttonFunctionsLs.IndexOf(func.Type): -1)).ToArray();
             for(int j = 0; j < buttonFunctionsLs.Count(); j++){
                 var fb = functionalButtons.Where(fb => fb.Type == buttonFunctionsLs[j]).ToList()[0].gameObject;
                 fb.SetActive(functionEnableList[i][j]);
@@ -182,6 +185,7 @@ public class ScrDropDown : MonoBehaviour
             if (isShow && !updated) {
                 updated = true;
                 // UpdateOptions();
+                Debug.Log($"update, name: {name}");
                 UpdateOptionsFunctionEnableStatus();
             }
             else if (!isShow && updated) {

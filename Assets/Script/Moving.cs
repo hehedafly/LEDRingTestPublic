@@ -1859,8 +1859,6 @@ public class Moving : MonoBehaviour
             ipcclient.SetCurrentTriggerArea(0);
             ipcclient.MDDrawTemp(ipcclient.GetCurrentSelectArea());
         }
-
-
         
         WriteInfo(recType: isInit? 3: 2, _lickPos: rightLickSpout);
         //Debug.Log("rightLickSpout" + rightLickSpout);
@@ -1988,6 +1986,10 @@ public class Moving : MonoBehaviour
         return true;
     }
 
+    public void IPCConnected(){
+        ui_update.buttonTimingSpecialValues["IPCConnect"] = 1;
+    }
+
     /// <summary>
     /// 按顺序添加各个函数及对应返回值，每次暂时只执行一个符合条件的函数即返回，默认返回-1
     /// 0: stop extra reward, 已做contextinof是否配置检查
@@ -2015,7 +2017,7 @@ public class Moving : MonoBehaviour
             }
         }
         if(contextInfo.stopExtraRewardMethod.Contains("count")){
-            if(contextInfo.maxExtraRewardCount > 0 && rewardServedTimeInTrial.Count(t => t >= waitSecRec) >= contextInfo.maxExtraRewardCount){
+            if(contextInfo.maxExtraRewardCount > 0 && rewardServedTimeInTrial.Count(t => t >= waitSecRec) > contextInfo.maxExtraRewardCount){
                 return 0;
             }
         }
@@ -2467,7 +2469,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// triggerType: 0, 1-trialStart/end, 2-finish  ，无论具体名称后缀              
+    /// triggerType: 0, 1-trialStart/end, 2-inTarget  ，无论具体名称后缀              
     /// 
     /// keys:{"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialFinish", "everyTrialFinish"};
     /// values: trial indexes,      possibility(x100)        same             same
@@ -2531,8 +2533,9 @@ public class Moving : MonoBehaviour
         
         foreach(string elementName in ElementTrigger){
             //  $"Timing{_timing.name};{_timing.Id};{value}"
+            //0,1,2对应trialStart, trialEnd, inTarget,对应ButtonTimingMethods的1,2,3
             var buttonNameSplit = elementName.Split(";");
-            if(buttonNameSplit[3] == ui_update.buttonTimingMethods[triggerType + 1]){
+            if(buttonNameSplit[3] == ui_update.ButtonTimingMethods[triggerType + 1]){
                 ui_update.SetTiming(string.Join(";", buttonNameSplit[..2]), int.Parse(buttonNameSplit[2]));
                 ButtonTriggerDict.Remove(elementName);
             }

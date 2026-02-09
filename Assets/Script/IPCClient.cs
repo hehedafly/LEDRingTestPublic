@@ -460,9 +460,10 @@ public class IPCClient : MonoBehaviour
         if(activited){MDUpdate();}
         else if(EnableInitAfterConnection != -1){MDInit(); mouseDrawer = null;EnableInitAfterConnection = -1;}
 
-        if(EnableInitAfterConnection >= 25){
+        if(EnableInitAfterConnection >= 25){//等待一段时间后自动初始化，避免连接瞬间不稳定导致的重复初始化
             InitAfterConnection();
             EnableInitAfterConnection = -2;
+            moving.IPCConnected();
         }else if(EnableInitAfterConnection >= 0){
             EnableInitAfterConnection ++;
         }
