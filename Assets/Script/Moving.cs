@@ -795,6 +795,7 @@ public class Moving : MonoBehaviour
     public Camera CameraMonitor;
     public Camera MainCamera;
     public Camera SecondCamera;
+    public Camera mainUICamera;
     int barWidth;
     int barHeight;
     int displayPixelsLength;
@@ -2092,26 +2093,36 @@ public class Moving : MonoBehaviour
         }
 
         if(getOrSet == "set"){
+            // 边界检查：确保 lickInd 在有效范围内
+            if(lickInd < 0 || lickInd >= contextInfo.avaliablePosDict.Count){
+                Debug.LogWarning($"lickCountGetSet: lickInd {lickInd} out of range (max: {contextInfo.avaliablePosDict.Count - 1})");
+                return -2;
+            }
             if(lickCount.Count <= lickTrial){
+                int listSize = contextInfo.avaliablePosDict.Count;
                 while(lickCount.Count <= lickTrial){
-                    if(lickCount.Count ==  + 1){
-                        List<int> ints = new int[8].ToList();
+                    if(lickCount.Count == 0){
+                        List<int> ints = new int[listSize].ToList();
                         ints[lickInd] ++;
                         lickCount.Add(ints);
                     }else{
-                        lickCount.Add(new int[8].ToList());
+                        lickCount.Add(new int[listSize].ToList());
                     }
                 }
             }else{
-                //Debug.Log(string.Join(",", lickCount[nowTrial]));
-                lickCount[nowTrial][lickInd]++;
+                // 检查 nowTrial 索引
+                if(nowTrial >= 0 && nowTrial < lickCount.Count && lickInd < lickCount[nowTrial].Count){
+                    lickCount[nowTrial][lickInd]++;
+                }else{
+                    Debug.LogWarning($"lickCountGetSet: nowTrial {nowTrial} or lickInd {lickInd} out of range");
+                }
             }
             return 0;
         }else if(getOrSet == "get"){
-            if(lickTrial >= lickCount.Count){
-                Debug.Log($"index out of lickCountLs range: lickInd {lickInd}, list length {lickCount.Count}");
-            }else{
+            if(lickTrial >= 0 && lickTrial < lickCount.Count && lickInd >= 0 && lickInd < lickCount[lickTrial].Count){
                 return lickCount[lickTrial][lickInd];
+            }else{
+                Debug.Log($"lickCountGetSet get: lickTrial {lickTrial} or lickInd {lickInd} out of range (count: {lickCount.Count})");
             }
         }else{
             Debug.Log("wrong command in lickCountGetSet");
@@ -2122,6 +2133,11 @@ public class Moving : MonoBehaviour
 
     int TrialResultAdd(int result, int trial, int LickSpout, int rightLickSpout, bool force = false){
         if(LickSpout < 0 || rightLickSpout < 0){return -2;}
+        // 边界检查：根据 trialResultPerLickSpout 实际大小动态判断（每对lickSpout占用2个元素）
+        if(trialResultPerLickSpout.Count < 2 || LickSpout * 2 + 1 >= trialResultPerLickSpout.Count || rightLickSpout * 2 + 1 >= trialResultPerLickSpout.Count){
+            Debug.LogWarning($"TrialResultAdd: LickSpout {LickSpout} or rightLickSpout {rightLickSpout} exceeds list bounds (count: {trialResultPerLickSpout.Count})");
+            return -3;
+        }
         if(trialResult.Count() == trial){
             trialResult.Add(result);
             trialResultPerLickSpout[LickSpout*2].Add(result);
@@ -3164,6 +3180,86 @@ public class Moving : MonoBehaviour
         isRing = iniReader.ReadIniContent(  "displaySettings", "isRing", "false") == "true";
         bool separate = iniReader.ReadIniContent(  "displaySettings", "separate", "false") == "true";//仅支持分离为双屏1920
         displayVerticalPos = Math.Clamp(displayVerticalPos, -1, 2);
+
+        // ========== 显示屏配置 ==========
+        int mainUICameraDisplayConfig = Convert.ToInt16(iniReader.ReadIniContent("displaySettings", "mainUICameraDisplay", "-1"));
+        int mainCameraDisplayConfig = Convert.ToInt16(iniReader.ReadIniContent("displaySettings", "mainCameraDisplay", "-1"));
+        int secondCameraDisplayConfig = Convert.ToInt16(iniReader.ReadIniContent("displaySettings", "secondCameraDisplay", "-1"));
+        int cameraMonitorDisplayConfig = Convert.ToInt16(iniReader.ReadIniContent("displaySettings", "cameraMonitorDisplay", "-1"));
+
+        int screenCount = Display.displays.Length;
+        List<int> configuredDisplays = new List<int>();
+        List<string> configErrors = new List<string>();
+
+        // 验证硬性错误：检查是否有相同的屏幕配置（>=0表示手动配置）
+        Dictionary<string, int> displayConfigs = new Dictionary<string, int> {
+            { "mainUICameraDisplay", mainUICameraDisplayConfig },
+            { "mainCameraDisplay", mainCameraDisplayConfig },
+            { "secondCameraDisplay", secondCameraDisplayConfig },
+            { "cameraMonitorDisplay", cameraMonitorDisplayConfig }
+        };
+        // 收集已使用的屏幕（用于冲突检测）
+        Dictionary<int, string> usedDisplays = new Dictionary<int, string>();
+
+        foreach (var config in displayConfigs) {
+            if (config.Value >= 0) {
+                if (usedDisplays.ContainsKey(config.Value)) {
+                    configErrors.Add($"{config.Key} 和 {usedDisplays[config.Value]} 不能配置为同一屏幕 ({config.Value})");
+                } else {
+                    usedDisplays.Add(config.Value, config.Key);
+                }
+            }
+        }
+
+        // 如果有硬性错误，直接退出
+        if (configErrors.Count > 0) {
+            string errorMsg = "显示配置错误:\n" + string.Join("\n", configErrors);
+            MessageBoxForUnity.Ensure(errorMsg, "error");
+            Debug.LogError(errorMsg);
+            Quit();
+            return;
+        }
+
+        // 收集已配置的屏幕
+        if (mainUICameraDisplayConfig >= 0) configuredDisplays.Add(mainUICameraDisplayConfig);
+        if (mainCameraDisplayConfig >= 0) configuredDisplays.Add(mainCameraDisplayConfig);
+        if (secondCameraDisplayConfig >= 0) configuredDisplays.Add(secondCameraDisplayConfig);
+        if (cameraMonitorDisplayConfig >= 0) configuredDisplays.Add(cameraMonitorDisplayConfig);
+
+        // 确定需要的屏幕数量（先保证主屏幕）
+        int requiredContentScreens = 1; // 至少需要主屏幕
+        if (!disableMainDisplay) {
+            if (separate) requiredContentScreens = 2;
+            else if (mainCameraDisplayConfig < 0) requiredContentScreens = 1;
+        }
+
+        // 检查是否有足够的屏幕（Editor环境下跳过检查，因为Display.displays在Editor中只有一个）
+        bool isEditor = Application.isEditor;
+        if (!isEditor && screenCount < requiredContentScreens) {
+            string errorMsg = $"屏幕数量不足: 当前 {screenCount} 个屏幕，但需要至少 {requiredContentScreens} 个屏幕来显示内容";
+            MessageBoxForUnity.Ensure(errorMsg, "error");
+            Debug.LogError(errorMsg);
+            Quit();
+            return;
+        }
+
+        // 检查监视屏是否有足够屏幕（Editor环境下始终允许，因为是模拟显示）
+        bool hasMonitor = !disableMonitorDisplay && (screenCount > requiredContentScreens || isEditor);
+        if (!isEditor && cameraMonitorDisplayConfig >= 0 && cameraMonitorDisplayConfig >= screenCount) {
+            Debug.LogWarning($"cameraMonitorDisplay 配置值 ({cameraMonitorDisplayConfig}) 超过当前屏幕数量 ({screenCount})，将自动重新分配");
+            cameraMonitorDisplayConfig = -1;
+        }
+
+        // 自动分配逻辑：-1表示自动分配，>=0使用配置值
+        // 规则：优先使用配置值，-1时按默认规则分配可用屏幕
+        Debug.Log($"[DisplayConfig] 原始: mainUICamera={mainUICameraDisplayConfig}, mainCamera={mainCameraDisplayConfig}, second={secondCameraDisplayConfig}, monitor={cameraMonitorDisplayConfig}, separate={separate}, disableMain={disableMainDisplay}, hasMonitor={hasMonitor}");
+        int mainUICameraDisplay = mainUICameraDisplayConfig < 0 ? 0 : mainUICameraDisplayConfig;
+        int mainCameraDisplay = mainCameraDisplayConfig < 0 ? (mainUICameraDisplay == 1 ? 2 : 1) : mainCameraDisplayConfig;
+        bool secondCondition = (!separate || disableMainDisplay || secondCameraDisplayConfig >= 0);
+        int secondCameraDisplay = secondCondition ? secondCameraDisplayConfig : (mainUICameraDisplay == 2 ? 1 : (mainCameraDisplay == 2 ? 3 : 2));
+        bool monitorCondition = (!hasMonitor || cameraMonitorDisplayConfig >= 0);
+        int cameraMonitorDisplay = monitorCondition ? cameraMonitorDisplayConfig : 3;
+
         if(!float.TryParse(iniReader.ReadIniContent("settings", "refSegement", "-1"), out float refSegementDeg)){refSegementDeg = -1;}
         if(refseg != null){
             if(refSegementDeg >= 0){
@@ -3176,31 +3272,40 @@ public class Moving : MonoBehaviour
             }
         }
 
-        Display mainScreen = Display.displays[0];
-        mainScreen.Activate();
-        mainScreen.SetRenderingResolution(1366, 768);
+        Display mainScreenDisplay = Display.displays[0];
+        mainScreenDisplay.Activate();
+        mainScreenDisplay.SetRenderingResolution(1366, 768);
         // mainScreen.Activate(1366, 768, new RefreshRate(){numerator = 60, denominator = 1});
         Screen.fullScreen = false;
 
+        // 设置 mainUIScreen 的 Canvas targetDisplay
+        if (mainUICamera != null){
+            mainUICamera.targetDisplay = mainUICameraDisplay;
+            Canvas mainUiCanvas = mainUICamera.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+            mainUiCanvas.targetDisplay = mainUICameraDisplay;
+        }
+
         if(InApp){
             if(!disableMainDisplay){
-                Display monitorDisplay = null;
+                // 使用预计算的显示屏配置
                 if(separate){
                     try{
-                    
-                        if (Display.displays.Length > 3){//有监视屏
-                            monitorDisplay = Display.displays[1];
+                        // 激活需要使用的屏幕（非Editor环境）
+                        if (!Application.isEditor) {
+                            int maxDisplayToUse = Math.Max(mainCameraDisplay, Math.Max(secondCameraDisplay, cameraMonitorDisplay));
+                            for (int i = 1; i <= maxDisplayToUse && i < screenCount; i++){
+                                if (i == mainCameraDisplay || i == secondCameraDisplay || i == cameraMonitorDisplay) {
+                                    Display.displays[i].Activate();
+                                    Screen.fullScreen = false;
+                                    Display.displays[i].Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
+                                }
+                            }
                         }
-                        for (int i = (monitorDisplay == null? 1: 2); i < Math.Min(4, Display.displays.Length); i++){
-                            Display.displays[i].Activate();
-                            Screen.fullScreen = false;
-                            Display.displays[i].Activate(1920, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
-                        }
-                        
+
                         SecondCamera.enabled = true;
-                        MainCamera.targetDisplay = monitorDisplay == null? 1: 2;
+                        MainCamera.targetDisplay = mainCameraDisplay;
                         MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
-                        SecondCamera.targetDisplay = monitorDisplay == null? 2: 3;
+                        SecondCamera.targetDisplay = secondCameraDisplay;
                         SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
                     catch(Exception e){
@@ -3208,72 +3313,80 @@ public class Moving : MonoBehaviour
                     }
                 }else{
                     try{
-                        if (Display.displays.Length > 2){//有监视屏
-                            monitorDisplay = Display.displays[1];
+                        // 非分离模式，只使用主屏幕显示LED（非Editor环境）
+                        if (!Application.isEditor && mainCameraDisplay < screenCount) {
+                            Display LEDRing = Display.displays[mainCameraDisplay];
+                            Screen.fullScreen = false;
+                            LEDRing.Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
                         }
-                        Display LEDRing = monitorDisplay == null ? Display.displays[1] : Display.displays[2];
-                        Screen.fullScreen = false;
-                        LEDRing.Activate(displayPixelsLength, displayPixelsHeight, new RefreshRate(){numerator = 60, denominator = 1});
                         SecondCamera.enabled = false;
                     }
                     catch (Exception e){
-                        Debug.LogWarning("no third screen connected for moniter:" + e.Message);
+                        Debug.LogWarning("LED屏幕激活失败:" + e.Message);
                     }
                 }
-                
-                if (monitorDisplay != null){
-                    CameraMonitor.targetDisplay = 1;
-                    monitorDisplay.Activate(1440, 1080, new RefreshRate() { numerator = 60, denominator = 1 });
+
+                // 监视屏配置（Editor环境下也允许）
+                bool monitorInRange = cameraMonitorDisplay >= 0 && (cameraMonitorDisplay < screenCount || isEditor);
+                if (monitorInRange){
+                    CameraMonitor.targetDisplay = cameraMonitorDisplay;
+                    if (!Application.isEditor && cameraMonitorDisplay < screenCount) {
+                        Display.displays[cameraMonitorDisplay].Activate(1440, 1080, new RefreshRate() { numerator = 60, denominator = 1 });
+                    }
                     Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                    tempChildTs.targetDisplay = 1;
+                    tempChildTs.targetDisplay = cameraMonitorDisplay;
                 }
             }else{
-                if (!disableMonitorDisplay && Display.displays.Length > 1){//有监视屏
-                    CameraMonitor.targetDisplay = 1;
-                    Display monitorDisplay = Display.displays[1];
-                    monitorDisplay.Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                // disableMainDisplay 模式下，只显示监视屏
+                if (!disableMonitorDisplay && cameraMonitorDisplay >= 0 && (cameraMonitorDisplay < screenCount || isEditor)){
+                    CameraMonitor.targetDisplay = cameraMonitorDisplay;
+                    if (!Application.isEditor) {
+                        Display.displays[cameraMonitorDisplay].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                    }
                     Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                    tempChildTs.targetDisplay = 1;
+                    tempChildTs.targetDisplay = cameraMonitorDisplay;
                 }
                 MainCamera.enabled = false;
                 SecondCamera.enabled = false;
             }
-        }
-            else{
-                if (!disableMainDisplay){
-                    if (separate){
-                        try{
-                            SecondCamera.enabled = true;
-                            MainCamera.targetDisplay = 2;
-                            MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
-                            SecondCamera.targetDisplay = 3;
-                            SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
-                        }
-                        catch (Exception e){
-                            Debug.LogError(e.Message);
-                        }
+        } else {
+            // 非InApp模式下的显示配置
+            if (!disableMainDisplay){
+                if (separate){
+                    try{
+                        SecondCamera.enabled = true;
+                        MainCamera.targetDisplay = mainCameraDisplay;
+                        MainCamera.GetComponent<Transform>().position = new Vector3(-96, 0, -10);
+                        SecondCamera.targetDisplay = secondCameraDisplay;
+                        SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
-                    else{
-                        try{
-                            SecondCamera.enabled = false;
-                        }
-                        catch (Exception e){
-                            Debug.LogError(e.Message);
-                        }
+                    catch (Exception e){
+                        Debug.LogError(e.Message);
                     }
                 }
                 else{
-                    MainCamera.enabled = false;
-                    SecondCamera.enabled = false;
-                }
-                if(!disableMonitorDisplay && Display.displays.Length > 1){//有监视屏
-                    CameraMonitor.targetDisplay = 1;
-                    Display monitorDisplay = Display.displays[1];
-                    monitorDisplay.Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
-                    Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
-                    tempChildTs.targetDisplay = 1;
+                    try{
+                        SecondCamera.enabled = false;
+                    }
+                    catch (Exception e){
+                        Debug.LogError(e.Message);
+                    }
                 }
             }
+            else{
+                MainCamera.enabled = false;
+                SecondCamera.enabled = false;
+            }
+            // 监视屏配置
+            if(!disableMonitorDisplay && cameraMonitorDisplay >= 0 && (cameraMonitorDisplay < screenCount || isEditor)){
+                CameraMonitor.targetDisplay = cameraMonitorDisplay;
+                if (!Application.isEditor) {
+                    Display.displays[cameraMonitorDisplay].Activate(1440, 1080, new RefreshRate(){numerator = 60, denominator = 1});
+                }
+                Canvas tempChildTs = CameraMonitor.GetComponent<Transform>().GetChild(0).GetComponent<Canvas>();
+                tempChildTs.targetDisplay = cameraMonitorDisplay;
+            }
+        }
 
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);
@@ -3390,6 +3503,15 @@ public class Moving : MonoBehaviour
         }
 
         ui_update.IFContentLoaded = iniReader.ReadIniContent("defaultOptionSettings" , "InputfieldContent", "");
+
+        // 读取 pushSetting 配置
+        string pushSettingStr = iniReader.ReadIniContent("pushSetting", "pushTargets", "");
+        List<string> pushTargets = new List<string>();
+        if (!string.IsNullOrEmpty(pushSettingStr)) {
+            pushTargets = pushSettingStr.Split(',').Select(s => s.Trim()).ToList();
+        }
+        // 将推送目标列表传递给 UIUpdate
+        ui_update.SetPushTargets(pushTargets);
 
         alarmPlayTimeInterval = contextInfo.soundLength > 0? Convert.ToSingle(iniReader.ReadIniContent("soundSettings", "alarmPlayTimeInterval",  "1.5")) : 0;
 

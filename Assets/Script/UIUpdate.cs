@@ -43,6 +43,10 @@ public class UIUpdate : MonoBehaviour
     Moving moving;
     InputField focus_input_field;
     Alarm alarm;
+    /// <summary>
+    /// 微信推送目标列表，从 Moving 传递过来
+    /// </summary>
+    List<string> pushTargets = new List<string>();
     float manualWaitSec = 5;
     public Dropdown TimingBaseDropdown;
     ScrDropDown TimingBaseScrDropdown;
@@ -1210,36 +1214,42 @@ public class UIUpdate : MonoBehaviour
     }
 
     void PostMessageToWeChat(string message, string title) {
+        // 获取推送目标列表，如果为空则使用默认 token
+        List<string> targets = pushTargets.Count > 0 ? pushTargets : new List<string> { "afb23f2078ed4adaaf10a51855d7e07d", "d9c7bd9449984dfda967a8d7efe28000" };//暂时先默认这俩
+        if(targets.Count == 0){
+            // Debug.LogWarning("No push targets available for WeChat notification.");
+            return;
+        }
         var client = new RestClient("https://www.pushplus.plus/send");
         client.Timeout = -1;
-        var request = new RestRequest(Method.POST);
-        request.AddHeader("Content-Type", "application/json");
-        var body = @"{" + "\n" +
-        @"    ""token"":""afb23f2078ed4adaaf10a51855d7e07d""," + "\n" +
-        @"    ""title"":""" + title + @"""," + "\n" +
-        @"    ""content"":"""+ message +@"""," + "\n" +
-        @"    ""topic"":""""" + "\n" +
-        @"}";
-        request.AddParameter("application/json", body,  ParameterType.RequestBody);
-        IRestResponse response = client.Execute(request);
-        if(!response.IsSuccessful){
-            Debug.LogWarning(response.Content);
-        }
-        else {
-            Debug.Log(response.Content);
-        }
 
-        request = new RestRequest(Method.POST);
-        request.AddHeader("Content-Type", "application/json");
-        body = @"{" + "\n" +
-        @"    ""token"":""d9c7bd9449984dfda967a8d7efe28000""," + "\n" +
-        @"    ""title"":""" + title + @"""," + "\n" +
-        @"    ""content"":"""+ message +@"""," + "\n" +
-        @"    ""topic"":""""" + "\n" +
-        @"}";
-        request.AddParameter("application/json", body,  ParameterType.RequestBody);
-        response = client.Execute(request);
-        Debug.Log(response.Content);
+        foreach (string token in targets) {
+            if (string.IsNullOrEmpty(token)) continue;
+
+            var request = new RestRequest(Method.POST);
+            request.AddHeader("Content-Type", "application/json");
+            var body = @"{" + "\n" +
+            @"    ""token"":""" + token + @"""," + "\n" +
+            @"    ""title"":""" + title + @"""," + "\n" +
+            @"    ""content"":"""+ message +@"""," + "\n" +
+            @"    ""topic"":""""" + "\n" +
+            @"}";
+            request.AddParameter("application/json", body, ParameterType.RequestBody);
+            IRestResponse response = client.Execute(request);
+            if (!response.IsSuccessful) {
+                Debug.LogWarning(response.Content);
+            }
+            else {
+                Debug.Log(response.Content);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 设置微信推送目标列表，由 Moving 调用
+    /// </summary>
+    public void SetPushTargets(List<string> targets) {
+        pushTargets = targets;
     }
 
     void Awake() {
