@@ -803,10 +803,10 @@ public class UIUpdate : MonoBehaviour
                     timings = tres;
                     moving.ButtonTriggerDict.Clear();
                     UpdateOptions();
-                    alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).Select(a => {
-                        alarm.DeleteAlarm(a, true);
-                        return a;
-                    });
+                    var timingAlarms = alarm.GetAlarmNames(false).Where(a => a.StartsWith("Timing")).ToList();
+                    foreach (string alarmName in timingAlarms){
+                        alarm.DeleteAlarm(alarmName, true);
+                    }
                     foreach (var _t in timings[0].Times()) {
                         ControlsParse(_t.name, _t.value, ignoreTiming: false, forceTiming: true, ignoreSecondTiming: true, timing: _t);
                     }
@@ -815,13 +815,15 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "TimingPause": {
-                bool pause = buttons.Find(b => b.name == "TimingPause").GetComponent<ScrButton>().pressCount % 2 == 1;
-                var timingAlarms = alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing"));
+                UnityEngine.UI.Button pauseButton = buttons.Find(b => b.name == "TimingPause");
+                bool pause = pauseButton.GetComponent<ScrButton>().pressCount % 2 == 1;
+                var timingAlarms = alarm.GetAlarmNames(true).Where(a => a.StartsWith("Timing")).ToList();
                 foreach (var _a in timingAlarms) {
                     if (pause) { alarm.PauseAlarm(_a); }
                     else { alarm.StartAlarm(_a); }
                 }
                 MessageUpdate($"{timingAlarms.Count()} alarm {(pause ? "paused" : "started")}");
+                SetButtonColor(pauseButton, pause? Color.green: Color.white);
                 break;
             }
             case "MessagePost": {
@@ -949,7 +951,11 @@ public class UIUpdate : MonoBehaviour
                     else if (stringArg.StartsWith("spread")) {
                         if(hierarchy < createdTimingBaseSubDropdowns.Count()) {
                             foreach(GameObject _go in createdTimingBaseSubDropdowns.Skip(hierarchy)) {
-                                _go.GetComponent<ScrDropDown>().ui_update = null;
+                                if(_go == null){
+                                    createdTimingBaseSubDropdowns.Remove(_go);
+                                }else{
+                                    _go.GetComponent<ScrDropDown>().ui_update = null;
+                                }
                                 createdTimingBaseSubDropdowns.Remove(_go);
                                 Destroy(_go);
                             }

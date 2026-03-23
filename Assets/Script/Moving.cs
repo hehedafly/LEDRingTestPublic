@@ -900,7 +900,11 @@ public class Moving : MonoBehaviour
     SerialPort sp = null;
     volatile bool StopSerialThread = false;
     int serialSpeed = -1;
-    List<string> compatibleVersion = new List<string>(){"V2.2"};
+
+    // 通信方式配置: 0-自动检测, 1-仅USB, 2-仅串口
+    // int communicationMode = 0;
+    // bool isUsbConnected = false;  // 当前是否为USB连接
+    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
@@ -1498,79 +1502,99 @@ public class Moving : MonoBehaviour
     }
 
     int CreateSerialConnection(out SerialPort sp, ref List<string> portInfo){
+        sp = null;  // 初始化 out 参数
         string[] portLs = ScanPorts_API();
         bool connected = false;
         if (portLs.Length == 0) { portInfo.Add("No Port Found!"); }
         foreach (string port in portLs){
             if (!connected && port.Contains("COM") && !portBlackList.Contains(port)){
+                // 直接尝试连接并握手
+                SerialPort tempSp = null;
                 try{
-                    sp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
-                    sp.RtsEnable = true;
-                    sp.DtrEnable = true;
-                    sp.Open();
-                    Debug.Log("COM avaible: " + port);
+                        tempSp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
+                        tempSp.RtsEnable = true;
+                        tempSp.DtrEnable = true;
+                        tempSp.ReadTimeout = 3000;  // 3秒超时 - 缩短等待时间
+                        tempSp.WriteTimeout = 1000;  // 1秒写超时
+                        tempSp.Open();
+                        Debug.Log("COM available: " + port);
 
-                    sp.ReadTimeout = 1000;
-                    int fail_count = 10;
-                    while (fail_count > 0){
-                        fail_count--;
-                        string temp_readline = sp.ReadLine();
-                        //Debug.Log(temp_readline);
-                        if (temp_readline.StartsWith("initialed")){
-                            if (temp_readline.Length > 10 && temp_readline[9..].StartsWith(":")){
-                                string tempInfo = temp_readline[10..];
-                                if (compatibleVersion.Count() > 0 && !compatibleVersion.Contains(tempInfo)){
-                                    portInfo.Add($"Incompatible version in {port}: {tempInfo}, required version: {string.Join(", ", compatibleVersion)}");
-                                    break;
-                                }else{
-                                    connected = true;
-                                    return 1;
-                                }
+                        // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
+                        string initMsg = tempSp.ReadLine();  // 阻塞等待
+                        Debug.Log("Received: " + initMsg);
+
+                        if (initMsg.StartsWith("initialed:")){
+                            string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
+
+                            // 验证版本兼容性
+                            if (compatibleVersion.Count() > 0 && !compatibleVersion.Contains(version)){
+                                throw new Exception($"Incompatible version: {version}, required: {string.Join(", ", compatibleVersion)}");
                             }
-                            break;
+
+                            // 发送 ACK 确认，Arduino 收到后退出握手循环
+                            tempSp.WriteLine("ACK");
+                            Debug.Log("ACK sent, handshake complete");
+
+                            // 验证通过，赋值给输出参数
+                            sp = tempSp;
+                            connected = true;
+                            return 1;
+                        }else{
+                            throw new Exception($"Unexpected message: {initMsg}");
+                        }
+                    }
+                    catch (TimeoutException){
+                        Debug.LogWarning($"Port {port} handshake timeout");
+                        portInfo.Add($"Port {port} handshake timeout");
+                    }
+                    catch (Exception e){
+                        Debug.Log(e);
+                        if (e.Message.Contains("拒绝访问") || e.Message.Contains("Access Denied")){
+                            portInfo.Add($"Port {port} access denied");
                         }
                         else{
-                            if (fail_count == 0){
-                                throw new Exception($"Arduino not initialed or version doesn't match, init info:{temp_readline}");
-                            }
-                            continue;
+                            portInfo.Add($"Cannot connect to port {port}: {e.Message}");
                         }
                     }
-
-                    //}
-                }
-                catch (Exception e){
-                    sp = new SerialPort();
-                    Debug.Log(e);
-                    // ui_update.MessageUpdate(e.Message+"\n");
-                    sp.Close();
-                    sp = null;
-                    if (e.Message.Contains("拒绝访问")){
-                        string strPortLs = string.Join(", ", portLs);
-                        portInfo.Add($"port {port} accssion Denied");
-                        // MessageBoxForUnity.Ensure($"Accssion Denied, please try another port or free {port} frist.\nserial speed: {serialSpeed}; now port: {port};  all ports:{strPortLs}", "Serial Error");
-                        // Quit();
+                    finally{
+                        // 如果连接失败，关闭并清理串口
+                        if (!connected && tempSp != null){
+                            SafeCloseSerialPort(tempSp);
+                        }
                     }
-                    else{
-                        string strPortLs = string.Join(", ", portLs);
-                        portInfo.Add($"Can not connect to port {port} because: {e.Message}");
-                        // MessageBoxForUnity.Ensure($"Can not connect to Arduino, please try another port or use Arduino IDE to Reopen The Serial Communicator.\nserial speed: {serialSpeed} now port: {port}; all ports: {strPortLs}", "Serial Error");
-                        // Quit();
-                    }
-                }
-                finally{
-
-                }
+                // 继续尝试下一个端口
             }
-            Debug.Log(port);
         }
+        // 所有端口都尝试完毕，仍未连接成功
         sp = null;
         return -1;
     }
 
+    /// <summary>
+    /// 安全关闭串口，避免卡住
+    /// </summary>
+    void SafeCloseSerialPort(SerialPort port){
+        if (port == null) return;
+        try{
+            if (port.IsOpen){
+                // 先设置超时，防止Close时因之前的阻塞操作卡住
+                port.ReadTimeout = 100;
+                port.WriteTimeout = 100;
+                port.Close();
+            }
+        }catch(Exception e){
+            Debug.LogWarning($"Error closing serial port: {e.Message}");
+        }
+        finally{
+            // 确保释放资源
+            try{ port.Dispose(); }catch{}
+        }
+    }
+
     void RecreateSerialConnection(bool inMainThread = true){
+        // 先安全关闭现有串口
         if(sp != null){
-            sp.Close();
+            SafeCloseSerialPort(sp);
             sp = null;
         }
         List<string> portInfo = new List<string>();
@@ -2417,7 +2441,7 @@ public class Moving : MonoBehaviour
         }else{
             res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
             if(res == 1 || res == -3){
-                WriteInfo(recType:12, _lickPos:_mills);
+                WriteInfo(recType:10, _lickPos:_mills);
                 Debug.Log($"OG {(_on? "on": "off")}");
                 ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
                 if(_mills > 0){
@@ -2737,15 +2761,23 @@ public class Moving : MonoBehaviour
 
     void SerialCommunicating(){
         while (!StopSerialThread){
-            manualResetEventVerify.WaitOne();
+            manualResetEventVerify.WaitOne(50);  // 等待信号，最多50ms超时以便能及时响应关闭
+            if (StopSerialThread) break;  // 检查退出标志
             if (sp!= null && sp.IsOpen){
                 try{
+                    // 设置读取超时，防止在关闭时卡住
+                    if (sp.ReadTimeout != 50) sp.ReadTimeout = 50;
+
                     int count = sp.BytesToRead;
                     if (count > 0){
                         byte[] readBuffer = new byte[count];
                         try{
                             sp.Read(readBuffer, 0, count);
                             //Debug.Log("received in second tread"+string.Join(",", readBuffer));
+                        }
+                        catch (TimeoutException){
+                            // 读取超时，继续循环
+                            continue;
                         }
                         catch (Exception ex){
                             Debug.Log(ex.Message);
@@ -2789,11 +2821,17 @@ public class Moving : MonoBehaviour
                     }
                 }catch(System.IO.IOException e){
                     Debug.Log(e.Message);
+                    SafeCloseSerialPort(sp);
+                    sp = null;
+                }catch(ObjectDisposedException){
+                    // 串口已被释放，设为null
                     sp = null;
                 }
             }else{
-                RecreateSerialConnection(false);
-                Debug.Log("lost connection to serial port, try to reconnect...");
+                if (!StopSerialThread){
+                    RecreateSerialConnection(false);
+                    Debug.Log("lost connection to serial port, try to reconnect...");
+                }
             }
         }
     }
@@ -3013,29 +3051,6 @@ public class Moving : MonoBehaviour
         }
     }
 
-    // void ProcessSerialSyncWriteQueue()
-    // {
-    //     while(serialSync){
-    //         while (syncWriteQueue.Count > 0 && serialSyncStreamWriter !=  null){
-    //             syncWriteQueue.TryPeek(out float chunk);
-    //             serialSyncStreamWriter.Write($"{chunk}\t");
-
-    //             if (serialSyncStreamWriter.BaseStream.Position >=  serialSyncStreamWriter.BaseStream.Length - BUFFER_THRESHOLD){
-    //                 serialSyncStreamWriter.Flush();
-    //             }
-
-    //             syncWriteQueue.TryDequeue(out _);
-    //         }
-    //     }
-
-    //     if (serialSyncStreamWriter !=  null)
-    //     {
-    //         serialSyncStreamWriter.Close();
-    //         serialSyncStreamWriter.Dispose();
-    //         serialSyncStreamWriter = null;
-    //     }
-    // }
-
     private void CleanupStreamWriter(){
         if (logStreamWriter !=  null){
             logStreamWriter.Close();
@@ -3138,14 +3153,6 @@ public class Moving : MonoBehaviour
     #endregion methods of file write end
 
     void Awake(){
-
-        // for (int i = 0; i < Math.Min(3, Display.displays.Length); i++)
-        // {
-        //     Display.displays[i].Activate();
-        //     Screen.fullScreen = false;
-        //     //Screen.SetResolution(Display.displays[i].renderingWidth, Display.displays[i].renderingHeight, true);
-        // }
-
         #if !UNITY_EDITOR
             InApp = true;
             config_path=Application.dataPath+"/Resources/config.ini";
@@ -3235,16 +3242,21 @@ public class Moving : MonoBehaviour
 
         // 检查是否有足够的屏幕（Editor环境下跳过检查，因为Display.displays在Editor中只有一个）
         bool isEditor = Application.isEditor;
-        if (!isEditor && screenCount < requiredContentScreens) {
-            string errorMsg = $"屏幕数量不足: 当前 {screenCount} 个屏幕，但需要至少 {requiredContentScreens} 个屏幕来显示内容";
-            MessageBoxForUnity.Ensure(errorMsg, "error");
-            Debug.LogError(errorMsg);
-            Quit();
-            return;
+        bool insufficientScreens = !isEditor && screenCount < requiredContentScreens;
+        if (insufficientScreens) {
+            if(MessageBoxForUnity.YesOrNo($"屏幕数量不足,当前检测到 {screenCount} 个屏幕，但至少需要 {requiredContentScreens} 个屏幕来满足配置要求。是否继续？（将只显示主UI）", "Display Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
+                Quit();
+                return;
+            }
+            Debug.LogWarning($"屏幕数量不足: 当前 {screenCount} 个屏幕，但需要至少 {requiredContentScreens} 个，将只显示主UI");
+            ui_update.MessageUpdate($"屏幕数量不足: 当前 {screenCount} 个屏幕，但需要至少 {requiredContentScreens} 个，将只显示主UI\n");
+            // 屏幕不足时，强制只使用主UI，禁用分离模式和监视屏
+            separate = false;
+            disableMonitorDisplay = true;
         }
 
         // 检查监视屏是否有足够屏幕（Editor环境下始终允许，因为是模拟显示）
-        bool hasMonitor = !disableMonitorDisplay && (screenCount > requiredContentScreens || isEditor);
+        bool hasMonitor = !disableMonitorDisplay && (screenCount > requiredContentScreens || isEditor || insufficientScreens);
         if (!isEditor && cameraMonitorDisplayConfig >= 0 && cameraMonitorDisplayConfig >= screenCount) {
             Debug.LogWarning($"cameraMonitorDisplay 配置值 ({cameraMonitorDisplayConfig}) 超过当前屏幕数量 ({screenCount})，将自动重新分配");
             cameraMonitorDisplayConfig = -1;
@@ -3627,10 +3639,6 @@ public class Moving : MonoBehaviour
         CreateSerialConnection(out sp, ref portInfo);
 
         if (sp != null){
-            InitializeStreamWriter();
-            string data_write = WriteInfo(returnTypeHead: true);
-            logWriteQueue.Enqueue(data_write);
-
             serialThread = new Thread(new ThreadStart(SerialCommunicating));
             serialThread.Start();
             Debug.Log(" serial thread started");
@@ -3638,15 +3646,14 @@ public class Moving : MonoBehaviour
             Debug.LogWarning("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
             if (MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
-                InitializeStreamWriter();
-                string data_write = WriteInfo(returnTypeHead: true);
-                logWriteQueue.Enqueue(data_write);
-
             }
             else{
                 Quit();
             }
         }
+        InitializeStreamWriter();
+        string data_write = WriteInfo(returnTypeHead: true);
+        logWriteQueue.Enqueue(data_write);
 
         _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
 
@@ -3923,7 +3930,13 @@ public class Moving : MonoBehaviour
 
     public void Exit(){
         try{
-            StopSerialThread = true;
+            if(sp != null){
+                StopSerialThread = true;
+                // 唤醒可能被阻塞的串口线程
+                manualResetEventVerify.Set();
+                CloseDevices();
+            }
+
             logList.Add(ui_update.MessageUpdate(returnAllMsg:true));
             foreach(string logs in logList){
                 logWriteQueue.Enqueue(logs);
@@ -3936,14 +3949,23 @@ public class Moving : MonoBehaviour
                                                                                 ));
             ProcessWriteQueue(true);
             CleanupStreamWriter();
-            
+
             if(ipcclient.Activated){
                 ipcclient.CloseSharedmm();
             }
             if(sp!= null){
-                CloseDevices();
-                if (serialThread != null && serialThread.IsAlive) { serialThread.Join(100); }
-                sp.Close();
+
+                // 等待线程结束，最多500ms
+                if (serialThread != null && serialThread.IsAlive) {
+                    serialThread.Join(500);
+                    // 如果线程仍未结束，强制终止
+                    if (serialThread.IsAlive){
+                        Debug.LogWarning("Serial thread did not stop in time, forcing termination");
+                        try{ serialThread.Abort(); }catch{}
+                    }
+                }
+                // 使用安全方法关闭串口
+                SafeCloseSerialPort(sp);
                 sp = null;
                 Debug.Log("serial closed");
             }

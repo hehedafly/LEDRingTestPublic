@@ -580,6 +580,7 @@ public class IPCClient : MonoBehaviour
                                     selectAreaCount = (int)sceneInfo.Last();    sceneInfo.RemoveAt(sceneInfo.Count - 1);
                                     activited = true;
                                     moving.WriteInfo(sceneInfo);
+                                    moving.WriteInfo(recType:11);
                                     uiUpdate.MessageUpdate($"time synchronized: offset: {pythonTimeOffset}");
                                     uiUpdate.MessageUpdate("scene info:" + string.Join(";", sceneInfo));
 
