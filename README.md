@@ -175,6 +175,8 @@ Post Processing V3.4.0
 | `available_pos`    | 以逗号分隔的整数 | 可用的杆位置（以度为单位）。索引映射：0→第一个值，1→第二个，依此类推。 |
 | `assign_pos`       | pattern          | 位置分配模式（见位置分配语法部分）    |
 | `barShiftLs`       | pattern or randomX~Y | 每个试验的杆位置偏移（支持与 `assign_pos` 相同的模式，或 `random-80~80` 的随机范围） |
+| `OGTriggerMethod` | string           | 光遗传学设备触发方法（见设备触发方法部分） |
+| `MSTriggerMethod` | string           | 显微镜设备触发方法（见设备触发方法部分） |
 | `barOffset`        | int              | 以度为单位的常量显示偏移（添加到所有位置） |
 | `pump_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的泵编号（数量必须 ≥ `available_pos` 数量，或为空以自动索引 0,1,2...） |
 | `lick_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的触摸面板/舔喷嘴编号（与 `pump_pos` 相同规则） |
@@ -194,7 +196,8 @@ Post Processing V3.4.0
 | `backgroundLight`  | int (0-255)      | 背景亮度级别                          |
 | `backgroundLightRed`| int (-1 to 255) | 红色分量覆盖；-1=灰度模式，0-255=固定红色级别 |
 | `seed`             | int              | 随机种子（-1=使用当前时间）         |
-| `standingSecInTrial`| float           | 在触发/目标区域内所需的站立时间      |
+| `standingSecInTrigger` | float        | 在触发区域内所需的站立时间（秒）    |
+| `standingSecInTrialInDest` | float    | 在目标区域内所需的站立时间（秒）    |
 
 ### 位置/材料分配语法
 
@@ -297,8 +300,14 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 | `displayPixelsLength` | int            | 屏幕水平宽度（像素）                 |
 | `displayPixelsHeight` | int           | 屏幕垂直高度（像素）                 |
 | `isRing`           | bool             | 启用环形显示模式（重复杆模式）       |
-| `separate`         | bool             | 使用单独的显示区域                   |
-| `displayVerticalPos` | float (0-1)    | 垂直屏幕位置（0.5=居中）            |
+| `separate`         | bool             | 使用单独的显示区域（仅支持双屏1920宽度） |
+| `displayVerticalPos` | float (0-1)    | 垂直屏幕位置（0.5=居中，范围-1到2） |
+| `disableMainDisplay` | bool           | 禁用主显示区域                       |
+| `disableMonitorDisplay` | bool        | 禁用额外监视器显示                       |
+| `mainUICameraDisplay` | int           | 主UI相机显示配置（显示器索引，-1=自动） |
+| `mainCameraDisplay` | int             | 主相机显示配置（显示器索引，-1=自动） |
+| `secondCameraDisplay` | int           | 第二相机显示配置（显示器索引，-1=自动） |
+| `cameraMonitorDisplay` | int           | 相机监视器显示配置（显示器索引，-1=自动） |
 
 ### 串口设置
 
