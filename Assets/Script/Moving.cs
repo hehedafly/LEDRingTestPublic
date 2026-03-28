@@ -1519,6 +1519,10 @@ public class Moving : MonoBehaviour
                         tempSp.Open();
                         Debug.Log("COM available: " + port);
 
+                        // 发送 RESET 信号 (3个0xCC) 让 Arduino 复位并重新握手
+                        tempSp.WriteLine("//forceinit");
+                        // tempSp.DiscardInBuffer();  // 清空缓冲区
+
                         // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
                         string initMsg = tempSp.ReadLine();  // 阻塞等待
                         Debug.Log("Received: " + initMsg);
@@ -3272,6 +3276,17 @@ public class Moving : MonoBehaviour
         bool monitorCondition = (!hasMonitor || cameraMonitorDisplayConfig >= 0);
         int cameraMonitorDisplay = monitorCondition ? cameraMonitorDisplayConfig : 3;
 
+        // 自动分配结束后检查是否超出屏幕数量，超出则警告并限制
+        string overflowWarn = "";
+        if (!isEditor && mainUICameraDisplay >= screenCount) { overflowWarn += $"mainUI({mainUICameraDisplay}>={screenCount}); "; mainUICameraDisplay = screenCount - 1; }
+        if (!isEditor && mainCameraDisplay >= screenCount) { overflowWarn += $"mainCam({mainCameraDisplay}>={screenCount}); "; mainCameraDisplay = screenCount - 1; }
+        if (!isEditor && secondCameraDisplay >= screenCount) { overflowWarn += $"secondCam({secondCameraDisplay}>={screenCount}); "; secondCameraDisplay = screenCount - 1; }
+        if (!isEditor && cameraMonitorDisplay >= screenCount) { overflowWarn += $"monitor({cameraMonitorDisplay}>={screenCount}); "; cameraMonitorDisplay = screenCount - 1; }
+        if (overflowWarn.Length > 0) Debug.LogWarning($"[DisplayConfig] 屏幕索引超出限制，已自动调整: {overflowWarn}");
+
+        // 收集显示屏激活过程中的问题
+        List<string> displayIssues = new List<string>();
+
         if(!float.TryParse(iniReader.ReadIniContent("settings", "refSegement", "-1"), out float refSegementDeg)){refSegementDeg = -1;}
         if(refseg != null){
             if(refSegementDeg >= 0){
@@ -3321,7 +3336,8 @@ public class Moving : MonoBehaviour
                         SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
                     catch(Exception e){
-                        Debug.LogError(e.Message);
+                        displayIssues.Add("InApp+separate分离模式激活失败: " + e.Message);
+                        Debug.LogError("[DisplayConfig] InApp+separate: " + e.Message);
                     }
                 }else{
                     try{
@@ -3334,7 +3350,8 @@ public class Moving : MonoBehaviour
                         SecondCamera.enabled = false;
                     }
                     catch (Exception e){
-                        Debug.LogWarning("LED屏幕激活失败:" + e.Message);
+                        displayIssues.Add("InApp单屏LED激活失败: " + e.Message);
+                        Debug.LogWarning("[DisplayConfig] InApp单屏: " + e.Message);
                     }
                 }
 
@@ -3373,7 +3390,8 @@ public class Moving : MonoBehaviour
                         SecondCamera.GetComponent<Transform>().position = new Vector3(96, 0, -10);
                     }
                     catch (Exception e){
-                        Debug.LogError(e.Message);
+                        displayIssues.Add("NotInApp+separate分离模式激活失败: " + e.Message);
+                        Debug.LogError("[DisplayConfig] NotInApp+separate: " + e.Message);
                     }
                 }
                 else{
@@ -3381,7 +3399,8 @@ public class Moving : MonoBehaviour
                         SecondCamera.enabled = false;
                     }
                     catch (Exception e){
-                        Debug.LogError(e.Message);
+                        displayIssues.Add("NotInApp单屏SecondCamera设置失败: " + e.Message);
+                        Debug.LogError("[DisplayConfig] NotInApp单屏: " + e.Message);
                     }
                 }
             }
@@ -3399,6 +3418,21 @@ public class Moving : MonoBehaviour
                 tempChildTs.targetDisplay = cameraMonitorDisplay;
             }
         }
+
+        // 屏幕分配汇总（激活完成后显示）
+        string allocSummary = $"[DisplaySummary] 屏幕数:{screenCount}";
+        allocSummary += $" | mainUI:Display{(int)mainUICameraDisplay}({(mainUICameraDisplayConfig < 0 ? "自动" : "配置")})";
+        allocSummary += $" | mainCam:Display{(int)mainCameraDisplay}({(mainCameraDisplayConfig < 0 ? "自动" : "配置")})";
+        if (separate && !disableMainDisplay) {
+            allocSummary += $" | secondCam:Display{(int)secondCameraDisplay}({(secondCameraDisplayConfig < 0 ? "自动" : "配置")})";
+        }
+        if (hasMonitor) {
+            allocSummary += $" | monitor:Display{(int)cameraMonitorDisplay}({(cameraMonitorDisplayConfig < 0 ? "自动" : "配置")})";
+        }
+        if (displayIssues.Count > 0) {
+            allocSummary += $" | 问题:{string.Join("; ", displayIssues)}";
+        }
+        Debug.Log(allocSummary);
 
         string _strMode = iniReader.ReadIniContent(  "settings", "start_mode", "0x00");
         trialMode = Convert.ToInt16(_strMode[(_strMode.IndexOf("0x")+2)..], 16);

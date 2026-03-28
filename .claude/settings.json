@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//e/Unity/Arduino/LEDRing_for_unity_byte_mode_NewVersion_V2_3/**)"
+    ]
+  }
+}
