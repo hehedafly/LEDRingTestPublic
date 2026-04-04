@@ -1441,11 +1441,13 @@ public class UIUpdate : MonoBehaviour
         List<string> tempFInishedLs = alarm.GetAlarmFinish();
         foreach(string k in buttonTimingSpecialValues.Keys.ToList()){
             if(buttonTimingSpecialValues[k] > 0){
-                foreach(string _targetElementTimingName in buttonTimingSpecialTimingMethods[k]){
-                    tempFInishedLs.Add(_targetElementTimingName);
+                if(buttonTimingSpecialTimingMethods.Keys.Contains(k)){
+                    foreach(string _targetElementTimingName in buttonTimingSpecialTimingMethods[k]){
+                        tempFInishedLs.Add(_targetElementTimingName);
+                    }
+                    buttonTimingSpecialTimingMethods[k].Clear();
+                    buttonTimingSpecialValues[k] = 0;
                 }
-                buttonTimingSpecialTimingMethods[k].Clear();
-                buttonTimingSpecialValues[k] = 0;
             }
         }
         foreach (string alarmFinished in tempFInishedLs){

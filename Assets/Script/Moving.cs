@@ -1524,7 +1524,12 @@ public class Moving : MonoBehaviour
                         // tempSp.DiscardInBuffer();  // 清空缓冲区
 
                         // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
+                        int failCount = 0; int maxFailCount = 10;
                         string initMsg = tempSp.ReadLine();  // 阻塞等待
+                        while(initMsg.Length == 0 && failCount < maxFailCount){
+                            initMsg = tempSp.ReadLine();
+                            failCount++;
+                        }
                         Debug.Log("Received: " + initMsg);
 
                         if (initMsg.StartsWith("initialed:")){
@@ -1536,12 +1541,21 @@ public class Moving : MonoBehaviour
                             }
 
                             // 发送 ACK 确认，Arduino 收到后退出握手循环
-                            tempSp.WriteLine("ACK");
-                            Debug.Log("ACK sent, handshake complete");
-
-                            // 验证通过，赋值给输出参数
-                            sp = tempSp;
-                            connected = true;
+                            for(int i = 0; i < 3; i++){tempSp.WriteLine("ACK");}
+                            string response = tempSp.ReadLine();  // 阻塞等待
+                            failCount = 0;
+                            while((response.Length == 0 || response == initMsg) && failCount < maxFailCount){
+                                response = tempSp.ReadLine();
+                                failCount++;
+                            }
+                            if (response .StartsWith("ACK_OK")){
+                                Debug.Log("ACK received, handshake complete");
+                                // 验证通过，赋值给输出参数
+                                sp = tempSp;
+                                connected = true;
+                            }else{
+                                throw new Exception($"Unexpected response: {response}");
+                            }
                             return 1;
                         }else{
                             throw new Exception($"Unexpected message: {initMsg}");
@@ -1622,7 +1636,7 @@ public class Moving : MonoBehaviour
     int ContextInitSync(){
         List<string> names = new List<string>(){Arduino_var_list[0], Arduino_var_list[1]};
         List<int> values = new List<int>(){trialMode % 0x10, Math.Max(0, nowTrial)};
-        DataSend("forceinit");
+        DataSend("clear");
         int res = CommandVerify(names, values);
         //DataSend("p_trial_set=1", true);
         return res;
@@ -1778,10 +1792,11 @@ public class Moving : MonoBehaviour
         nowTrial++;
         trialStatus = 1;
         trialStartTime = Time.fixedUnscaledTime;
-        while (!DebugWithoutArduino && ContextStartSync() < 0){
+        if (!DebugWithoutArduino && ContextStartSync() < 0){
             RecreateSerialConnection();
-            Debug.Log("StartTrial failed, retrying");
-            ContextInitSync();
+            if(ContextInitSync() < 0){
+                Debug.Log("StartTrial failed");
+            };
         }
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
         MaterialStruct tempMs = GetMaterialStruct(tempMatName);
@@ -2929,6 +2944,7 @@ public class Moving : MonoBehaviour
                         }
                         else if(temp_echo.Length > 3){
                             serial_read_content_ls.Add(new byte[] { 0xAA }.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[] { 0xDD }).ToArray());
+                            break;
                         }
                     }
                     string temp_aim = Arduino_var_list.FindIndex(str => str == messages[i]).ToString() + "=" + values[i].ToString();
