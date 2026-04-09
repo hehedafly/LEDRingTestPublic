@@ -934,6 +934,7 @@ public class Moving : MonoBehaviour
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
     bool debugMode = false; public bool DebugMode { get { return debugMode;} set{debugMode = value;}}
+    bool disableMainDisplay = false;
     public GameObject refseg;
     Material refSegementMat;
     public Dictionary<string, bool> DeviceEnableDict = new Dictionary<string, bool>{};
@@ -1498,7 +1499,6 @@ public class Moving : MonoBehaviour
                 }
             }
         }
-
     }
 
     int CreateSerialConnection(out SerialPort sp, ref List<string> portInfo){
@@ -1511,75 +1511,81 @@ public class Moving : MonoBehaviour
                 // 直接尝试连接并握手
                 SerialPort tempSp = null;
                 try{
-                        tempSp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
-                        tempSp.RtsEnable = true;
-                        tempSp.DtrEnable = true;
-                        tempSp.ReadTimeout = 3000;  // 3秒超时 - 缩短等待时间
-                        tempSp.WriteTimeout = 1000;  // 1秒写超时
-                        tempSp.Open();
-                        Debug.Log("COM available: " + port);
+                    tempSp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
+                    tempSp.RtsEnable = true;
+                    tempSp.DtrEnable = true;
+                    tempSp.ReadTimeout = 3000;  // 3秒超时 - 缩短等待时间
+                    tempSp.WriteTimeout = 1000;  // 1秒写超时
+                    tempSp.Open();
+                    Debug.Log("COM available: " + port);
 
-                        // 发送 RESET 信号 (3个0xCC) 让 Arduino 复位并重新握手
-                        tempSp.WriteLine("//forceinit");
-                        // tempSp.DiscardInBuffer();  // 清空缓冲区
+                    // 发送 RESET 信号 (3个0xCC) 让 Arduino 复位并重新握手
+                    tempSp.WriteLine("//forceinit");
+                    // tempSp.DiscardInBuffer();  // 清空缓冲区
 
-                        // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
-                        int failCount = 0; int maxFailCount = 10;
-                        string initMsg = tempSp.ReadLine();  // 阻塞等待
-                        while(initMsg.Length == 0 && failCount < maxFailCount){
-                            initMsg = tempSp.ReadLine();
-                            failCount++;
+                    // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
+                    int failCount = 0; int maxFailCount = 10;
+                    string initMsg = tempSp.ReadLine();  // 阻塞等待
+                    while(initMsg.Length == 0 && failCount < maxFailCount){
+                        initMsg = tempSp.ReadLine();
+                        failCount++;
+                    }
+                    Debug.Log("Received: " + initMsg);
+
+                    if (initMsg.StartsWith("initialed:")){
+                        string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
+
+                        // 验证版本兼容性
+                        if (compatibleVersion.Count() > 0 && !compatibleVersion.Contains(version)){
+                            throw new Exception($"Incompatible version: {version}, required: {string.Join(", ", compatibleVersion)}");
                         }
-                        Debug.Log("Received: " + initMsg);
 
-                        if (initMsg.StartsWith("initialed:")){
-                            string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
-
-                            // 验证版本兼容性
-                            if (compatibleVersion.Count() > 0 && !compatibleVersion.Contains(version)){
-                                throw new Exception($"Incompatible version: {version}, required: {string.Join(", ", compatibleVersion)}");
-                            }
-
-                            // 发送 ACK 确认，Arduino 收到后退出握手循环
-                            for(int i = 0; i < 3; i++){tempSp.WriteLine("ACK");}
-                            string response = tempSp.ReadLine();  // 阻塞等待
-                            failCount = 0;
-                            while((response.Length == 0 || response == initMsg) && failCount < maxFailCount){
-                                response = tempSp.ReadLine();
-                                failCount++;
-                            }
-                            if (response .StartsWith("ACK_OK")){
-                                Debug.Log("ACK received, handshake complete");
-                                // 验证通过，赋值给输出参数
-                                sp = tempSp;
-                                connected = true;
+                        // 发送 ACK 确认，Arduino 收到后退出握手循环
+                        for(int i = 0; i < 3; i++){tempSp.WriteLine("\nACK\n");}
+                        string response = "";
+                        int newlineCount = 0;
+                        while (newlineCount < maxFailCount){
+                            char c = (char)tempSp.ReadChar();
+                            if (c == '\n' || c == '\r'){
+                                newlineCount++;
+                                response = response.Replace("\r", "").Replace("\n", "");
                             }else{
-                                throw new Exception($"Unexpected response: {response}");
+                                response += c;
                             }
-                            return 1;
+                            if (response.StartsWith("ACK_OK")){
+                                break;
+                            }
+                        }
+                        if (response.StartsWith("ACK_OK")){
+                            Debug.Log("ACK received, handshake complete");
+                            // 验证通过，赋值给输出参数
+                            sp = tempSp;
+                            connected = true;
                         }else{
-                            throw new Exception($"Unexpected message: {initMsg}");
+                            throw new Exception($"Unexpected response: {response}");
                         }
+                        return 1;
+                    }else{
+                        throw new Exception($"Unexpected message: {initMsg}");
                     }
-                    catch (TimeoutException){
-                        Debug.LogWarning($"Port {port} handshake timeout");
-                        portInfo.Add($"Port {port} handshake timeout");
+                }catch (TimeoutException){
+                    Debug.LogWarning($"Port {port} handshake timeout");
+                    portInfo.Add($"Port {port} handshake timeout");
+                }catch (Exception e){
+                    Debug.Log(e);
+                    if (e.Message.Contains("拒绝访问") || e.Message.Contains("Access Denied")){
+                        portInfo.Add($"Port {port} access denied");
                     }
-                    catch (Exception e){
-                        Debug.Log(e);
-                        if (e.Message.Contains("拒绝访问") || e.Message.Contains("Access Denied")){
-                            portInfo.Add($"Port {port} access denied");
-                        }
-                        else{
-                            portInfo.Add($"Cannot connect to port {port}: {e.Message}");
-                        }
+                    else{
+                        portInfo.Add($"Cannot connect to port {port}: {e.Message}");
                     }
-                    finally{
-                        // 如果连接失败，关闭并清理串口
-                        if (!connected && tempSp != null){
-                            SafeCloseSerialPort(tempSp);
-                        }
+                }
+                finally{
+                    // 如果连接失败，关闭并清理串口
+                    if (!connected && tempSp != null){
+                        SafeCloseSerialPort(tempSp);
                     }
+                }
                 // 继续尝试下一个端口
             }
         }
@@ -1819,7 +1825,7 @@ public class Moving : MonoBehaviour
                     if(trialStartTriggerMode == 3){
                         foreach(int[] tarea in TriggerAreas){areas.Add(tarea);}
                     }
-                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});//矩形绘制bar所在位置
+                    ipcclient.MDDrawTemp(areas, disableMainDisplay? null: new List<int[]>{ipcclient.GetCircledRotatedRectangeForBarDisplay(contextInfo.GetFinalBarPos(nowTrial))});//矩形绘制bar所在位置
                 }else{
                     Debug.Log("No selected area match the pos now");
                 }
@@ -1831,7 +1837,7 @@ public class Moving : MonoBehaviour
                     if(trialStartTriggerMode == 3){
                         foreach(int[] tarea in TriggerAreas){areas.Add(tarea);}
                     }
-                    ipcclient.MDDrawTemp(areas, new List<Vector2Int[]>{ipcclient.GetCircledRotatedRectange(contextInfo.GetFinalBarPos(nowTrial))});
+                    ipcclient.MDDrawTemp(areas, disableMainDisplay? null: new List<int[]>{ipcclient.GetCircledRotatedRectangeForBarDisplay(contextInfo.GetFinalBarPos(nowTrial))});
                 }else{
                     Debug.Log("No selected area match the pos now");
                 }
@@ -3199,7 +3205,7 @@ public class Moving : MonoBehaviour
 
         barWidth = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barWidth", "100"));
         barHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "barHeight", "1080"));
-        bool disableMainDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMainDisplay", "false") == "true";
+        disableMainDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMainDisplay", "false") == "true";
         bool disableMonitorDisplay = iniReader.ReadIniContent(  "displaySettings", "disableMonitorDisplay", "false") == "true";
         displayPixelsLength = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsLength", "1920"));
         displayPixelsHeight = Convert.ToInt16(iniReader.ReadIniContent(  "displaySettings", "displayPixelsHeight", "1080"));
@@ -3507,22 +3513,6 @@ public class Moving : MonoBehaviour
             return;
         }
 
-        ExeLauncher exeLauncher= new ExeLauncher();
-        if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
-            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""), "LogEvent");
-            if(File.Exists(_path)){
-                iniReader.WriteIniContent("settings", "logEventPath", _path);
-            }
-        }
-        if(iniReader.ReadIniContent("settings", "openPythonScript", "false") == "true"){
-            string _command = iniReader.ReadIniContent("settings", "PythonScriptCommand", "");
-            List<string> options = exeLauncher.CommandParser(_command);
-            exeLauncher.LaunchPython(
-                options[0], options[1], options[2], options[3]
-            );
-            DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
-        }
-
         lickPosLsCopy = contextInfo.lickPosLs;
 
         trialStartTriggerMode = contextInfo.trialTriggerMode;
@@ -3704,6 +3694,22 @@ public class Moving : MonoBehaviour
         InitializeStreamWriter();
         string data_write = WriteInfo(returnTypeHead: true);
         logWriteQueue.Enqueue(data_write);
+
+        ExeLauncher exeLauncher= new ExeLauncher();
+        if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
+            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""), "LogEvent");
+            if(File.Exists(_path)){
+                iniReader.WriteIniContent("settings", "logEventPath", _path);
+            }
+        }
+        if(iniReader.ReadIniContent("settings", "openPythonScript", "false") == "true"){
+            string _command = iniReader.ReadIniContent("settings", "PythonScriptCommand", "");
+            List<string> options = exeLauncher.CommandParser(_command);
+            exeLauncher.LaunchPython(
+                options[0], options[1], options[2], options[3]
+            );
+            DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
+        }
 
         _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
 

@@ -169,12 +169,11 @@ public class IPCClient : MonoBehaviour
     /// </summary>
     /// <param name="angle"></param>
     /// <returns></returns>
-    public Vector2Int[] GetCircledRotatedRectange(float angle){
+    public int[] GetCircledRotatedRectangeForBarDisplay(float angle){
         Debug.Log($"draw rotated rect at angle{angle} + {sceneInfo[3]}");
         angle += sceneInfo[3];
 
         float radians = (float)(angle * Math.PI / 180);
-        Vector2Int[] rectVertices = new Vector2Int[4];
         int _w = 12;
         int _h = 25;
         int offset = 10;
@@ -182,22 +181,22 @@ public class IPCClient : MonoBehaviour
             (int)(sceneInfo[0] + (sceneInfo[2] + offset) * (float)Math.Sin(radians)),
             (int)(sceneInfo[1] - (sceneInfo[2] + offset) * (float)Math.Cos(radians))
         );
- 
+
         float cos = Mathf.Cos(radians + 90 * Mathf.Deg2Rad);
         float sin = Mathf.Sin(radians + 90 * Mathf.Deg2Rad);
 
+        int[] rectVertices = new int[8];
         for (int i = 0; i < 4; i++)
         {
 
             float x = i < 2 ? _w : -_w;
             float y = (i % 3 == 0) ? _h : -_h;
-            
+
             // 应用旋转矩阵（绕原点逆时针旋转）
-            rectVertices[i] = new Vector2Int(
-            (int)(rectCenter.x + x * cos - y * sin),
-            (int)(rectCenter.y + x * sin + y * cos)
-            );
-            
+            int vx = (int)(rectCenter.x + x * cos - y * sin);
+            int vy = (int)(rectCenter.y + x * sin + y * cos);
+            rectVertices[i * 2] = vx;
+            rectVertices[i * 2 + 1] = vy;
         }
         return rectVertices;
     }
@@ -340,7 +339,7 @@ public class IPCClient : MonoBehaviour
         return 1;
     }
 
-    public int MDDrawTemp(List<int[]> areas = null, List<Vector2Int[]> vectorAreas = null){
+    public int MDDrawTemp(List<int[]> areas = null, List<int[]> vectorAreas = null){
         if(mouseDrawer == null){return -1;}
         bool clear = areas == null;
         if(areas != null){
@@ -576,6 +575,7 @@ public class IPCClient : MonoBehaviour
                             }else if(msg.StartsWith("scene:")){
                             // Debug.Log("msg from pyhon: "+ msg);
                                 if(pythonTimeOffset != 0){
+                                    //sceneInfo *4 / *5, selectAreaCount
                                     sceneInfo = msg[6..].Split(";").ToList().Select(v => Convert.ToSingle(v)).ToList();
                                     selectAreaCount = (int)sceneInfo.Last();    sceneInfo.RemoveAt(sceneInfo.Count - 1);
                                     activited = true;

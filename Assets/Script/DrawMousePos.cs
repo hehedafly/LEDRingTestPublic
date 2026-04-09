@@ -106,6 +106,9 @@ public class MouseDrawer
 
     #region 初始图形绘制
     
+    /// <summary>
+    /// area: [mark; type, 0-rectange, 1-circle ; lu/centerx ; lb/centery ; ru/rad ; rb/inner]
+    /// </summary>
     void DrawArea(Color[] texPixels, int[] area, int markTypeCount = 32){
         Color color = area[0] < 0? Color.green : area[0] / markTypeCount == 0? Color.blue : Color.red;
         Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
@@ -118,13 +121,21 @@ public class MouseDrawer
         }
     }
 
-    public void DrawVectorArea(Color[] texPixels, Vector2[] area){
-        Color color = Color.black;
+    public void DrawRectangleArea(Color[] texPixels, int[] area, int markTypeCount = 32){
+        // Color color = Color.black;
+        Color color = area[0] < 0? Color.green : area[0] / markTypeCount == 0? Color.blue : Color.red;
+
         Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
-        if (area.Length == 2){
-            DrawRectangle(texPixels, area[0], area[1], color, 2);
-        }else if(area.Length == 4){
-            DrawRectangle(texPixels,  area[0], area[1], area[2], area[3], color, 2);
+        if(area.Length == 4){
+            DrawRectangle(texPixels, new Vector2(area[1], area[2]), new Vector2(area[3], area[4]), color, 2);
+        }
+        if (area.Length == 8){
+            DrawRectangle(texPixels,
+                new Vector2(area[0], area[1]),
+                new Vector2(area[2], area[3]),
+                new Vector2(area[4], area[5]),
+                new Vector2(area[6], area[7]),
+                Color.black, 2);
         }
     }
 
@@ -138,9 +149,13 @@ public class MouseDrawer
             }
         }
         if(sceneInfo != null){
-            float angle = sceneInfo[3] * Mathf.Deg2Rad;
-            DrawArea(pixels, new int[]{-1, 0, (int)sceneInfo[0], (int)sceneInfo[1], (int)sceneInfo[2], -1});
-            DrawLine(pixels, new Vector2(sceneInfo[0], sceneInfo[1]), new Vector2(sceneInfo[0] + sceneInfo[2] * (float)Math.Sin(angle), sceneInfo[1] - sceneInfo[2] * (float)Math.Cos(angle)), Color.green, 2);
+            if(sceneInfo.Length == 5 && sceneInfo[4] == 1){
+                DrawRectangle(pixels, new Vector2(sceneInfo[0], sceneInfo[1]), new Vector2(sceneInfo[2], sceneInfo[3]), Color.green, 2);
+            }else{
+                float angle = sceneInfo[3] * Mathf.Deg2Rad;
+                DrawArea(pixels, new int[]{-1, 0, (int)sceneInfo[0], (int)sceneInfo[1], (int)sceneInfo[2], -1});
+                DrawLine(pixels, new Vector2(sceneInfo[0], sceneInfo[1]), new Vector2(sceneInfo[0] + sceneInfo[2] * (float)Math.Sin(angle), sceneInfo[1] - sceneInfo[2] * (float)Math.Cos(angle)), Color.green, 2);
+            }
         }
         baseLayer.SetPixels(pixels);
         baseLayer.Apply();
@@ -237,23 +252,15 @@ public class MouseDrawer
         Color[] pixels = tempLayer.GetPixels();
 
         foreach(int[] area in areas){
-            DrawArea(pixels, area);
+            if(area.Length == 8){
+                DrawRectangleArea(pixels, area);
+            }else{
+                DrawArea(pixels, area);
+            }
         }
         
         tempLayer.SetPixels(pixels);
         tempLayer.Apply();
-    }
-    public void DrawTemporaryLayer(List<Vector2Int[]> areas, bool clear = true){
-        if(clear){ClearLayer(tempLayer, Color.clear);}
-        Color[] pixels = tempLayer.GetPixels();
-
-        foreach(Vector2Int[] area in areas){
-            DrawVectorArea(pixels, area.Select(v => new Vector2(v.x, v.y)).ToArray());
-        }
-        
-        tempLayer.SetPixels(pixels);
-        tempLayer.Apply();
-
     }
     #endregion
 
