@@ -889,7 +889,7 @@ public class Moving : MonoBehaviour
         // 0        1       2     3         4          5           6           7        8          9            10          11          12          13
         "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord", "pump"
     };
-    List<string> recTypeAddtion = new List<string>(){"skip", "complete_manually", "null"};
+    List<string> recTypeAddtion = new List<string>(){"skip", "complete_manually", "null", "all_complete"};
     UIUpdate ui_update;
     Alarm alarm;    public Alarm alarmPublic{get{return alarm;}}
     // public SoundConfig soundConfig;
@@ -1553,9 +1553,9 @@ public class Moving : MonoBehaviour
                         }
 
                         // 发送 ACK 确认，Arduino 收到后退出握手循环
-                        for(int i = 0; i < 3; i++){tempSp.WriteLine("\nACK\n");}
                         string response = "";
                         int newlineCount = 0;
+                        for(int i = 0; i < 3; i++){tempSp.WriteLine("\nACK\n");}
                         while (newlineCount < maxFailCount){
                             char c = (char)tempSp.ReadChar();
                             if (c == '\n' || c == '\r'){
@@ -1634,14 +1634,18 @@ public class Moving : MonoBehaviour
             sp = null;
         }
         List<string> portInfo = new List<string>();
-        
-        if (CreateSerialConnection(out sp, ref portInfo) > 0){
-            Debug.Log("serial reconnected in trial start");
-        }else{
+        int failCount = 0; int maxFailCount = 5;
+        while (failCount < maxFailCount && CreateSerialConnection(out sp, ref portInfo) < 0){
+            System.Threading.Thread.Sleep(300);
+            Debug.Log("serial reconnecting in trial start");
+            failCount++;
+        }
+        if(sp == null){
             Debug.LogError("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
             // Quit();
             if(MessageBoxForUnity.YesOrNo("Fatal error occured, failed connecting to Arduino, Stay?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
                 if(inMainThread){
+                    StopSerialThread = true;
                     Quit();
                 }else{
                     StopSerialThread = true;
@@ -2231,7 +2235,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial
+    /// check后判断是否结束当前trial, lickInd = -1: 超时; -2: 手动成功进入下一个trial, -3: 位置检测完成trial, -4:所有判断全部满足一次
     /// lick: 1:reach, 0:leave, default 
     /// return: 1: default lick, 0:default leave  -3:延时, -4:位置判定过
     /// </summary>
@@ -2241,10 +2245,6 @@ public class Moving : MonoBehaviour
     int LickingCheck(int lickInd, int lickTypeMark = 1, bool simulate = false){
         // Debug.Log($"LickingCheck: lickInd {lickInd}, lickTypeMark {lickTypeMark} in trial {nowTrial}");
         int rightLickInd = contextInfo.GetRightLickPosIndInTrial(nowTrial);
-        
-        if(lickInd >= 0 && trialMode >> 4 == 3){
-            lickInd = -4;
-        }
         
         if(lickTypeMark == 1){
             if(lickInd >= 0 ){ui_update.SetLightSignal("lick", true, duration:simulate? 0.2f: 0.5f);}
@@ -2258,7 +2258,7 @@ public class Moving : MonoBehaviour
             }
             
             if(!forceWaiting){
-                if(lickInd <= -3){
+                if(lickInd == -3){
                     if(TrialResultCheck(nowTrial) > 0){//位置检测模式已判定过，
                         return -4;
                     }else{
@@ -2271,7 +2271,7 @@ public class Moving : MonoBehaviour
         }else{
             if(lickInd >= 0){ui_update.SetLightSignal("lick", false);}
         }
-
+        Debug.Log($"waiting: {waiting}");
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
             if(lickTypeMark == 0){
                 WriteInfo(_lickPos: lickInd, addInfo:"leave");
@@ -2325,10 +2325,10 @@ public class Moving : MonoBehaviour
                 }else if(trialMode >> 4 == 2){//到特定地方
                     result = false;
                     if(lickInd < 0){
-                        result = lickInd == -2 || lickInd == -3;
+                        result = lickInd == -2 || lickInd == -3 || lickInd == -4;
                     }
 
-                    if(lickInd >= 0 && trialResult.Count > nowTrial){//完成任务后小鼠舔了
+                    if((lickInd >= 0 || lickInd == -4) && trialResult.Count > nowTrial){//完成任务后小鼠舔了
                         // if(trialMode % 0x10 == 2){ServeWaterInTrial();}
                         ui_update.MessageUpdate("Trial end");
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
@@ -2347,6 +2347,8 @@ public class Moving : MonoBehaviour
                             ui_update.MessageUpdate("Trial skipped");
                             EndTrial(trialSuccess: false, ignoreBarLatstingTime:true);
                         }
+
+                        if(lickInd == -4){LickingCheckPubic(-4, simulate:true);}
                     }
                 }
                 ui_update.MessageUpdate();
