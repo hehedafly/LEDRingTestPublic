@@ -896,7 +896,10 @@ public class Moving : MonoBehaviour
 
     #region communicating
     IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
+    string openPythonSciptCommand = "";
+    ExeLauncher exeLauncher = null;
     List<string> portBlackList = new List<string>();
+    List<string> recommendPort = new List<string>();
     SerialPort sp = null;
     volatile bool StopSerialThread = false;
     int serialSpeed = -1;
@@ -945,6 +948,7 @@ public class Moving : MonoBehaviour
     bool[] DeviceCloseOptionBeforeExits = new bool[3] { true, true, false };
     int lickCheckFunctionsStatus = -1; //return from lick check functions, used when somewhere depend on judging lick
     int posCheckFunctionsStatus = -1; //return from position check functions, used when somewhere depend on judging mouse pos
+    int quitMark = 0;
     
 
 
@@ -1116,6 +1120,7 @@ public class Moving : MonoBehaviour
         #else
             Application.Quit();
         #endif
+        quitMark += 1;
     }
     
     T GetRandom<T>(List<T> _range){
@@ -1503,9 +1508,16 @@ public class Moving : MonoBehaviour
 
     int CreateSerialConnection(out SerialPort sp, ref List<string> portInfo){
         sp = null;  // 初始化 out 参数
-        string[] portLs = ScanPorts_API();
+        List<string> portLs = ScanPorts_API().ToList();
+        for(int i = 0; i < portLs.Count; i++){
+            if(recommendPort.Contains(portLs[i])){
+                portLs.Insert(0, portLs[i]);
+                portLs.RemoveAt(i+1);
+            }
+        }
         bool connected = false;
-        if (portLs.Length == 0) { portInfo.Add("No Port Found!"); }
+        if (portLs.Count == 0) { portInfo.Add("No Port Found!"); }
+        portInfo.Add($"Ports Scaned:{string.Join(", ", portLs)}");
         foreach (string port in portLs){
             if (!connected && port.Contains("COM") && !portBlackList.Contains(port)){
                 // 直接尝试连接并握手
@@ -1552,11 +1564,11 @@ public class Moving : MonoBehaviour
                             }else{
                                 response += c;
                             }
-                            if (response.StartsWith("ACK_OK")){
+                            if (response.EndsWith("ACK_OK")){
                                 break;
                             }
                         }
-                        if (response.StartsWith("ACK_OK")){
+                        if (response.EndsWith("ACK_OK")){
                             Debug.Log("ACK received, handshake complete");
                             // 验证通过，赋值给输出参数
                             sp = tempSp;
@@ -3175,6 +3187,14 @@ public class Moving : MonoBehaviour
         return;
     }
 
+    public void OpenPythonScript(bool show = false){
+        List<string> options = exeLauncher.CommandParser(openPythonSciptCommand);
+        if(show){ui_update.MessageUpdate($"python script opened by: {openPythonSciptCommand}");}
+        exeLauncher.LaunchPython(
+            options[0], options[1], options[2], options[3]
+        );
+    }
+
 
     #endregion methods of file write end
 
@@ -3645,6 +3665,9 @@ public class Moving : MonoBehaviour
         foreach(string com in iniReader.ReadIniContent("serialSettings", "blackList", "").Split(",")){
             if(!portBlackList.Contains(com)){portBlackList.Add(com);}
         }
+        foreach(string com in iniReader.ReadIniContent("serialSettings", "recommendPort", "").Split(",")){
+            if(!recommendPort.Contains(com)){recommendPort.Add(com);}
+        }
         foreach(string matchVersion in iniReader.ReadIniContent("serialSettings", "compatibleVersion", "").Split(",")){
             if(matchVersion.Length > 0){
                 compatibleVersion.Add(matchVersion);
@@ -3691,27 +3714,27 @@ public class Moving : MonoBehaviour
                 Quit();
             }
         }
-        InitializeStreamWriter();
-        string data_write = WriteInfo(returnTypeHead: true);
-        logWriteQueue.Enqueue(data_write);
 
-        ExeLauncher exeLauncher= new ExeLauncher();
-        if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
-            string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""), "LogEvent");
-            if(File.Exists(_path)){
-                iniReader.WriteIniContent("settings", "logEventPath", _path);
+        if(quitMark <= 0){
+            InitializeStreamWriter();
+            string data_write = WriteInfo(returnTypeHead: true);
+            logWriteQueue.Enqueue(data_write);
+
+            exeLauncher= new ExeLauncher();
+            if(iniReader.ReadIniContent("settings", "openLogEvent", "false") == "true"){
+                string _path = exeLauncher.Start(iniReader.ReadIniContent("settings", "logEventPath", ""), "LogEvent");
+                if(File.Exists(_path)){
+                    iniReader.WriteIniContent("settings", "logEventPath", _path);
+                }
             }
-        }
-        if(iniReader.ReadIniContent("settings", "openPythonScript", "false") == "true"){
-            string _command = iniReader.ReadIniContent("settings", "PythonScriptCommand", "");
-            List<string> options = exeLauncher.CommandParser(_command);
-            exeLauncher.LaunchPython(
-                options[0], options[1], options[2], options[3]
-            );
-            DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
-        }
+            if(iniReader.ReadIniContent("settings", "openPythonScript", "false") == "true"){
+                openPythonSciptCommand = iniReader.ReadIniContent("settings", "PythonScriptCommand", "");
+                OpenPythonScript();
+                DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
+            }
 
-        _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
+            _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
+        }
 
     }
 
@@ -3724,6 +3747,7 @@ public class Moving : MonoBehaviour
         }
         if(trialStartTriggerMode == 0){ui_update.MessageUpdate($"interval: {contextInfo.trialInterval[0]} ~ {contextInfo.trialInterval[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
         else{                          ui_update.MessageUpdate($"interval: {contextInfo.trialTriggerDelay[0]} ~ {contextInfo.trialTriggerDelay[1]}, {trialStartTriggerModeLs[trialStartTriggerMode]}触发", UpdateFreq: -1);}
+        if(sp != null){ui_update.MessageUpdate($"serialport connected: {sp.PortName}");}
     }
 
     void Update(){
@@ -4010,6 +4034,7 @@ public class Moving : MonoBehaviour
                 ipcclient.CloseSharedmm();
             }
             if(sp!= null){
+                sp.WriteLine("//forceinit");
 
                 // 等待线程结束，最多500ms
                 if (serialThread != null && serialThread.IsAlive) {

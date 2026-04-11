@@ -750,6 +750,10 @@ public class UIUpdate : MonoBehaviour
                 }
                 break;
             }
+            case "OpenPythonScript":{
+                moving.OpenPythonScript(show:true);
+                break;
+            }
             case"PageUp":{
                 logPage = Math.Max(logPage - 1, 0);
                 if(logMessageList.Count > 0){
