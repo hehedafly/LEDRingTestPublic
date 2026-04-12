@@ -315,6 +315,7 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 |--------------------|------------------|----------------------------------------|
 | `serialSpeed`      | int              | 波特率（例如，250000）                |
 | `blackList`        | 以逗号分隔的字符串 | 要忽略的 COM 端口（例如，`COM1,COM3`） |
+| `recommendPort`    | 以逗号分隔的字符串 | 优先连接的 COM 端口（例如，`COM7`）。连接时会优先尝试这些端口 |
 | `compatibleVersion` | 以逗号分隔的字符串 | 接受的 Arduino 固件版本（例如，`V2.2`） |
 
 **支持的Arduino变量**：
@@ -551,6 +552,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `IPCRefreshButton` | 刷新 IPC 连接    |
 | `IPCDisconnect`    | 断开 IPC 连接    |
 | `MessagePost`      | 发送微信通知     |
+| `OpenPythonScript` | 启动 Python 脚本（根据 config.ini 中的 PythonScriptCommand 配置） |
 
 ---
 
@@ -705,6 +707,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 - `skip` - 手动跳过试验
 - `complete_manually` - 手动完成试验
 - `null` - 空记录
+- `all_complete` - 所有判断条件均满足一次后结束
 
 ### 日志文件输出
 - 带时间戳的试验信息记录到文件

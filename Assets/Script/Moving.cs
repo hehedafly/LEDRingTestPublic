@@ -903,6 +903,7 @@ public class Moving : MonoBehaviour
     SerialPort sp = null;
     volatile bool StopSerialThread = false;
     int serialSpeed = -1;
+    private readonly object serialLock = new object();
 
     // 通信方式配置: 0-自动检测, 1-仅USB, 2-仅串口
     // int communicationMode = 0;
@@ -1595,7 +1596,7 @@ public class Moving : MonoBehaviour
                 finally{
                     // 如果连接失败，关闭并清理串口
                     if (!connected && tempSp != null){
-                        SafeCloseSerialPort(tempSp);
+                        SafeCloseSerialPort(ref tempSp);
                     }
                 }
                 // 继续尝试下一个端口
@@ -1609,7 +1610,7 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// 安全关闭串口，避免卡住
     /// </summary>
-    void SafeCloseSerialPort(SerialPort port){
+    void SafeCloseSerialPort(ref SerialPort port){
         if (port == null) return;
         try{
             if (port.IsOpen){
@@ -1624,32 +1625,37 @@ public class Moving : MonoBehaviour
         finally{
             // 确保释放资源
             try{ port.Dispose(); }catch{}
+            port = null;
         }
     }
 
     void RecreateSerialConnection(bool inMainThread = true){
         // 先安全关闭现有串口
-        if(sp != null){
-            SafeCloseSerialPort(sp);
-            sp = null;
-        }
-        List<string> portInfo = new List<string>();
-        int failCount = 0; int maxFailCount = 5;
-        while (failCount < maxFailCount && CreateSerialConnection(out sp, ref portInfo) < 0){
-            System.Threading.Thread.Sleep(300);
-            Debug.Log("serial reconnecting in trial start");
-            failCount++;
-        }
-        if(sp == null){
-            Debug.LogError("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
-            // Quit();
-            if(MessageBoxForUnity.YesOrNo("Fatal error occured, failed connecting to Arduino, Stay?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
-                if(inMainThread){
-                    StopSerialThread = true;
-                    Quit();
-                }else{
-                    StopSerialThread = true;
-                    buildinCommandQueue.Enqueue("exit");
+        lock(serialLock){
+            if(sp != null){
+                SafeCloseSerialPort(ref sp);
+                sp = null;
+            }
+            List<string> portInfo = new List<string>();
+            int failCount = 0; int maxFailCount = 5;
+            while (failCount < maxFailCount && CreateSerialConnection(out sp, ref portInfo) < 0){
+                System.Threading.Thread.Sleep(500);
+                ui_update.MessageUpdate("Reconnecting to Arduino");
+                Debug.Log("serial reconnecting in trial start");
+                failCount++;
+                SafeCloseSerialPort(ref sp);
+            }
+            if(sp == null){
+                Debug.LogError("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
+                // Quit();
+                if(MessageBoxForUnity.YesOrNo("Fatal error occured, failed connecting to Arduino, Stay?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
+                    if(inMainThread){
+                        StopSerialThread = true;
+                        Quit();
+                    }else{
+                        StopSerialThread = true;
+                        buildinCommandQueue.Enqueue("exit");
+                    }
                 }
             }
         }
@@ -1937,6 +1943,7 @@ public class Moving : MonoBehaviour
             
             //lickCount.Clear();
             float _finalTrialReadyWaitSec = Math.Max(trialReadyWaitSec, trialReadyWaitForExtraRewardSec);
+            //trialReadyWaitForExtraRewardSec为-2时，额外奖励时间跟随其他设置
             trialReadyWaitForExtraRewardSec = trialReadyWaitForExtraRewardSec == -2? _finalTrialReadyWaitSec: trialReadyWaitForExtraRewardSec;
             float _temp_waitSec;
             if(contextInfo.trialInterval[0] > 0){
@@ -2271,7 +2278,7 @@ public class Moving : MonoBehaviour
         }else{
             if(lickInd >= 0){ui_update.SetLightSignal("lick", false);}
         }
-        Debug.Log($"waiting: {waiting}");
+        // Debug.Log($"waiting: {waiting}");
         if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
             if(lickTypeMark == 0){
                 WriteInfo(_lickPos: lickInd, addInfo:"leave");
@@ -2800,7 +2807,7 @@ public class Moving : MonoBehaviour
 
     void SerialCommunicating(){
         while (!StopSerialThread){
-            manualResetEventVerify.WaitOne(50);  // 等待信号，最多50ms超时以便能及时响应关闭
+            manualResetEventVerify.WaitOne(10);  // 等待信号，最多50ms超时以便能及时响应关闭
             if (StopSerialThread) break;  // 检查退出标志
             if (sp!= null && sp.IsOpen){
                 try{
@@ -2860,7 +2867,7 @@ public class Moving : MonoBehaviour
                     }
                 }catch(System.IO.IOException e){
                     Debug.Log(e.Message);
-                    SafeCloseSerialPort(sp);
+                    SafeCloseSerialPort(ref sp);
                     sp = null;
                 }catch(ObjectDisposedException){
                     // 串口已被释放，设为null
@@ -2886,42 +2893,34 @@ public class Moving : MonoBehaviour
         // Debug.Log("Data sent: " + message);
         if(sp!= null && sp.IsOpen){
             if(needParse){//form: p_.... = 1
-                // if(simple_mode){
-                //     //byte[] temp_msg = new byte[]{0xAA, 0xBB, 0xCC, 0xDD};
-                //     byte[] temp_msg = new byte[]{0xAA, 0xBB, 0xCC, 0xDD};
-                //     sp.Write(temp_msg, 0, temp_msg.Length);
-                //     Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
-                // }
-                //else{
-                    string temp_var_name = message.Split('=')[0];
-                    temp_var_name = temp_var_name.Replace("/","");
-                    
-                    if(Arduino_var_map.ContainsKey(temp_var_name) || Arduino_ArrayTypeVar_map.ContainsKey(temp_var_name[..(temp_var_name.IndexOf('[') >= 0? temp_var_name.IndexOf('['): 0)])){//从p_xxx转为int=int
-                        string temp_command;
-                        if(temp_var_name.Contains('[')){
-                            temp_command = Arduino_ArrayTypeVar_map[temp_var_name[..temp_var_name.IndexOf('[')]] + temp_var_name[temp_var_name.IndexOf('[')..] +"="+message.Split('=')[1];
-                        }
-                        else{temp_command = Arduino_var_map[temp_var_name]+"="+message.Split('=')[1];}
+                string temp_var_name = message.Split('=')[0];
+                temp_var_name = temp_var_name.Replace("/","");
+                
+                if(Arduino_var_map.ContainsKey(temp_var_name) || Arduino_ArrayTypeVar_map.ContainsKey(temp_var_name[..(temp_var_name.IndexOf('[') >= 0? temp_var_name.IndexOf('['): 0)])){//从p_xxx转为int=int
+                    string temp_command;
+                    if(temp_var_name.Contains('[')){
+                        temp_command = Arduino_ArrayTypeVar_map[temp_var_name[..temp_var_name.IndexOf('[')]] + temp_var_name[temp_var_name.IndexOf('[')..] +"="+message.Split('=')[1];
+                    }
+                    else{temp_command = Arduino_var_map[temp_var_name]+"="+message.Split('=')[1];}
 
-                        if(!inVerifyOrVerifyNeedless){
-                            commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
-                        }
+                    if(!inVerifyOrVerifyNeedless){
+                        commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
+                    }
+                    byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
+                    sp.Write(temp_msg, 0, temp_msg.Length);
+                    // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
+                    return 2;
+                }
+                else{
+                    if(Int16.TryParse(temp_var_name, out short temp_id) && temp_id<255){//重发int=int
+                        string temp_command=temp_var_name+"="+message.Split('=')[1];
                         byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
                         sp.Write(temp_msg, 0, temp_msg.Length);
-                        // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
+                        //Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
                         return 2;
                     }
-                    else{
-                        if(Int16.TryParse(temp_var_name, out short temp_id) && temp_id<255){//重发int=int
-                            string temp_command=temp_var_name+"="+message.Split('=')[1];
-                            byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
-                            sp.Write(temp_msg, 0, temp_msg.Length);
-                            //Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
-                            return 2;
-                        }
-                        return -1;
-                    }
-                //}
+                    return -1;
+                }
             }else{
                 byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[7]}:{message}");
                 sp.Write(temp_msg, 0, temp_msg.Length);
@@ -2941,6 +2940,9 @@ public class Moving : MonoBehaviour
     public int CommandVerify(List<string> messages, List<int> values){
         if (sp == null) { return -3; }
         manualResetEventVerify.Reset();
+        if (!sp.IsOpen){
+            lock(serialLock){RecreateSerialConnection();}
+        }
         sp.ReadTimeout = 100;
         int fail_count = 0;
         bool succes = false;
@@ -4048,7 +4050,7 @@ public class Moving : MonoBehaviour
                     }
                 }
                 // 使用安全方法关闭串口
-                SafeCloseSerialPort(sp);
+                SafeCloseSerialPort(ref sp);
                 sp = null;
                 Debug.Log("serial closed");
             }
