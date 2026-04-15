@@ -170,7 +170,7 @@ public class IPCClient : MonoBehaviour
     /// <param name="angle"></param>
     /// <returns></returns>
     public int[] GetCircledRotatedRectangeForBarDisplay(float angle){
-        Debug.Log($"draw rotated rect at angle{angle} + {sceneInfo[3]}");
+        // Debug.Log($"draw rotated rect at angle{angle} + {sceneInfo[3]}");
         angle += sceneInfo[3];
 
         float radians = (float)(angle * Math.PI / 180);

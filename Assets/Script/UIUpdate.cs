@@ -75,7 +75,7 @@ public class UIUpdate : MonoBehaviour
     public List<string> ButtonTimingMethods { get { return buttonTimingMethods; } }
     [HideInInspector]
     public Dictionary<string, int> buttonTimingSpecialValues = new Dictionary<string, int>{{"IPCConnect", 0}};
-    Dictionary<string, List<string>> buttonTimingSpecialTimingMethods = new Dictionary<string, List<string>>();
+    Dictionary<string, List<string>> buttonTimingSpecialTimingMethods = new Dictionary<string, List<string>>();//每类的列表中，定时按键没有重复
     public GameObject pref_buttonTimingBaseSubDropdown;
     List<GameObject> createdTimingBaseSubDropdowns = new List<GameObject>();
     public string IFContentLoaded = "";
@@ -353,19 +353,20 @@ public class UIUpdate : MonoBehaviour
         return 1;
     }
 
-    public int SetButtonColor(string buttonName, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate= false, bool ignoreTiming = false){
+    public int SetButtonColor(string buttonName, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate= false, bool ignoreTiming = false, int buttonPressCountChange = 0){
         UnityEngine.UI.Button button = buttons.Find(button => button.name == buttonName);
         if(button != null){
             // if(ignoreTiming || buttonTimingList.Contains(buttonName)){
-                SetButtonColor(button, color, setToDefault, setToPrevious, forcePreviousUpdate, ignoreTiming);
+                SetButtonColor(button, color, setToDefault, setToPrevious, forcePreviousUpdate, ignoreTiming, buttonPressCountChange);
             // }
             return 1;
         }
         return -1;
     }
-    void SetButtonColor(UnityEngine.UI.Button _button, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate = false, bool ignoreTiming = false){
+    void SetButtonColor(UnityEngine.UI.Button _button, Color color = default, bool setToDefault = false, bool setToPrevious = false, bool forcePreviousUpdate = false, bool ignoreTiming = false, int buttonPressCountChange = 0){
         if(_button == null || (!ignoreTiming && timings.ContainsKey(_button.name))){return;}
         _button.GetComponent<ScrButton>().ChangeColor(color, setToDefault, setToPrevious, forcePreviousUpdate);
+        _button.GetComponent<ScrButton>().pressCount += buttonPressCountChange;
         // Debug.Log($"SetButtonColor {_button.name} to {color}");
     }
     
@@ -385,13 +386,14 @@ public class UIUpdate : MonoBehaviour
 
     int ClearComingButtonTiming(int timingId = -1) {
         bool selectClear = false;
+        List<string> buttonTimingSpecialTimingMethodForClear = new List<string>();
         if (timingId == -1) {
             foreach (Timing timing in timings.Clear()) {
                 MessageUpdate($"button timing:{timing.timingMethod} removed");
                 if (timing.type == "button") {
                     UnityEngine.UI.Button button = buttons.Find(b => b.name == timing.name);
-                    button.GetComponent<ScrButton>().pressCount++;
-                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+                    // button.GetComponent<ScrButton>().pressCount++;
+                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true, buttonPressCountChange:1);
                 }
             }
             selectClear = true;
@@ -402,21 +404,37 @@ public class UIUpdate : MonoBehaviour
             foreach (Timing timing in removedTimings) {
                 MessageUpdate($"button timing:{timing.timingMethod} removed");
                 if (timing.type == "button") {
-                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true);
+                    SetButtonColor(timing.name, setToPrevious: true, ignoreTiming: true, buttonPressCountChange:1);
                 }
+                buttonTimingSpecialTimingMethodForClear.Add(timing.timingMethod);
                 if(timing.Id == TimingBaseScrDropdown.nowSelectedTimingId){selectClear = true;}
             }
+        }
+
+        foreach(string timingMethod in buttonTimingSpecialTimingMethodForClear){
+            string key = timingMethod.Split(";")[1].Split(":")[1];
+            string buttonName = timingMethod.Split(";")[0];
+            if(!buttonTimingSpecialTimingMethods.ContainsKey(key)){continue;}
+            buttonTimingSpecialTimingMethods[key].Remove(buttonName);//特殊定时只会有一个
+            
         }
         UpdateOptions(selectId: selectClear? -2: -1,selectText:selectClear? "None": "");
         return 1;
     }
 
-    string CheckButtonTimingMethod() {
+    string GetButtonTimingMethod() {
         string method = TimingMethodDropdown.options[TimingMethodDropdown.value].text;
         return method;
     }
     
-    int CheckButtonTimingMethod(string method) {
+    int GetButtonTimingMethodIndex(string method = "") {
+        if(!buttonTimingMethods.Contains(method)){
+            if(method != ""){
+                MessageUpdate("invalid TimingMethod");
+            }
+            method = GetButtonTimingMethod();
+        }
+
         for(int i = 0; i < buttonTimingMethods.Count; i++) {
             if(method == buttonTimingMethods[i]) {
                 return i;
@@ -462,7 +480,7 @@ public class UIUpdate : MonoBehaviour
             string timingElementType;
             if (stringArg.StartsWith("type_")){ timingElementType = stringArg.Split(";")[0][5..]; stringArg = stringArg.Contains(";")? string.Join(";", stringArg.Split(";")[1]) : "";}
             if (stringArg.Contains(";")) {
-                int timingMethodInArg = CheckButtonTimingMethod(stringArg.Split(";")[0]);
+                int timingMethodInArg = GetButtonTimingMethodIndex(stringArg.Split(";")[0]);
                 if(timingMethodInArg >= 0){
                     _res = float.Parse(stringArg.Split(";")[1]);
                 }
@@ -473,8 +491,8 @@ public class UIUpdate : MonoBehaviour
                     _res = -1;
                 }
             }
-            _timingMethodRecognizedStr = CheckButtonTimingMethod();
-            _timingMethodRecognized = CheckButtonTimingMethod(_timingMethodRecognizedStr);
+            _timingMethodRecognizedStr = GetButtonTimingMethod();
+            _timingMethodRecognized = GetButtonTimingMethodIndex(_timingMethodRecognizedStr);
             if(_timingMethodRecognized == -1 && !timing.HasValue){
                 MessageUpdate("please input a valid number for button timing");
                 return -1;
@@ -491,11 +509,11 @@ public class UIUpdate : MonoBehaviour
                 _timingMethod = timing.Value.timingMethod;
                 _timingMethodRecognizedStr = _timingMethod.Split(";")[1].Split(":")[1];
                 if(_timingMethodRecognizedStr == "trial") {_timingMethodRecognizedStr = "trialStart";}
-                if(CheckButtonTimingMethod(_timingMethodRecognizedStr) == -1){
+                if(GetButtonTimingMethodIndex(_timingMethodRecognizedStr) == -1){
                     MessageUpdate("invalid timing struct: " + JsonConvert.SerializeObject(timing.Value));
                     return -1;
                 }
-                _timingMethodRecognized = CheckButtonTimingMethod(_timingMethodRecognizedStr);
+                _timingMethodRecognized = GetButtonTimingMethodIndex(_timingMethodRecognizedStr);
                 _res = float.Parse(_timingMethod.Split(";")[1].Split(":")[2]);
                 timingElementType = timing.Value.type;
                 value = timing.Value.value;
@@ -550,7 +568,11 @@ public class UIUpdate : MonoBehaviour
                     if(!buttonTimingSpecialTimingMethods.ContainsKey(_timingMethodRecognizedStr)){
                         buttonTimingSpecialTimingMethods.Add(_timingMethodRecognizedStr, new List<string>());
                     }
-                    buttonTimingSpecialTimingMethods[_timingMethodRecognizedStr].Add(targetElementTimingName);
+                    if(buttonTimingSpecialTimingMethods[_timingMethodRecognizedStr].Count(x => x.StartsWith(_timing.name)) == 0){
+                        buttonTimingSpecialTimingMethods[_timingMethodRecognizedStr].Add(targetElementTimingName);
+                    }else{
+                        timings.Remove(_timing.Id);
+                    }
                 }
             }
 
@@ -687,10 +709,6 @@ public class UIUpdate : MonoBehaviour
                 
                 break;
             }
-            case "IFConfigValue":{
-
-                break;
-            }
             case "InfraRedIn":{
                 moving.CommandParsePublic("entrance:-1:In");
                 moving.CommandParsePublic("entrance:-1:Leave");
@@ -744,7 +762,7 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "IPCDisconnect":{
-                if(moving.IsIPCInNeed()){
+                if(moving.IsIPCInNeed() || moving.IsIPCActive()){
                     moving.Ipcclient.Silent = true;
                     moving.Ipcclient.Activated = false;
                 }
@@ -786,6 +804,12 @@ public class UIUpdate : MonoBehaviour
                 var IFTimingSet = inputFields.Find(inputfield => inputfield.name == "IFTimingSet");
                 if(IFTimingSet is not null) {
                     IFTimingSet.text = exportRes;
+                }
+                break;
+            }
+            case "IFTimingValue":{
+                if(GetButtonTimingMethod() == buttonTimingMethods[4]){//ipcconnect
+                    MessageUpdate("Timing By IPCConnect do not need arguments");
                 }
                 break;
             }

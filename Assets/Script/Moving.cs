@@ -1629,8 +1629,9 @@ public class Moving : MonoBehaviour
         }
     }
 
-    void RecreateSerialConnection(bool inMainThread = true){
+    void RecreateSerialConnection(bool inMainThread = true, string trace = ""){
         // 先安全关闭现有串口
+        Debug.Log($"RecreateSerialConnection {(trace.Length > 0? $"from {trace}" : "")}");
         lock(serialLock){
             if(sp != null){
                 SafeCloseSerialPort(ref sp);
@@ -1640,8 +1641,9 @@ public class Moving : MonoBehaviour
             int failCount = 0; int maxFailCount = 5;
             while (failCount < maxFailCount && CreateSerialConnection(out sp, ref portInfo) < 0){
                 System.Threading.Thread.Sleep(500);
-                ui_update.MessageUpdate("Reconnecting to Arduino");
-                Debug.Log("serial reconnecting in trial start");
+                if(inMainThread){
+                    ui_update.MessageUpdate("Reconnecting to Arduino");
+                }
                 failCount++;
                 SafeCloseSerialPort(ref sp);
             }
@@ -1677,6 +1679,7 @@ public class Moving : MonoBehaviour
         // DataSend("_");
         // DataSend("p_trial_set=1", true, true);
         // Debug.Log("sent :p_trial_set=1");
+        if(res < 0){Debug.Log($"ContextStartSync failed: {res}");}
         return res;
     }
 
@@ -1821,11 +1824,9 @@ public class Moving : MonoBehaviour
         trialStatus = 1;
         trialStartTime = Time.fixedUnscaledTime;
         if (!DebugWithoutArduino && ContextStartSync() < 0){
-            RecreateSerialConnection();
-            if(ContextInitSync() < 0){
-                Debug.Log("StartTrial failed");
-            };
+            Debug.Log($"StartTrial {nowTrial} failed");
         }
+        Debug.Log($"StartTrial {nowTrial}");
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
         MaterialStruct tempMs = GetMaterialStruct(tempMatName);
         // Debug.Log(tempMs.PrintArgs());
@@ -1921,7 +1922,7 @@ public class Moving : MonoBehaviour
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
         
         if(!isInit && !trialSuccess){PlaySound("AtFail");}
-
+        Debug.Log($"End Trial {nowTrial}");
         waiting = true;
         alarmPlayReady = false;
         alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);
@@ -2043,6 +2044,10 @@ public class Moving : MonoBehaviour
         bool res = trialMode >> 4 == 2 || trialStartTriggerMode == 3 || contextInfo.stopExtraRewardMethod.Contains("pos");
         // ui_update.SetButtonColor("IPCRefreshButton", res? Color.white : Color.grey);
         return res;
+    }
+
+    public bool IsIPCActive(){
+        return ipcclient.Activated;
     }
 
     public bool SetIPCAvtive(bool value, bool silent = true, string addInfo = ""){
@@ -2807,7 +2812,7 @@ public class Moving : MonoBehaviour
 
     void SerialCommunicating(){
         while (!StopSerialThread){
-            manualResetEventVerify.WaitOne(10);  // 等待信号，最多50ms超时以便能及时响应关闭
+            manualResetEventVerify.WaitOne(20);  // 等待信号，最多50ms超时以便能及时响应关闭
             if (StopSerialThread) break;  // 检查退出标志
             if (sp!= null && sp.IsOpen){
                 try{
@@ -2875,7 +2880,7 @@ public class Moving : MonoBehaviour
                 }
             }else{
                 if (!StopSerialThread){
-                    RecreateSerialConnection(false);
+                    RecreateSerialConnection(false, "serial thread");
                     Debug.Log("lost connection to serial port, try to reconnect...");
                 }
             }
@@ -2941,7 +2946,8 @@ public class Moving : MonoBehaviour
         if (sp == null) { return -3; }
         manualResetEventVerify.Reset();
         if (!sp.IsOpen){
-            lock(serialLock){RecreateSerialConnection();}
+            Debug.Log("sp not open");
+            lock(serialLock){RecreateSerialConnection(trace:"CommandVerify");}
         }
         sp.ReadTimeout = 100;
         int fail_count = 0;
@@ -2990,10 +2996,15 @@ public class Moving : MonoBehaviour
                 }
             }
             catch (Exception e){
-                Debug.Log(e.Message);
                 if (e.Message.Contains("not open")){
                     manualResetEventVerify.Set();
+                    Debug.LogError("port not open");
+                    // Debug.Log("port not open");
                     return -2;
+                }else if(e.Message.Contains("timed out")){
+
+                }else{
+                    Debug.Log($"error: {e.Message}: verify failed because serial port error: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
                 }
                 fail_count++;
                 // return -1;
@@ -3019,6 +3030,8 @@ public class Moving : MonoBehaviour
                 // manualResetEventVerify.Set();
             }
         }
+        Debug.LogError($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
+        // Debug.Log($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
         manualResetEventVerify.Set();
         return -1;
     }
@@ -3066,6 +3079,7 @@ public class Moving : MonoBehaviour
         }
         catch (Exception e){
             Debug.LogError($"Error initializing StreamWriter: {e.Message}");
+            // Debug.Log($"Error initializing StreamWriter: {e.Message}");
         }
     }
 
@@ -3140,7 +3154,7 @@ public class Moving : MonoBehaviour
                                         ;
                 switch(recType){
                     case 2:{//end
-                        addInfo = trialResult[nowTrial].ToString();
+                        addInfo = trialResult.Count > nowTrial? trialResult[nowTrial].ToString(): "OutOfRangeError";
                         break;
                     }
                     case 4:{//entrance
@@ -3879,66 +3893,68 @@ public class Moving : MonoBehaviour
         
 
         // if(trialStartTriggerMode == 3 || trialMode >> 4 == 2 || (IsIPCInNeed() && ipcclient.Activated)){
-        if(IsIPCInNeed() && ipcclient.Activated){
-            int markCountPerType = 32;
-            long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
+        if(IsIPCInNeed()){
+            if(ipcclient.Activated){
+                int markCountPerType = 32;
+                long[] pos = ipcclient.GetPos();//x, y, frameInd, pythonTime, rawVideoFrame
 
-            if(trialStatus != -2 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
-                WriteInfo(pos, $"{Time.realtimeSinceStartup - time_rec_for_log[0]}");
-                if(trialStartTriggerMode == 3 && (trialStatus == -1 || trialStatus == 0)){//trigger
-                    pos[0..2].CopyTo(standingPos, 0);
-                    bool InTriggerArea = false;
-                    // foreach (int[] selectedArea in TriggerAreas){
-                    List<int[]> areas = ipcclient.GetCurrentSelectArea();
-                    if(areas.Count>0){
-                        if(CheckInRegion(pos, areas[1])){
-                            InTriggerArea = true;
+                if(trialStatus != -2 && !pos.SequenceEqual(new long[]{-1, -1, -1, -1, -1})){
+                    WriteInfo(pos, $"{Time.realtimeSinceStartup - time_rec_for_log[0]}");
+                    if(trialStartTriggerMode == 3 && (trialStatus == -1 || trialStatus == 0)){//trigger
+                        pos[0..2].CopyTo(standingPos, 0);
+                        bool InTriggerArea = false;
+                        // foreach (int[] selectedArea in TriggerAreas){
+                        List<int[]> areas = ipcclient.GetCurrentSelectArea();
+                        if(areas.Count>0){
+                            if(CheckInRegion(pos, areas[1])){
+                                InTriggerArea = true;
+                            }
                         }
-                    }
-                    // }
-                    if(InTriggerArea){
-                        standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
-                        float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
-                        PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
-                        if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
+                        // }
+                        if(InTriggerArea){
+                            standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
+                            float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
+                            PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
+                            if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
+                                standingSecNowInTrigger = -1;
+                                WriteInfo(recType:8);
+                                CommandParsePublic($"{lsTypes[9]}:0", urgent:true);
+                            }
+                        }else{
+                            StopSound("InPos");
                             standingSecNowInTrigger = -1;
-                            WriteInfo(recType:8);
-                            CommandParsePublic($"{lsTypes[9]}:0", urgent:true);
                         }
-                    }else{
-                        StopSound("InPos");
-                        standingSecNowInTrigger = -1;
                     }
-                }
 
-                if(trialMode >> 4 == 2){//destination
-                    List<int[]> ShiftedCertainAreasNowTrial = ipcclient.GetCurrentSelectArea();
-                    if(ShiftedCertainAreasNowTrial.Count() > 0){
-                        int[] ShiftedCertainAreaNowTrial = ShiftedCertainAreasNowTrial[0];
-                        if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial[0] >= markCountPerType){
-                            if(CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
-                                // PlaySound("InPos");
-                                standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
-                                float speedUpScale = GetSoundPitch(contextInfo.standingSecInDest - standingSecNowInDest, contextInfo.standingSecInDest);
-                                PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
-                                if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){
+                    if(trialMode >> 4 == 2){//destination
+                        List<int[]> ShiftedCertainAreasNowTrial = ipcclient.GetCurrentSelectArea();
+                        if(ShiftedCertainAreasNowTrial.Count() > 0){
+                            int[] ShiftedCertainAreaNowTrial = ShiftedCertainAreasNowTrial[0];
+                            if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial[0] >= markCountPerType){
+                                if(CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
+                                    // PlaySound("InPos");
+                                    standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
+                                    float speedUpScale = GetSoundPitch(contextInfo.standingSecInDest - standingSecNowInDest, contextInfo.standingSecInDest);
+                                    PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
+                                    if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){
+                                        standingSecNowInDest = -1;
+                                        pos[0..2].CopyTo(standingPos, 0);
+                                        WriteInfo(recType:8);
+                                        CommandParsePublic($"{lsTypes[9]}:1", urgent:true);
+                                        // PlaySound("EnableReward");//已挪至lickingCheck
+                                    }
+                                }
+                                else{
+                                    StopSound("InPos");
                                     standingSecNowInDest = -1;
-                                    pos[0..2].CopyTo(standingPos, 0);
-                                    WriteInfo(recType:8);
-                                    CommandParsePublic($"{lsTypes[9]}:1", urgent:true);
-                                    // PlaySound("EnableReward");//已挪至lickingCheck
                                 }
                             }
-                            else{
-                                StopSound("InPos");
-                                standingSecNowInDest = -1;
-                            }
-                        }
-                    } 
+                        } 
+                    }
                 }
-            }
-            
-            posCheckFunctionsStatus = CheckMousePos(pos);
+                
+                posCheckFunctionsStatus = CheckMousePos(pos);
+            }else{}
         }
 
         if(waiting){//延时模式下下一个trial开始相关计算

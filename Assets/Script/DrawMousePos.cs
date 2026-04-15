@@ -111,7 +111,7 @@ public class MouseDrawer
     /// </summary>
     void DrawArea(Color[] texPixels, int[] area, int markTypeCount = 32){
         Color color = area[0] < 0? Color.green : area[0] / markTypeCount == 0? Color.blue : Color.red;
-        Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
+        // Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
         if (area.Length == 6){
                 if(area[1] == 1){
                     DrawRectangle(texPixels, new Vector2(area[2], area[3]), new Vector2(area[4], area[5]), color, 2);
@@ -125,7 +125,7 @@ public class MouseDrawer
         // Color color = Color.black;
         Color color = area[0] < 0? Color.green : area[0] / markTypeCount == 0? Color.blue : Color.red;
 
-        Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
+        // Debug.Log($"DrawArea : {string.Join(",", area)}, color: {color}");
         if(area.Length == 4){
             DrawRectangle(texPixels, new Vector2(area[1], area[2]), new Vector2(area[3], area[4]), color, 2);
         }
