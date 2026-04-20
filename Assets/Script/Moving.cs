@@ -896,6 +896,7 @@ public class Moving : MonoBehaviour
 
     #region communicating
     IPCClient ipcclient;    public IPCClient Ipcclient { get { return ipcclient; } }
+    bool strictIPCStatusUpdate = false;
     string openPythonSciptCommand = "";
     ExeLauncher exeLauncher = null;
     List<string> portBlackList = new List<string>();
@@ -1106,6 +1107,17 @@ public class Moving : MonoBehaviour
         }
         return errmsg;
     }
+
+    public string GetProperty(object obj, string propertyName)
+    {
+        var property = _cachedPropertyInfo.Where(p => p.Name == propertyName).ToArray();
+        if (property.Any())
+        {
+            return JsonConvert.SerializeObject(property[0].GetValue(obj));
+        }
+        return null;
+    }
+
     public void SetContextInfoProperties(string variableName, string content) {
         if(!debugMode){ui_update.MessageUpdate("DebugMode is not enabled, cannot set contextInfo properties.");return;}
         string errmsg = SetProperty(contextInfo, variableName, content);
@@ -1113,6 +1125,13 @@ public class Moving : MonoBehaviour
         else {
             ui_update.MessageUpdate($"variable {variableName} set to {content}");
         }
+    }
+
+    public string GetContextInfoProperties(string variableName) {
+        if(!debugMode){ui_update.MessageUpdate("DebugMode is not enabled, cannot get contextInfo properties.");}
+        string content = GetProperty(contextInfo, variableName);
+        if(content == null){ui_update.MessageUpdate($"variable {variableName} not found."); return null;}
+        return content;
     }
 
     void Quit(){
@@ -1889,8 +1908,8 @@ public class Moving : MonoBehaviour
         string _tempMsg = $"Trial {nowTrial} started at {contextInfo.GetBarInd(nowTrial)}, pos {activitedPos},lick pos {contextInfo.GetRightLickPosIndInTrial(nowTrial)}, start type {trialStartTriggerMode}";
         if(nowTrial > 0){
             string strLickCount = "";
-            foreach(int count in lickCount[nowTrial-1]){
-                strLickCount += count.ToString() + "\t";
+            for(int i = 0; i < lickCount[nowTrial - 1].Count; i++){
+                if(lickCount[nowTrial - 1][i] > 0){strLickCount += $"[{i}]{lickCount[nowTrial - 1][i]}\t";}
             }
             _tempMsg += $", lickCount before: {strLickCount}";
         }if(contextInfo.extraRewardTimeInSec > 0 || contextInfo.extraRewardTimeInSec == -2){
@@ -2050,13 +2069,14 @@ public class Moving : MonoBehaviour
         return ipcclient.Activated;
     }
 
-    public bool SetIPCAvtive(bool value, bool silent = true, string addInfo = ""){
+    public bool SetIPCAvtive(bool value, bool silent = true, string addInfo = "", bool force = false){
         if(value){
             if(!silent && ipcclient.Silent && !ipcclient.Activated){
                 ui_update.MessageUpdate($"activate IPC..{(addInfo == ""? "": $"for {addInfo}")}");
             }
             ipcclient.Silent = false;
         }else{
+            if(!strictIPCStatusUpdate && !force){return true;}
             if(!silent && ipcclient.Activated){ui_update.MessageUpdate("deactivate IPC..");}
             ipcclient.Silent = true;
             ipcclient.Activated = false;
@@ -2265,7 +2285,7 @@ public class Moving : MonoBehaviour
                 lickTimeInTrial.Add(Time.fixedUnscaledTime);
             }
             lickCountGetSet("set", lickInd, nowTrial);
-            if(alarm.GetAlarm("DisabletExtraReward") > 0 && rewardServedTimeInTrial.Count>0 && Time.fixedUnscaledTime - rewardServedTimeInTrial.Last() > contextInfo.minIgnoreLickInterval){//暂时写死0.3s防止过快触发
+            if(alarm.GetAlarm("DisabletExtraReward") > 0 && (rewardServedTimeInTrial.Count == 0 || Time.fixedUnscaledTime - rewardServedTimeInTrial.Last() > contextInfo.minIgnoreLickInterval)){
                 ServeWaterInTrial(false);
             }
             
@@ -2436,7 +2456,6 @@ public class Moving : MonoBehaviour
             trialInfo.Add($"LickSpout{i}", lickPosLsCopy[i]);
         }
 
-
         return trialInfo;
     }
 
@@ -2468,7 +2487,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// use CommandVerify
+    /// use CommandVerify, if new ogstart come, update timing, with no need to make interval for two og session seperate
     /// </summary>
     /// <param name="_mills"></param>
     /// <returns></returns>
@@ -2485,22 +2504,22 @@ public class Moving : MonoBehaviour
             return res == 1;
         }
 
-        if(alarm.GetAlarm("ogEnd") >= 0){
-            alarm.TrySetAlarm("ogStart", 1, out _, addInfo:$"{_mills}");
-            alarm.StartAlarmAfter("ogStart", "ogEnd");
-            alarm.TrySetAlarm("ogEnd", 1, out _);
-        }else{
-            res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
-            if(res == 1 || res == -3){
-                WriteInfo(recType:10, _lickPos:_mills);
-                Debug.Log($"OG {(_on? "on": "off")}");
-                ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
-                if(_mills > 0){
-                    alarm.TrySetAlarm("ogEnd", (float)_mills / 1000, out _);
-                }
+        // if(alarm.GetAlarm("ogEnd") >= 0){
+            
+        // }else{
+        res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
+        if(res == 1 || res == -3){
+            WriteInfo(recType:10, _lickPos:_mills);
+            Debug.Log($"OG {(_on? "on": "off")}");
+            ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
+            if(_mills > 0){
+                alarm.TrySetAlarm("ogEnd", (float)_mills / 1000, out _);
+            }else{
+                alarm.DeleteAlarm("ogEnd");
             }
-
         }
+
+        // }
         
         return res == 1;
     }
@@ -2510,27 +2529,39 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="_on"></param>
     /// <returns></returns>
-    public bool MSSet(int _sec = -1){
+    public bool MSSet(int _sec = -1, bool forceRestart = true, string addInfo = ""){
         bool _on = _sec > 0 || _sec == -1;
-        int res = 0;
+        int res;
         if(alarm.GetAlarm("miniscopeEnd") >= 0){
-            alarm.TrySetAlarm("miniscopeStart", 1, out _, addInfo:$"{_sec}");
-            alarm.StartAlarmAfter("miniscopeStart", "miniscopeEnd");
-            alarm.TrySetAlarm("miniscopeEnd", 1, out _);
-        }else{
+            if(forceRestart){
+                if(_sec > 0){
+                    MSSet(0, addInfo:"and will start after 10 sec");
+                    alarm.DeleteAlarm("miniscopeEnd", true);
+                    alarm.TrySetAlarm("miniscopeStart", 10.0f, out _, addInfo:$"{_sec}");
+                    return true;
+                }
+            }
+            else{}
+        }
+        
+        long frameLastForNextStart = alarm.GetAlarm("miniscopeStart");
+        if(frameLastForNextStart < 0){
             res = CommandVerify(Arduino_var_list[7], (_sec > 0 || _sec == -1)? 1: 0);
             if(res == 1 || res == -3){
                 WriteInfo(recType:12, _lickPos:_sec);
                 Debug.Log($"MS {(_on? "on": "off")}");
-                ui_update.MessageUpdate($"MS {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}");
+                ui_update.MessageUpdate($"MS {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}{";" + addInfo}");
                 if(_sec > 0){
                     alarm.TrySetAlarm("miniscopeEnd", (float)_sec, out _);
+                }else{
+                    alarm.DeleteAlarm("miniscopeEnd");
                 }
             }
-
+            return res == 1;
+        }else{
+            ui_update.MessageUpdate($"miniscopeStart is waiting for {(frameLastForNextStart / 60)} sec from the last record");
         }
-        
-        return res == 1;
+        return true;
     }
     
     void CloseDevices(){
@@ -3030,8 +3061,8 @@ public class Moving : MonoBehaviour
                 // manualResetEventVerify.Set();
             }
         }
-        Debug.LogError($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
-        // Debug.Log($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
+        // Debug.LogError($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
+        Debug.Log($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
         manualResetEventVerify.Set();
         return -1;
     }
@@ -3692,25 +3723,6 @@ public class Moving : MonoBehaviour
             }
         }
         
-        List<List<string>> tempIniReadContent = iniReader.GetReadContent();
-        IniReadContent = "default:\t\t\t\tothers:\n";
-        for(int i = 0; i < Math.Max(tempIniReadContent[0].Count, tempIniReadContent[1].Count); i++){
-            if(i < tempIniReadContent[0].Count){
-                IniReadContent += tempIniReadContent[0][i] + "\t\t\t";
-            }else{IniReadContent += "\t\t\t\t\t\t\t";}
-
-            if(i < tempIniReadContent[1].Count){
-                IniReadContent += tempIniReadContent[1][i] + "\n";
-            }else{IniReadContent += "\n";}
-        }
-            if(iniReader.ReadIniContent("settings", "checkConfigContent", "false") == "true"){
-            if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + IniReadContent, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){}
-            else{
-                Quit();
-                return;
-            }
-        }
-        
         int[] availableSerialSpeed = new int[]{115200, 230400, 250000, 460800, 500000, 921600};
         if(!int.TryParse(iniReader.ReadIniContent("serialSettings", "serialSpeed", "115200"), out serialSpeed) || !availableSerialSpeed.Contains(serialSpeed)){
             serialSpeed = 115200;
@@ -3750,8 +3762,24 @@ public class Moving : MonoBehaviour
                 OpenPythonScript();
                 DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
             }
+            strictIPCStatusUpdate = iniReader.ReadIniContent("settings", "strictIPCStatusUpdate", "false") == "true";
 
             _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
+        }
+
+        List<List<string>> tempIniReadContent = iniReader.GetReadContent();
+        static string Fmt(List<string> list) => string.Join("\n",
+            list.OrderBy(c => c.Split(",")[0]).ThenBy(c => c.Split(",")[1])
+                .GroupBy(c => c.Split(",")[0].Replace("section: ", ""))
+                .Select(g => $"[{g.Key}] " + string.Join("\t|||\t",
+                    g.Select(c => c.Split(",")[1].Replace(" key: ", "") + " : " + string.Join(",", c.Split(",").Skip(2)).Replace("default value:", "").Replace("value:", "").Trim()))));
+        IniReadContent = "--------------------------------\ndefault:\n" + Fmt(tempIniReadContent[0]) + "\n--------------------------------\nreaded:\n" + Fmt(tempIniReadContent[1]);
+        if(iniReader.ReadIniContent("settings", "checkConfigContent", "false") == "true"){
+            if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + IniReadContent, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){}
+            else{
+                Quit();
+                return;
+            }
         }
 
     }
@@ -3829,8 +3857,8 @@ public class Moving : MonoBehaviour
                     MSSet(0);
                     break;
                 }
-                case "ogStart":{
-                    if(float.TryParse(alarm.GetAlarmAddInfo("miniscopeStart"), out float _secInAlarm)){
+                case "ogStart":{//暂时用不到，og每次设定时间直接更新不需要定时后再开始
+                    if(float.TryParse(alarm.GetAlarmAddInfo("ogStart"), out float _secInAlarm)){
                         if(_secInAlarm > 0){OGSet((int)_secInAlarm);}
                     }else{Debug.Log("wrong argument in time set");}
                     break;

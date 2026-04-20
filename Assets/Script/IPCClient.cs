@@ -214,6 +214,8 @@ public class IPCClient : MonoBehaviour
 
         if(selectedAreas.Any(area => area[0] == mark)){
             currentArea[0] = selectedAreas.Find(area => area[0] == mark);
+        }else{
+            Debug.Log($"no dest area marked as {mark} found ");
         }
         return 0;
     }
@@ -362,11 +364,14 @@ public class IPCClient : MonoBehaviour
         mouseDrawer = new MouseDrawer(image, mouseDrawerTrailShader, 0.002f, 30);
         MDDrawInit(sceneInfo:sceneInfo.ToArray());
         
-        if(selectedAreas.Count() != selectAreaCount){
+        if(selectedAreas.Count() < selectAreaCount){
             MessageBoxForUnity.Ensure($"only {selectedAreas.Count()} selectarea received, missed {selectAreaCount - selectedAreas.Count()}, sync failed", "sync error");
             Silent = true;
             activited = false;
         }else{
+            if(selectedAreas.Count > selectAreaCount){
+                MessageBoxForUnity.Ensure($"too many selectarea received, only {selectedAreas.Count()} needed, now selectAreas: {string.Join("\n", from sa in selectedAreas select string.Join(",", sa))}", "sync warning");
+            }
             List<int[]>DestinationCircleAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
             int tempradius = 0;
             double tempdisttocenter = 0;
@@ -531,7 +536,7 @@ public class IPCClient : MonoBehaviour
                                                 if(!selectArea[1..].SequenceEqual(tempselectedArea[1..])){
                                                     selectedAreas.Remove(selectArea);
                                                     selectedAreas.Add(tempselectedArea);
-                                                    Debug.Log("added changed selection");
+                                                    Debug.Log($"added changed selection [{string.Join(",", tempselectedArea)}]");
                                                 }else{
                                                     existing = true;
                                                 }

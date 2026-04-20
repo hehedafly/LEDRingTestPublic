@@ -630,49 +630,68 @@ public class UIUpdate : MonoBehaviour
             }
             case "IFSerialMessage":{
                 // string temp_str=serialMessageInputs.text;
+                List<string> threeSplashCommands = new List<string>{"help"};
                 string temp_str=stringArg.Length >0? stringArg: inputFieldContent[serialMessageInputs.name];
-                if(temp_str.Length == 0){break;}
+                string[] temp_str_split = temp_str[3..].Split("=");
+                if(temp_str.Length == 0 || temp_str_split.Length == 0){break;}
                 if (temp_str.StartsWith("///")) {
-                    if (!temp_str.Contains("=")){
-                        if (temp_str.StartsWith("///help")) {
-                            string helpStr = "";
-                            foreach(PropertyInfo p in moving._cachedPropertyInfo.Where(p => p.CanWrite)) {
-                                string _type = p.PropertyType.Name;
-                                if (p.PropertyType.FullName.StartsWith("System.Collections.Generic")) {
-                                    string contains = p.PropertyType.FullName.Replace("System.Collections.Generic.", "");
-                                    while(contains.Contains("`")){
-                                        contains = contains.Replace(contains.Substring(contains.IndexOf("`"), 4), "<");
+                    string variableName = temp_str_split[0];
+
+                    if (threeSplashCommands.Contains(variableName)){
+                        switch (variableName){
+                            case "help":{
+                                string helpStr = "";
+                                foreach(PropertyInfo p in moving._cachedPropertyInfo.Where(p => p.CanWrite)) {
+                                    string _type = p.PropertyType.Name;
+                                    if (p.PropertyType.FullName.StartsWith("System.Collections.Generic")) {
+                                        string contains = p.PropertyType.FullName.Replace("System.Collections.Generic.", "");
+                                        while(contains.Contains("`")){
+                                            contains = contains.Replace(contains.Substring(contains.IndexOf("`"), 4), "<");
+                                        }
+                                        contains = contains.Replace("]]", ">");
+                                        while (contains.Contains(">,")) {
+                                            contains = contains.Replace(contains.Substring(contains.IndexOf(">,"), contains.IndexOf(">", contains.IndexOf(">,") + 1) - contains.IndexOf(">")), ">");
+                                        }
+                                        if (contains.Contains(",")) {
+                                            contains = contains.Replace(contains.Substring(contains.IndexOf(","), contains.IndexOf(">") - contains.IndexOf(",")), "");
+                                        }
+                                        _type = contains;
                                     }
-                                    contains = contains.Replace("]]", ">");
-                                    while (contains.Contains(">,")) {
-                                        contains = contains.Replace(contains.Substring(contains.IndexOf(">,"), contains.IndexOf(">", contains.IndexOf(">,") + 1) - contains.IndexOf(">")), ">");
-                                    }
-                                    if (contains.Contains(",")) {
-                                        contains = contains.Replace(contains.Substring(contains.IndexOf(","), contains.IndexOf(">") - contains.IndexOf(",")), "");
-                                    }
-                                    _type = contains;
+                                    
+                                    helpStr += $"{p.Name}, type {_type}\n";
                                 }
-                                
-                                helpStr += $"{p.Name}, type {_type}\n";
+                                MessageUpdate(helpStr);
+                                break;
                             }
-                            MessageUpdate(helpStr);
+                            default:{
+                                break;
+                            }
                         }
                         break;
                     }
                     
-                    string variableName = temp_str[3..].Split("=")[0];
-                    string content = temp_str.Split("=")[1];
-                    if(variableName.Length > 0 && content.Length > 0) {
-                        moving.SetContextInfoProperties(variableName, content);
+                    string content = temp_str_split.Length > 1? temp_str_split[1]: "";
+                    if(variableName.Length > 0) {
+                        if(content.Length > 0){
+                            moving.SetContextInfoProperties(variableName, content);
+                        }else{
+                            string res = moving.GetContextInfoProperties(variableName);
+                            if(res != null){
+                                MessageUpdate($"{variableName}: {res}");
+                            }
+                        }
                     }
                 }
                 else{
                     if(temp_str.StartsWith("//")){
                         moving.DataSendRaw(temp_str);
+                        MessageUpdate($"serial message sent: {temp_str}");
+                    }else if(temp_str.StartsWith("~/")){
+                        MessageUpdate(temp_str[2..]);
                     }else{
                         if(moving.DataSend(temp_str, temp_str.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                        MessageUpdate($"serial message sent: {temp_str}");
                     }
-                    MessageUpdate($"serial message sent: {temp_str}");
                 }
                 break;
             }

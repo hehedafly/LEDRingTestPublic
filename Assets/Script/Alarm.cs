@@ -124,8 +124,8 @@ public class Alarm
     /// <summary>
     /// subsequent:当前需要等待 nextTo 触发后再立即触发的alarm
     /// </summary>
-    public int StartAlarmAfter(string _alarmName, string _alarmNameAfter){
-        if(alarmNameIndDic.TryGetValue(_alarmName, out int _ind) && alarmNameIndDic.TryGetValue(_alarmNameAfter, out int _indAfter)){
+    public int StartAlarmAfter(string subsequent, string _alarmNameAfter){
+        if(alarmNameIndDic.TryGetValue(subsequent, out int _ind) && alarmNameIndDic.TryGetValue(_alarmNameAfter, out int _indAfter)){
             return StartAlarmAfter(_ind, _indAfter);
         }else{
             return -1;
