@@ -146,7 +146,10 @@ if(sharedmm.CheckServerOnlineStatus()){
         List<int> messageStartPosLs = new List<int>();
         List<int> messageLengthLs = new List<int>();
 
-        bool heartBeat = false;
+        /// <summary>
+        /// update every 1s
+        /// </summary>
+        bool heartbeat = false;
         int maxOfflineTick = 5;
         int offlineTick = 0;
         // int careOfflineTick = 0;
@@ -171,7 +174,7 @@ if(sharedmm.CheckServerOnlineStatus()){
             // contentBegin = 0;
             writeBufferLength = 16 * 1024;
             writeBufferStartPosAll = new List<int>();
-            heartBeat = _heartbeat;
+            heartbeat = _heartbeat;
         }
 
         ~Sharedmm()
@@ -256,7 +259,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                             shmCreated = false;
 
                             if(maxClientNum == 0){throw new Exception("server offline");}
-                            else{throw new Exception($"already {maxClientNum} clients on server");}
+                            else{throw new Exception($"already {nowServerStatus[2]} clients on server");}
                         }else{
                             UID = nowServerStatus.FindIndex(3, x => x == 0) - 2;
                             if(UID < 0 || UID > maxClientNum){
@@ -266,7 +269,7 @@ if(sharedmm.CheckServerOnlineStatus()){
 
                                 throw new Exception("wrong status record, failed to get index");
                             }
-                            WriteByte(2, (byte)(nowServerStatus[2]+1));
+                            WriteByte(2, (byte)(nowServerStatus[2] % 255 +1));
                             WriteByte(3 + UID - 1, 1);
                             ApplyForCare();
                             
@@ -322,7 +325,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                     Debug.Log("shmInitiled");
                     if(manually && IsValidHandle(m_pwData) && IsValidHandle(m_hSharedMemoryFile)){
                         List<byte> nowServerStatus = ReadShmHead().ToList();
-                        WriteByte(2, (byte)(nowServerStatus[2]-1));
+                        // WriteByte(2, (byte)(nowServerStatus[2]-1));
                         WriteByte(2 + UID, 0);
                     }
                     if(IsValidHandle(m_pwData)){
@@ -580,16 +583,14 @@ if(sharedmm.CheckServerOnlineStatus()){
         public int UpdateOnlineStatus(){
 
             byte[] head = ReadShmHead();
-            if(!heartBeat){
-                if(head[2 + UID] == 0){
-                    return -3; //server set offline
-                }
-            
+            if(head[2 + UID] == 0){
+                return -3; //server set offline
             }
+            
             if(name != "server"){
                 if(head[0] == 0){return -1;}//server offline
-                else{
-                    WriteByte(2 + UID, (byte)(head[2 + UID] % 256 + 1));
+                else if(heartbeat){
+                    WriteByte(2 + UID, (byte)(head[2 + UID] % 255 + 1));
 
                     if(head[0] != careOnlineStatus[0]){
                         careOnlineStatus[0] = head[0];
@@ -603,14 +604,17 @@ if(sharedmm.CheckServerOnlineStatus()){
                     //     }else{careOfflineTick ++;}
                     // }
 
+                    if(offlineTick == maxOfflineTick){
+                        offlineTick = 0;
+                        return -2;//server offline accidentally
+                    }else{
+                        return 1;
+                    }
                 }
-
-                if(offlineTick == maxOfflineTick){
-                    offlineTick = 0;
-                    return -2;//server offline accidentally
-                }else{
+                else{
                     return 1;
                 }
+
             }else{
                 WriteByte(0, (byte)(head[0] % 256 + 1));
                 for(int i = 0; i < maxClientNum; i++){

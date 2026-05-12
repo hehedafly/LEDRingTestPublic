@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -195,5 +196,103 @@ public class ExeLauncher
         string ScriptDirectory = Path.GetDirectoryName(ScriptPath) ?? "";
 
         return new List<string> {ExePath, ScriptPath, Arguments, ScriptDirectory};
+    }
+}
+
+public static class LogEventController
+{
+    // ========== Win32 API 导入 ==========
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+
+    // [DllImport("user32.dll", SetLastError = true)]
+    // private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
+
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowEnabled(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    private const uint BM_CLICK = 0x00F5;
+    private const uint SMTO_NORMAL = 0x0000;
+
+    // ========== 辅助方法：获取录制按钮句柄 ==========
+    private static IntPtr FindRecordButton()
+    {
+        IntPtr hWnd = FindWindow(null, "LogEvent");
+        if (hWnd == IntPtr.Zero) return IntPtr.Zero;
+        return FindWindowEx(hWnd, IntPtr.Zero, "Button", "Record");
+    }
+
+    // ========== 辅助方法：获取 Load 按钮句柄 ==========
+    private static IntPtr FindLoadButton()
+    {
+        IntPtr hWnd = FindWindow(null, "LogEvent");
+        if (hWnd == IntPtr.Zero) return IntPtr.Zero;
+        return FindWindowEx(hWnd, IntPtr.Zero, "Button", "Load");
+    }
+
+    // ========== 检测录制按钮状态（通过 Load 按钮的可用性） ==========
+    // 返回值：true 表示状态0（未录制，Load 按钮可用），false 表示状态1（录制中，Load 按钮不可用）
+    public static bool IsRecordButtonStateZero()
+    {
+        IntPtr hLoad = FindLoadButton();
+        if (hLoad == IntPtr.Zero)
+        {
+            UnityEngine.Debug.LogError("未找到 Load 按钮");
+            return false;
+        }
+        // Load 按钮可用 => 未录制（状态0），返回 true
+        return IsWindowEnabled(hLoad);
+    }
+
+    // ========== 根据参数智能点击录制按钮 ==========
+    // start = true  : 希望开始录制，仅在状态0时点击
+    // start = false : 希望停止录制，仅在状态1时点击
+    public static void SmartClickRecordButton(bool start)
+    {
+        bool isStateZero = IsRecordButtonStateZero(); // true=未录制, false=录制中
+        bool shouldClick = (start && isStateZero) || (!start && !isStateZero);
+
+        if (!shouldClick)
+        {
+            UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isStateZero ? "0(未录制)" : "1(录制中)")}");
+            return;
+        }
+
+        // 执行点击
+        IntPtr hRecord = FindRecordButton();
+        if (hRecord == IntPtr.Zero)
+        {
+            UnityEngine.Debug.LogError("未找到录制按钮");
+            return;
+        }
+        if (!IsWindowEnabled(hRecord))
+        {
+            UnityEngine.Debug.LogWarning("录制按钮当前不可用");
+            return;
+        }
+        // if(start){
+        //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
+        //     UnityEngine.Debug.Log($"已开始录制");
+        // }
+        // else{
+        //     // PostMessage(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+        //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
+        //     UnityEngine.Debug.Log($"已停止录制");
+        // }
+        SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
+        UnityEngine.Debug.Log($"已{(start? "开始" :"停止")}录制");
+
     }
 }
