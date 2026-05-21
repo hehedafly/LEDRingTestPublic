@@ -12,3 +12,4 @@ Buildings/
 *.rar
 .git_bak
 .vs
+/build

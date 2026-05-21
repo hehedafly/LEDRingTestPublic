@@ -24,6 +24,7 @@ public class IPCClient : MonoBehaviour
     bool activited = false;      
     public bool Activated{get {return activited;} set{activited = value;} }
     public bool Silent = true;
+    public bool heartbeat = false;
     
     /// <summary>
     /// -1: not init, 0~max: inited and connected -2:inited max:0.5s*50fps = 25
@@ -293,8 +294,8 @@ public class IPCClient : MonoBehaviour
 
     #endregion
 
-    int CreateSharedmm(){
-        sharedmm = new Sharedmm("UnityProject", "server");
+    int CreateSharedmm(bool heartbeat = false){
+        sharedmm = new Sharedmm("UnityProject", "server", heartbeat);
         try{
             sharedmm.Init("UnityShareMemoryTest", 32+5*16*1024);
         }
@@ -414,9 +415,11 @@ public class IPCClient : MonoBehaviour
         }
     }
 
-    public void ClosePythonScript(){
+    public void ClosePythonScript(bool force = false){
         if(sharedmm != null) {
-            for(int i = 0; i < 5; i++){sharedmm.WriteContent("cmd:quit", clear: false);}
+            for(int i = 0; i < 5; i++){sharedmm.WriteContent(force? "cmd:forcequit": "cmd:quit", clear: false);}
+        }else{
+            // uiUpdate.MessageUpdate("failed to close, Connect to python script frist");
         }
     }
   
@@ -445,8 +448,8 @@ public class IPCClient : MonoBehaviour
     }
   
     void Update(){
-        if(activited && Time.unscaledDeltaTime - lastTime >= 1){
-            lastTime = Time.unscaledDeltaTime;
+        if(activited && Time.unscaledTime - lastTime >= 1){
+            lastTime = Time.unscaledTime;
             int res = sharedmm.UpdateOnlineStatus();
             if(res < 0){
                 CloseSharedmm();
@@ -477,7 +480,7 @@ public class IPCClient : MonoBehaviour
         
 
         if(!Silent && sharedmm == null){
-            if(CreateSharedmm() < 0){
+            if(CreateSharedmm(heartbeat) < 0){
                 Silent = true;
                 sharedmm = null;
                 Debug.LogWarning("failed to create sharedmm");

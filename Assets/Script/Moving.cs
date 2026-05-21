@@ -17,6 +17,7 @@ using MatrixClaculator;
 using Unity.VisualScripting;
 using System.Reflection;
 using System.ComponentModel;
+
 // using System.Drawing;
 
 [System.Serializable]
@@ -292,7 +293,7 @@ class ContextInfo{
     /// <summary>
     /// OGTtiggerMethod, MSTriggerMethod中，若[start]和[end]条件相同，[start]优先结算
     /// </summary>
-    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0, int _maxExtraRewardCount = 9999, string _randomRewardPerTrial = ""){
+    public void ContextInfoAdd(float _soundLength, float _cueVolume, int _barOffset, bool _destAreaFollow, float _standingSecInTrigger, float _standingSecInDest, string _OGTriggerMethod, string _MSTriggerMethod, bool _countAfterLeave, float _extraRewardTimeInSec = 0, string _stopExtraRewardMethod = "", int _stopExtraRewardUseTriggerSelectArea = -1, float _stopExtraRewardLickDelaySec = 0, float _minIgnoreLickInterval = 0, int _maxExtraRewardCount = 9999, string _randomRewardPerTrial = "", bool _MSRecordDifferentiate = false, bool _OGtriggerRandomControl = false, bool _OGtriggerCompensation = false){
         soundLength = _soundLength;
         cueVolume = _cueVolume;
         barOffset = _barOffset;      
@@ -309,6 +310,10 @@ class ContextInfo{
         manuplateMethods = "OG: "+_OGTriggerMethod + ";\nMS: " + _MSTriggerMethod;
         DeviceTriggerMethodLs = new List<string>() {"certainTrialStart", "everyTrialStart", "certainTrialEnd", "everyTrialEnd", "certainTrialInTarget", "everyTrialInTarget", "nextTrialStart", "nextTrialEnd", "nextTrialInTarget"};
         DeviceTriggerMethodLsSorted = new List<List<string>>();
+        MSRecordDifferentiate = _MSRecordDifferentiate; 
+        OGtriggerRandomControl = _OGtriggerRandomControl;
+        OGtriggerCompensation = _OGtriggerCompensation;
+
         while(DeviceTriggerMethodLsSorted.Count() < DeviceTriggerMethodLs.Count()/2){DeviceTriggerMethodLsSorted.Add(new List<string>());}
         foreach(var triggerMethod in DeviceTriggerMethodLs){
             if(triggerMethod.Contains("TrialStart")){
@@ -423,7 +428,7 @@ class ContextInfo{
                                     .SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))
                                     .GroupBy(kvp => kvp.Key)  // 按原始Key分组
                                     .SelectMany(group => 
-                                        group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
+                                        group.Select((item, index) =>
                                             index == 0 
                                                 ? item  // 第一个保留原键
                                                 : new KeyValuePair<string, int[]>(
@@ -437,7 +442,7 @@ class ContextInfo{
                                     MSTriggerMethodLs.SelectMany(list => list.Where(kvp => DeviceTriggerMethodLsSorted[i].Contains(kvp.Key)))
                                     .GroupBy(kvp => kvp.Key)  // 按原始Key分组
                                     .SelectMany(group => 
-                                        group.Select((item, index) =>  // 改用item代替kvp避免作用域冲突
+                                        group.Select((item, index) => 
                                             index == 0 
                                                 ? item  // 第一个保留原键
                                                 : new KeyValuePair<string, int[]>(
@@ -480,6 +485,17 @@ class ContextInfo{
         })
         .Where(x => x > 0) // Filter out non-positive values
         .ToList();
+    }
+
+    public static double CalculateCompensatedProbability(double targetProbability, int maxConsecutive, int iterations = 5){
+        if ((targetProbability is < 0 or >= 1) || (maxConsecutive < 1)){Debug.Log("必须满足 0 ≤ p < 1且最大连续次数至少为 1");return targetProbability;}
+        double q = targetProbability; // 初始猜测
+        for (int i = 0; i < iterations; i++){
+            double qPowK = Math.Pow(q, maxConsecutive);
+            double qPowK1 = qPowK * q; // q^(K+1)
+            q = targetProbability * (1 - qPowK1) / (1 - qPowK);
+        }
+        return q;
     }
 
     /// <summary>
@@ -535,6 +551,9 @@ class ContextInfo{
     public float        minIgnoreLickInterval   {get;set;}
     public int          maxExtraRewardCount     {get;set;}
     public List<int>    randomRewardPerTrial    {get;set;}
+    public bool         MSRecordDifferentiate   {get;set;}
+    public bool         OGtriggerRandomControl   {get;set;}
+    public bool         OGtriggerCompensation   {get;set;}
 
     /// <summary>
     /// resore template keys of trigger Dicts:
@@ -824,7 +843,10 @@ public class Moving : MonoBehaviour
     /// -1：初始未开始，-2：forcewaiting, -3:not start but record，0：waiting， 1：started，2：finished but not end
     /// </summary>
     public  int trialStatus = -2;
-    int[] trialDeviceTriggerStatus = new int[3];
+    /// <summary>
+    /// for device trigger "next..." judgement, update in no-next trigger method, index: 0:OG trial 1:MS trial; 2:null
+    /// </summary>
+    int[] trialDeviceTriggerStatusForNextMethod = new int[3];
     public bool ForceWaiting { get { return forceWaiting; } set { forceWaiting = value; } }
     /// <summary>
     /// 0x?0, 0x?1 : 0: 舔到对的进入下一个trial，无论其他; 1: 只能舔对的 2:在对应位置待到时间  |||  0x0?, 0x1? : 0:trial开始就给水; 1:符合条件才给水
@@ -944,6 +966,11 @@ public class Moving : MonoBehaviour
     Material refSegementMat;
     public Dictionary<string, bool> DeviceEnableDict = new Dictionary<string, bool>{};
     public Dictionary<string, int> ButtonTriggerDict = new Dictionary<string, int>{};
+    bool OGtriggerRandomControl = false;
+    bool MSRecordDifferentiate = false;
+    bool OGtriggerCompensation = false;
+    List<int> trialOGStartedTemp = new List<int>();
+    int trialMSStartedTemp = 0;
     /// <summary>
     /// 0:Optogenetics, 1:Miniscope, 2:PythonScript
     /// </summary>
@@ -967,6 +994,9 @@ public class Moving : MonoBehaviour
     IniReader iniReader;
     string IniReadContent;
 
+/// <summary>
+/// 调试时若需修改nowTrial，应在刚进入lickingcheck时修改
+/// </summary>
     int nowTrial = 0; public int NowTrial{get{return nowTrial;}}
     ContextInfo contextInfo;
     Dictionary<string, MaterialStruct> MaterialDict = new Dictionary<string, MaterialStruct>();
@@ -1787,6 +1817,7 @@ public class Moving : MonoBehaviour
         waitSec = -1;
         waitSecRec = -1;
         trialStartTime = -1;
+        trialMSStartedTemp = 0;
         lickCount.Clear();
         trialResult.Clear();
         trialResultPerLickSpout.Clear();
@@ -2051,7 +2082,7 @@ public class Moving : MonoBehaviour
             // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
-        else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
+        else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedDeltaTime * 0.5){
             return soundCueLeadTime > 0? 1: -1;
         }
         else{
@@ -2500,6 +2531,7 @@ public class Moving : MonoBehaviour
                 WriteInfo(recType: 10, _lickPos: _mills);
                 Debug.Log($"OG set {_mills}");
                 ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
+                if(_on){trialOGStartedTemp.Append(nowTrial);}else{trialOGStartedTemp.Clear();}
             }
             return res == 1;
         }
@@ -2529,7 +2561,7 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="_on"></param>
     /// <returns></returns>
-    public bool MSSet(int _sec = -1, bool forceRestart = true, string addInfo = ""){
+    public bool MSSet(float _sec = -1, bool forceRestart = true, string addInfo = ""){
         bool _on = _sec > 0 || _sec == -1;
         int res;
         if(alarm.GetAlarm("miniscopeEnd") >= 0){
@@ -2548,13 +2580,13 @@ public class Moving : MonoBehaviour
         if(frameLastForNextStart < 0){
             res = CommandVerify(Arduino_var_list[7], (_sec > 0 || _sec == -1)? 1: 0);
             if(res == 1 || res == -3){
-                WriteInfo(recType:12, _lickPos:_sec);
+                WriteInfo(recType:12, _lickPos:(int)_sec);
                 Debug.Log($"MS {(_on? "on": "off")}");
                 ui_update.MessageUpdate($"MS {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}{";" + addInfo}");
                 if(_sec > 0){
                     alarm.TrySetAlarm("miniscopeEnd", (float)_sec, out _);
                 }else{
-                    alarm.DeleteAlarm("miniscopeEnd");
+                    alarm.DeleteAlarm("miniscopeEnd", true);
                 }
             }
             return res == 1;
@@ -2582,9 +2614,9 @@ public class Moving : MonoBehaviour
         }
     }
 
-    string CheckMouseStat(){//待加其他内容
-        return "";
-    }
+    // string CheckMouseStat(){//待加其他内容
+    //     return "";
+    // }
 
     public bool GetContextInfoDestAreaFollow(){
         return contextInfo.destAreaFollow;
@@ -2611,46 +2643,57 @@ public class Moving : MonoBehaviour
                 if(_trigger.Key.StartsWith("certain")){
                     if(_trigger.Value[1..].Contains(nowTrial)){
                         OGSet(_trigger.Value[0] == 1? _mills: 0);
-                        trialDeviceTriggerStatus[0] = nowTrial;
+                        trialDeviceTriggerStatusForNextMethod[0] = nowTrial;
                         break;
                     }
                 }else if(_trigger.Key.StartsWith("every")){
-                    if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
+                    int maxConsecutive = 5;
+                    double correctedProbability = (OGtriggerRandomControl && OGtriggerCompensation)? ContextInfo.CalculateCompensatedProbability((float)_trigger.Value[1] / 100, maxConsecutive) * 100: _trigger.Value[1];
+                    if(GetRandom(new List<float>{0, 100}) < correctedProbability && (!OGtriggerRandomControl || (OGtriggerRandomControl && trialOGStartedTemp.Count < maxConsecutive) )){//暂时限定最多5次
                         OGSet(_trigger.Value[0] == 1? _mills: 0);
-                        trialDeviceTriggerStatus[0] = nowTrial;
+                        trialDeviceTriggerStatusForNextMethod[0] = nowTrial;
                         break;
                     }
                 }else if(_trigger.Key.StartsWith("next")){
-                    if(nowTrial == trialDeviceTriggerStatus[0] + 1){
+                    if(nowTrial == trialDeviceTriggerStatusForNextMethod[0] + 1){
                         OGSet(_trigger.Value[0] == 1? _mills: 0);
+
+                        break;
                     }
                 }
             }
         }
 
         if(DeviceEnableDict.TryGetValue("MS", out _enable) && _enable){
+            float _sec = 0;
             foreach(var _trigger in MSTrigger){
-                int _sec = ui_update.TryGetDeviceSetTime("MSTime", out int _mills_temp)? _mills_temp: -1;
+                _sec = ui_update.TryGetDeviceSetTime("MSTime", out int _mills_temp)? _mills_temp: -1;
+                if(MSRecordDifferentiate){
+                    _sec += trialMSStartedTemp * 0.5f;
+                }
                 if(_trigger.Key.StartsWith("certain")){
                     if(_trigger.Value[1..].Contains(nowTrial)){
                         MSSet(_trigger.Value[0] == 1? _sec: 0);
-                        trialDeviceTriggerStatus[1] = nowTrial;
+                        trialDeviceTriggerStatusForNextMethod[1] = nowTrial;
 
                         break;
                     }
                 }else if(_trigger.Key.StartsWith("every")){
                     if(GetRandom(new List<int>{0, 100}) < _trigger.Value[1]){
                         MSSet(_trigger.Value[0] == 1? _sec: 0);
-                        trialDeviceTriggerStatus[1] = nowTrial;
+                        trialDeviceTriggerStatusForNextMethod[1] = nowTrial;
 
                         break;
                     }
                 }else if(_trigger.Key.StartsWith("next")){
-                    if(nowTrial == trialDeviceTriggerStatus[0] + 1){
+                    if(nowTrial == trialDeviceTriggerStatusForNextMethod[1] + 1){
                         MSSet(_trigger.Value[0] == 1? _sec: 0);
+
+                        break;
                     }
                 }
             }
+            trialMSStartedTemp += (_sec > 0 || _sec == -1)? 1: 0;
         }
         
         foreach(string elementName in ElementTrigger){
@@ -2751,7 +2794,7 @@ public class Moving : MonoBehaviour
                             alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
                         }
                     }else{//trial开始后在Go Cue之前舔了应延迟
-                        float _lasttime = alarm.GetAlarm("PlayGoCueWhenSetWaitingToFalse") * Time.fixedUnscaledDeltaTime;//waitFromStart无设置时此alarm一直为-1
+                        float _lasttime = alarm.GetAlarm("PlayGoCueWhenSetWaitingToFalse") * Time.fixedDeltaTime;//waitFromStart无设置时此alarm一直为-1
                         if(_lasttime > 0){//仍在等待Go Cue
                         
                             // alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", contextInfo.GoCueLeadTime, out _);//SetWaitingToFalseAtTrialStart将在playSound后开始，不必要延迟这个
@@ -3571,7 +3614,10 @@ public class Moving : MonoBehaviour
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "stopExtraRewardLickDelaySec"     ,   "0"              )),
                 Convert.ToSingle(iniReader.ReadIniContent(  "settings"      , "minIgnoreLickInterval"    ,   "0"              )),
                 Convert.ToInt16(iniReader.ReadIniContent(   "settings"      , "maxExtraRewardCount"     ,   "9999"              )),
-                iniReader.ReadIniContent(                   "settings"      , "ServeRandomRewardAtEnd"     ,   "0"              )
+                iniReader.ReadIniContent(                   "settings"      , "ServeRandomRewardAtEnd"     ,   "0"              ),
+                iniReader.ReadIniContent(                   "settings"      , "MSRecordDifferentiate"  , "false") == "true",
+                iniReader.ReadIniContent(                   "settings"      , "OGtriggerRandomControl"  , "false") == "true",
+                iniReader.ReadIniContent(                   "settings"      , "OGtriggerCompensation"  , "false") == "true"
             );
 
         }
@@ -3583,7 +3629,10 @@ public class Moving : MonoBehaviour
         }
 
         lickPosLsCopy = contextInfo.lickPosLs;
-
+        MSRecordDifferentiate = contextInfo.MSRecordDifferentiate;
+        OGtriggerRandomControl = contextInfo.OGtriggerRandomControl;
+        OGtriggerCompensation = contextInfo.OGtriggerCompensation;
+        
         trialStartTriggerMode = contextInfo.trialTriggerMode;
         foreach(var _ in TrialSoundPlayModeExplain){
             audioPlayTimes.Add(audioPlayTimes.Count, new float[]{
@@ -3763,7 +3812,7 @@ public class Moving : MonoBehaviour
                 DeviceCloseOptionBeforeExits[2] = iniReader.ReadIniContent("settings", "closePythonScriptBeforeExit", "false") == "true";
             }
             strictIPCStatusUpdate = iniReader.ReadIniContent("settings", "strictIPCStatusUpdate", "false") == "true";
-
+            ipcclient.heartbeat = iniReader.ReadIniContent("settings", "IPCHeartbeat", "false") == "true";
             _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
         }
 
@@ -3868,7 +3917,7 @@ public class Moving : MonoBehaviour
                     break;
                 }
                 case "ClosePythonScript":{
-                    ipcclient.ClosePythonScript();
+                    ClosePythonScript();
                     break;
                 }
                 case "ServeRandomRewardAtEnd":{
@@ -3940,7 +3989,7 @@ public class Moving : MonoBehaviour
                         }
                         // }
                         if(InTriggerArea){
-                            standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
+                            standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedDeltaTime: standingSecNowInTrigger + Time.fixedDeltaTime;
                             float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
                             PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                             if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
@@ -3961,7 +4010,7 @@ public class Moving : MonoBehaviour
                             if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial[0] >= markCountPerType){
                                 if(CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
                                     // PlaySound("InPos");
-                                    standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
+                                    standingSecNowInDest = standingSecNowInDest == -1? Time.fixedDeltaTime: standingSecNowInDest + Time.fixedDeltaTime;
                                     float speedUpScale = GetSoundPitch(contextInfo.standingSecInDest - standingSecNowInDest, contextInfo.standingSecInDest);
                                     PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                                     if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){
@@ -4049,10 +4098,22 @@ public class Moving : MonoBehaviour
         ui_update.SetLightSignal("stop");
     }
 
-    public void PreExit(bool timing = true){
+    public void DisconnectWithIPCServer(){
+        if(IsIPCInNeed() || IsIPCActive()){
+            Ipcclient.Silent = true;
+            Ipcclient.Activated = false;
+        }
+    }
+
+    public void ClosePythonScript(bool force = false){
+        if(!(ipcclient is null)){
+            ipcclient.ClosePythonScript(force);
+        }
+    }
+
+    public void PreExit(){
         if(DeviceCloseOptionBeforeExits[2]){
-            if(timing){alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 10);}
-            else{ipcclient.ClosePythonScript();}
+            alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 5);
         }
     }
 

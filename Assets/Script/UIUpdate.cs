@@ -625,7 +625,9 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "SliderPos":{
-                moving.SetBarPos(moving.DegToPos(value));
+                if(moving.DebugMode){
+                    moving.SetBarPos(moving.DegToPos(value));
+                }
                 break;
             }
             case "IFSerialMessage":{
@@ -781,14 +783,15 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "IPCDisconnect":{
-                if(moving.IsIPCInNeed() || moving.IsIPCActive()){
-                    moving.Ipcclient.Silent = true;
-                    moving.Ipcclient.Activated = false;
-                }
+                moving.DisconnectWithIPCServer();
                 break;
             }
             case "OpenPythonScript":{
                 moving.OpenPythonScript(show:true);
+                break;
+            }
+            case "ClosePythonScript":{
+                alarm.TrySetAlarm("ClosePythonScript", 0.1f, out _, 5, addInfo: "force");
                 break;
             }
             case"PageUp":{
@@ -875,6 +878,14 @@ public class UIUpdate : MonoBehaviour
             }
             case "MessagePost": {
                 PostMessageToWeChat("收鼠收鼠收鼠"+ " 现在" + DateTime.Now.ToString("HH:mm:ss "), "鼠训完了！");
+                break;
+            }
+            case "LogeventStart":{
+                LogEventController.SmartClickRecordButton(true);
+                break;
+            }
+            case "LogeventEnd":{
+                for(int i=0;i<5;i++){LogEventController.SmartClickRecordButton(false);}
                 break;
             }
             default:{
@@ -1044,7 +1055,7 @@ public class UIUpdate : MonoBehaviour
                         if(createdTimingBaseSubDropdowns.Count >= _hierarchy) {
                             if(createdTimingBaseSubDropdowns.Count > 0){
                                 _hierarchy = Math.Max(_hierarchy, 1); 
-                                Destroy(createdTimingBaseSubDropdowns[_hierarchy - 1]);
+                                Destroy(createdTimingBaseSubDropdowns[_hierarchy - 1]);//destory后会自动调用上方的destroy分支，不用在这clear
                             }
                         }
                     }
@@ -1544,6 +1555,10 @@ public class UIUpdate : MonoBehaviour
                         buttonTimingBaseSubDropdown.GetComponent<Dropdown>().Show();
                     }
                     // buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>().UpdateOptionsFunctionEnableStatus(0);
+                    break;
+                }
+                case "ClosePythonScript":{
+                    moving.ClosePythonScript(alarm.GetAlarmAddInfo("ClosePythonScript") == "force");
                     break;
                 }
                 default:{
