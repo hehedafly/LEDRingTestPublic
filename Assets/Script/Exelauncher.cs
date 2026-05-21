@@ -244,16 +244,16 @@ public static class LogEventController
 
     // ========== 检测录制按钮状态（通过 Load 按钮的可用性） ==========
     // 返回值：true 表示状态0（未录制，Load 按钮可用），false 表示状态1（录制中，Load 按钮不可用）
-    public static bool IsRecordButtonStateZero()
+    public static int IsRecordButtonStateZero()
     {
         IntPtr hLoad = FindLoadButton();
         if (hLoad == IntPtr.Zero)
         {
-            UnityEngine.Debug.LogError("未找到 Load 按钮");
-            return false;
+            UnityEngine.Debug.LogWarning("未找到 Load 按钮");
+            return -1;
         }
         // Load 按钮可用 => 未录制（状态0），返回 true
-        return IsWindowEnabled(hLoad);
+        return IsWindowEnabled(hLoad)? 1: 0;
     }
 
     // ========== 根据参数智能点击录制按钮 ==========
@@ -261,12 +261,14 @@ public static class LogEventController
     // start = false : 希望停止录制，仅在状态1时点击
     public static void SmartClickRecordButton(bool start)
     {
-        bool isStateZero = IsRecordButtonStateZero(); // true=未录制, false=录制中
-        bool shouldClick = (start && isStateZero) || (!start && !isStateZero);
+        int _isNoRecord = IsRecordButtonStateZero(); // true=未录制, false=录制中
+        if (_isNoRecord == -1) return;
+        bool isNoRecord = _isNoRecord == 1;
+        bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
 
         if (!shouldClick)
         {
-            UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isStateZero ? "0(未录制)" : "1(录制中)")}");
+            UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isNoRecord ? "0(未录制)" : "1(录制中)")}");
             return;
         }
 
@@ -291,7 +293,7 @@ public static class LogEventController
         //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
         //     UnityEngine.Debug.Log($"已停止录制");
         // }
-        SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
+        SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
         UnityEngine.Debug.Log($"已{(start? "开始" :"停止")}录制");
 
     }

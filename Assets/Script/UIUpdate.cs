@@ -625,7 +625,9 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "SliderPos":{
-                moving.SetBarPos(moving.DegToPos(value));
+                if(moving.DebugMode){
+                    moving.SetBarPos(moving.DegToPos(value));
+                }
                 break;
             }
             case "IFSerialMessage":{

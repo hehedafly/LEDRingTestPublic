@@ -2082,7 +2082,7 @@ public class Moving : MonoBehaviour
             // Debug.Log($"Time.fixedUnscaledTime {Time.fixedUnscaledTime}, waitSecRec {waitSecRec}, waitSec {waitSec}, _lasttime {_lasttime}");
             return 0;
         }
-        else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedUnscaledDeltaTime * 0.5){
+        else if(AudioPlayModeNowContains("BeforeTrial") && Math.Abs(_lasttime - (contextInfo.soundLength + soundCueLeadTime)) <= Time.fixedDeltaTime * 0.5){
             return soundCueLeadTime > 0? 1: -1;
         }
         else{
@@ -2794,7 +2794,7 @@ public class Moving : MonoBehaviour
                             alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
                         }
                     }else{//trial开始后在Go Cue之前舔了应延迟
-                        float _lasttime = alarm.GetAlarm("PlayGoCueWhenSetWaitingToFalse") * Time.fixedUnscaledDeltaTime;//waitFromStart无设置时此alarm一直为-1
+                        float _lasttime = alarm.GetAlarm("PlayGoCueWhenSetWaitingToFalse") * Time.fixedDeltaTime;//waitFromStart无设置时此alarm一直为-1
                         if(_lasttime > 0){//仍在等待Go Cue
                         
                             // alarm.TrySetAlarm("SetWaitingToFalseAtTrialStart", contextInfo.GoCueLeadTime, out _);//SetWaitingToFalseAtTrialStart将在playSound后开始，不必要延迟这个
@@ -3989,7 +3989,7 @@ public class Moving : MonoBehaviour
                         }
                         // }
                         if(InTriggerArea){
-                            standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedUnscaledDeltaTime: standingSecNowInTrigger + Time.fixedUnscaledDeltaTime;
+                            standingSecNowInTrigger = standingSecNowInTrigger == -1? Time.fixedDeltaTime: standingSecNowInTrigger + Time.fixedDeltaTime;
                             float speedUpScale = GetSoundPitch(contextInfo.standingSecInTrigger - standingSecNowInTrigger, contextInfo.standingSecInTrigger);
                             PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                             if(contextInfo.standingSecInTrigger > 0 && standingSecNowInTrigger >= contextInfo.standingSecInTrigger){
@@ -4010,7 +4010,7 @@ public class Moving : MonoBehaviour
                             if(TrialResultCheck(nowTrial) == -4 && ShiftedCertainAreaNowTrial[0] >= markCountPerType){
                                 if(CheckInRegion(pos, ShiftedCertainAreaNowTrial)){
                                     // PlaySound("InPos");
-                                    standingSecNowInDest = standingSecNowInDest == -1? Time.fixedUnscaledDeltaTime: standingSecNowInDest + Time.fixedUnscaledDeltaTime;
+                                    standingSecNowInDest = standingSecNowInDest == -1? Time.fixedDeltaTime: standingSecNowInDest + Time.fixedDeltaTime;
                                     float speedUpScale = GetSoundPitch(contextInfo.standingSecInDest - standingSecNowInDest, contextInfo.standingSecInDest);
                                     PlaySound("InPos", addInfo:$"pitch:{speedUpScale}");
                                     if(contextInfo.standingSecInDest > 0 && standingSecNowInDest >= contextInfo.standingSecInDest){

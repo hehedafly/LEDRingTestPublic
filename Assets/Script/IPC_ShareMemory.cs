@@ -503,6 +503,8 @@ if(sharedmm.CheckServerOnlineStatus()){
             int writePos = writeBufferStartPos + 9;
             // ShmBuffer[writePos] = (byte)writemark;
             WriteBytes(writePos, IntToBytes(writemark));
+            Debug.Log($"Write mark: {writemark}, writePos: {writePos}, self.id: {UID}");
+
             return 1;
         }
 

@@ -32,6 +32,7 @@ SEPARATOR = "|JR|"
 
 # Valid names extracted from ControlsParse switch cases in UIUpdate.cs
 # name -> type mapping (button / dropdown)
+# 后续添加允许外挂字典
 VALID_NAMES = {
     "StartButton": "button",
     "WaitButton": "button",
@@ -50,6 +51,7 @@ VALID_NAMES = {
     "PageUp": "button",
     "PageDown": "button",
     "BackgroundSwitch": "dropdown",
+    "TimingBlank": "button",
     "TimingConfigExoprt": "button",
     "IFTimingValue": "button",
     "IFTimingSet": "button",
