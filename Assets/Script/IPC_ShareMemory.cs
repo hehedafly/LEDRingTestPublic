@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -293,6 +293,24 @@ if(sharedmm.CheckServerOnlineStatus()){
                         WriteBytes(writeBufferStartPos, 0x00, 15);
                         writtenmark = 0;
                     }else{
+                        UID = 0;
+                        maxClientNum = 4;
+                        writeBufferStartPosAll.Clear();
+                        for (int i = 32; i < 32 + (maxClientNum + 1) * writeBufferLength; i += writeBufferLength)
+                        {
+                            writeBufferStartPosAll.Add(i);
+                        }
+                        WriteBytes(0, 0x00, 32);
+                        WriteBytes(32, 0xFF, (maxClientNum + 1) * writeBufferLength);
+                        WriteByte(0, 1);
+                        WriteByte(1, (byte)maxClientNum);
+                        WriteBytes(3, 0x00, 4);
+                        WriteBytes(7, 0x00, 24);
+                        writeBufferStartPos = writeBufferStartPosAll[UID];
+                        WriteBytes(writeBufferStartPos, 0x00, 15);
+                        writtenmark = 0;
+                        newestStartPos = 15;
+                        newestEndPos = 15;
                         careOnlineStatus.AddRange(Enumerable.Repeat(-1, maxClientNum));
                         clientOfflineTick.AddRange(Enumerable.Repeat(-1, maxClientNum));
                     }
@@ -324,9 +342,13 @@ if(sharedmm.CheckServerOnlineStatus()){
                 if(shmInitiled){
                     Debug.Log("shmInitiled");
                     if(manually && IsValidHandle(m_pwData) && IsValidHandle(m_hSharedMemoryFile)){
-                        List<byte> nowServerStatus = ReadShmHead().ToList();
-                        // WriteByte(2, (byte)(nowServerStatus[2]-1));
-                        WriteByte(2 + UID, 0);
+                        if(name == "server"){
+                            WriteByte(0, 0);
+                        }else{
+                            List<byte> nowServerStatus = ReadShmHead().ToList();
+                            // WriteByte(2, (byte)(nowServerStatus[2]-1));
+                            WriteByte(2 + UID, 0);
+                        }
                     }
                     if(IsValidHandle(m_pwData)){
                         Debug.Log($"UnmapViewOfFile({m_pwData})");
@@ -446,31 +468,41 @@ if(sharedmm.CheckServerOnlineStatus()){
                 }
             }
 
-            int startPos = writeBufferStartPos + newestStartPos;//0-15 contains read and write message
-            if(newestEndPos + message.Length + 4 >= writeBufferLength){
+            int contentLen = message.Length;
+            int startPos = writeBufferStartPos + newestEndPos;  // P0 #4: use newestEndPos as current write position
+            if(newestEndPos + contentLen + 2 + 2 >= writeBufferLength){
                 //后续再加对careindex的判断
                 if(careIndex != -1){
                     clearPos = status[1 + GetProjectedWritePos(careIndex)];
                 }
                 WriteClear(clearPos);
                 startPos = writeBufferStartPos + 15;
+                newestStartPos = 15;
+                newestEndPos = 15;
             }
 
             WriteWritingStatus(writeBufferStartPos, true);
 
-            message = IntToBytes(message.Length).Concat(message).ToArray();
-            WriteBytes(startPos, message);
-            newestStartPos = newestStartPos + message.Length + 2;
-            newestEndPos = newestStartPos + message.Length + 2;//+2:split codon: 0xFF, 0xFF
+            // P0 #4: align with Python semantics:
+            //   newestStartPos = current message start (relative to writeBufferStartPos)
+            //   newestEndPos = current message end including 0xFF 0xFF separator
+            newestStartPos = newestEndPos;  // current message starts where last one ended
+            newestEndPos = newestStartPos + contentLen + 2 + splitCondon.Length;  // +2 length prefix, +2 separator
+
+            // P0 #5: record current message start BEFORE updating positions
             messageStartPosLs.Add(newestStartPos);
-            messageLengthLs.Add(message.Length);
+            messageLengthLs.Add(contentLen);  // P0 #7: store content length (not prefixed length)
+
+            // write [length(2B)][content][0xFF 0xFF]
+            byte[] fullMsg = IntToBytes(contentLen).Concat(message).Concat(splitCondon).ToArray();
+            WriteBytes(startPos, fullMsg);
+
             writtenmark += 1;
             WriteWriteMark(writtenmark);
             WriteNewStartAndEndPos(newestStartPos, newestEndPos);
 
             WriteWritingStatus(writeBufferStartPos, false);
 
-            // Debug.Log($"writtenmark: {writtenmark}");
             return clearPos;
         }
         
@@ -481,11 +513,21 @@ if(sharedmm.CheckServerOnlineStatus()){
             byte[] storedMsg = new byte[newestEndPos - messageStartPosLs[clearPos - 1]];
             ReadByte(ref storedMsg, writeBufferStartPos + messageStartPosLs[clearPos - 1], newestEndPos - messageStartPosLs[clearPos - 1]);
 
-            // Debug.Log($"writtenmark: {writtenmark}, clearPos: {clearPos}");
             messageStartPosLs.RemoveRange(0, clearPos);
             messageLengthLs.RemoveRange(0, clearPos);
-            newestStartPos = messageStartPosLs.Count > 0? messageStartPosLs[messageLengthLs.Count-1] : 0;
-            newestEndPos = messageStartPosLs.Count > 0? newestStartPos + messageLengthLs[messageLengthLs.Count-1] : 0;
+            // P0 #7: reset to 15 when empty; correctly compute endPos with separator
+            if (messageStartPosLs.Count > 0){
+                // remap positions: messages are moved to start at offset 15
+                int shift = 15 - messageStartPosLs[0];
+                for (int i = 0; i < messageStartPosLs.Count; i++){
+                    messageStartPosLs[i] += shift;
+                }
+                newestStartPos = messageStartPosLs[messageStartPosLs.Count - 1];
+                newestEndPos = newestStartPos + messageLengthLs[messageLengthLs.Count - 1] + 2 + 2;  // +2 length, +2 separator
+            }else{
+                newestStartPos = 15;  // P0 #7: was 0, should be 15
+                newestEndPos = 15;    // P0 #7: was 0, should be 15
+            }
             writtenmark = writtenmark - clearPos;
 
             byte[] bytes = new byte[writeBufferLength - 15];
@@ -495,7 +537,9 @@ if(sharedmm.CheckServerOnlineStatus()){
             if (messageStartPosLs.Count > 0){
                 WriteBytes(writeBufferStartPos + 15, storedMsg);
             }
-            // Array.Copy(bytes, 0, ShmBuffer, writeBufferStartPosAll[index] + 15, bytes.Length);
+            // update header after clear
+            WriteWriteMark(writtenmark);
+            WriteNewStartAndEndPos(newestStartPos, newestEndPos);
             return 1;
         }
 
@@ -503,7 +547,7 @@ if(sharedmm.CheckServerOnlineStatus()){
             int writePos = writeBufferStartPos + 9;
             // ShmBuffer[writePos] = (byte)writemark;
             WriteBytes(writePos, IntToBytes(writemark));
-            Debug.Log($"Write mark: {writemark}, writePos: {writePos}, self.id: {UID}");
+            // Debug.Log($"Write mark: {writemark}, writePos: {writePos}, self.id: {UID}");  // P2 #18: disabled for high-frequency writes
 
             return 1;
         }
@@ -521,6 +565,7 @@ if(sharedmm.CheckServerOnlineStatus()){
             int writePos = writeBufferStartPosAll[_id] + 1 + writeInd*2;
 
             WriteBytes(writePos, IntToBytes(readmark));
+            // Debug.Log($"writemark written at {_id}: {readmark}");
             // Array.Copy(IntToBytes(readmark), 0, ShmBuffer, writePos, 2);
             return 1;
         }
@@ -585,6 +630,37 @@ if(sharedmm.CheckServerOnlineStatus()){
         public int UpdateOnlineStatus(){
 
             byte[] head = ReadShmHead();
+            if(name == "server"){
+                int onlineClients = 0;
+                for(int i = 0; i < maxClientNum; i++){
+                    if(head[3 + i] > 0){onlineClients++;}
+                }
+                WriteByte(2, (byte)onlineClients);
+                CheckApplies();
+
+                if(!heartbeat){return 1;}
+
+                WriteByte(0, (byte)(head[0] % 255 + 1));
+                for(int i = 0; i < maxClientNum; i++){
+                    if(head[3 + i] > 0){
+                        if(head[3 + i] != careOnlineStatus[i]){
+                            careOnlineStatus[i] = head[3 + i];
+                            clientOfflineTick[i] = 0;
+                        }else{
+                            clientOfflineTick[i]++;
+
+                            if(clientOfflineTick[i] >= maxOfflineTick){
+                                onlineClients = Math.Max(0, onlineClients - 1);
+                                WriteByte(2, (byte)onlineClients);
+                                WriteByte(3 + i, 0);
+                                clientOfflineTick[i] = 0;
+                                if(careIndex == i + 1){careIndex = -1;}
+                            }
+                        }
+                    }
+                }
+                return 1;
+            }
             if(head[2 + UID] == 0){
                 return -3; //server set offline
             }
@@ -640,6 +716,22 @@ if(sharedmm.CheckServerOnlineStatus()){
             }
         }
 
+        void CheckApplies(){
+            if(name != "server" || careIndex != -1){return;}
+
+            int applyUid = ReadByte(7);
+            int nameLength = ReadByte(8);
+            if(applyUid <= 0 || nameLength <= 0){return;}
+
+            byte[] applyNameBytes = new byte[Math.Min(nameLength, 23)];
+            var _ = ReadByte(ref applyNameBytes, 9, applyNameBytes.Length);
+            string applyName = Encoding.UTF8.GetString(applyNameBytes);
+            if(applyName == care){
+                careIndex = applyUid;
+            }
+            WriteByte(7, 0xFF);
+        }
+
         public int ApplyForCare(){
             WriteByte(7, (byte)UID);
             WriteByte(8, (byte)name.Length);
@@ -677,70 +769,102 @@ if(sharedmm.CheckServerOnlineStatus()){
                 throw new ArgumentOutOfRangeException(nameof(_id), "Invalid client ID.");
             }
 
-            int[] status = ReadWriteBufferHead(_id);
+            // seqlock: retry up to 3 times if header changes during read (writer modified buffer mid-read)
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                int[] status = ReadWriteBufferHead(_id);
 
-            int startPos = writeBufferStartPosAll[_id] + 15;
-            int endPos = writeBufferStartPosAll[_id] + status[7];
+                // P2 #16: bounds-check endPos to guard against corrupt header from race
+                int startPos = writeBufferStartPosAll[_id] + 15;
+                int endPos = writeBufferStartPosAll[_id] + status[7];
+                if (status[7] < 15 || status[7] > writeBufferLength)
+                {
+                    return new List<byte[]>{};
+                }
 
-            if(mode == "newest"){startPos = writeBufferStartPosAll[_id] + status[6];}
+                if(mode == "newest"){startPos = writeBufferStartPosAll[_id] + status[6];}
 
-            int readMark = status[1+GetProjectedWritePos(_id)];
-            int writeMark = status[5];
-            if(writeMark < readMark){readMark = 0;}
-            else if(mode != "all" && writeMark == readMark){return new List<byte[]>(){};}
+                int readMark = status[1+GetProjectedWritePos(_id)];
+                int writeMark = status[5];
+                if(writeMark < readMark){readMark = 0;}
+                else if(mode != "all" && writeMark == readMark){
+                    // Debug.Log($"nothing new: readmark: {readMark}");
+                    return new List<byte[]>{};}
 
-            if(status[0] == 0 || endPos - startPos <= 4){return new List<byte[]>(){};}
+                if(status[0] == 0 || endPos - startPos <= 4){
+                    // Debug.Log("writing");
+                    return new List<byte[]>{};}
 
-            byte[] tempResult = new byte[endPos - startPos];
-            var _ = ReadByte(ref tempResult, startPos, endPos-startPos);
+                byte[] tempResult = new byte[endPos - startPos];
+                var _ = ReadByte(ref tempResult, startPos, endPos-startPos);
 
-            List<byte[]> result = new List<byte[]>();
-            for(int i = 0; i < (endPos-startPos); ){
-                int _length = BytesToInts(tempResult[i..(i+2)]);
-                if(_length != 65535 && tempResult.Length > (i+_length+2)){
-                    result.Add(tempResult[(i+2)..(i+_length+2)]);
-                    i += _length+4;
-                    if(mode == "newone"){break;}
-                }else{
-                    break;
+                // === seqlock validation: re-read header and verify no concurrent write ===
+                int flagAfter = ReadByte(writeBufferStartPosAll[_id]);
+                if (flagAfter != 1)
+                {
+                    // writer was mid-write; retry
+                    continue;
+                }
+                int[] statusAfter = ReadWriteBufferHead(_id);
+                if (statusAfter[5] != writeMark || statusAfter[7] != status[7] || statusAfter[6] != status[6])
+                {
+                    // header changed during read; retry
+                    continue;
+                }
+                // === seqlock validation passed ===
+
+                List<byte[]> result = new List<byte[]>();
+                for(int i = 0; i < (endPos-startPos) - 1; ){
+                    int _length = BytesToInts(tempResult[i..(i+2)]);
+                    // P1 #10: validate length and separator before adding; skip bad bytes instead of breaking
+                    if(_length != 65535 && _length > 0 && (i + _length + 4) <= tempResult.Length){
+                        // verify 0xFF 0xFF separator exists after content
+                        if(tempResult[i + _length + 2] == 0xFF && tempResult[i + _length + 3] == 0xFF){
+                            result.Add(tempResult[(i+2)..(i+_length+2)]);
+                            i += _length + 4;  // skip length(2) + content + separator(2)
+                            // newone handled below by readMark selection, not early break
+                        }else{
+                            i += 1;  // separator mismatch, skip one byte and rescan
+                        }
+                    }else{
+                        i += 1;  // P1 #10: skip bad byte and continue scanning instead of breaking
+                    }
+                }
+
+                switch(mode){
+                    case "all":{
+                        readMark = writeMark;
+                        WriteReadMark(_id, readMark);
+                        return result;
+                    }
+                    case "new":{
+                        int validReadMark = Math.Min(result.Count, readMark);
+                        result =  result.GetRange(validReadMark, Math.Min(result.Count, writeMark) - validReadMark);
+                        readMark = Math.Min(result.Count, writeMark);
+                        WriteReadMark(_id, readMark);
+                        return result;
+                    }
+                    case "newone":{
+                        int newOneIdx = Math.Min(readMark, result.Count - 1);
+                        List<byte[]> newOneResult = new List<byte[]>{};
+                        if(newOneIdx >= 0 && newOneIdx < result.Count){newOneResult.Add(result[newOneIdx]);}
+                        readMark += 1;
+                        WriteReadMark(_id, readMark);
+                        return newOneResult;
+                    }
+                    case "newest":{
+                        readMark = writeMark;
+                        WriteReadMark(_id, readMark);
+                        return result;
+                    }
+                    default:{
+                        return new List<byte[]>(){};
+                    }
                 }
             }
-            // Find the length of the message
-            switch(mode){
-                case "all":{
-                    readMark = writeMark;
-                    WriteReadMark(_id, readMark);
-                    return result;
-                    // break;
-                }
-                case "new":{
-                    int validReadMark = Math.Min(result.Count, readMark);
-                    result =  result.GetRange(validReadMark, Math.Min(result.Count - validReadMark, writeMark));
-                    readMark = writeMark;
-                    WriteReadMark(_id, readMark);
-                    return result;
-                    // break;
-                }
-                case "newone":{
-                    // result =  result.GetRange(readMark, 1);
-                    readMark += 1;
-                    WriteReadMark(_id, readMark);
-                    return result;
-                    // break;
-                }
-                case "newest":{//result根据被读对象最新的结果读取了最新的内容
-                    readMark = writeMark;
-                    WriteReadMark(_id, readMark);
-                    return result;
-                    // break;
-                }
-                default:{
-                    return new List<byte[]>(){};
-                    // break;
-                }
-            }
 
-            // return Encoding.UTF8.GetString(messageBytes);
+            // all retries failed (writer was active every time)
+            return new List<byte[]>{};
         }
 
         /// <summary>
@@ -752,8 +876,10 @@ if(sharedmm.CheckServerOnlineStatus()){
         public List<string> ReadMsg(int _id, string _mode){
             List<string> result = new List<string>();
             List<byte[]> msgs = ReadContent(_id, _mode);
+            // ReadContent already strips the 2-byte length prefix and 0xFF 0xFF separator,
+            // returning pure content bytes. Do NOT re-parse length prefix here.
             foreach(byte[] msg in msgs){
-                if(msg.Length >= 3){
+                if(msg.Length > 0){
                     result.Add(Encoding.UTF8.GetString(msg));
                 }
             }

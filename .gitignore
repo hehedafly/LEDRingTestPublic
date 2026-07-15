@@ -13,3 +13,5 @@ Buildings/
 .git_bak
 .vs
 /build
+AGENT_PROJECT_OVERVIEW.md
+*.bak

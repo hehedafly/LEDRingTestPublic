@@ -586,7 +586,7 @@ class ContextInfo{
     public List<Dictionary<string, int[]>> MSTriggerSortedInType    {get; set;}
     
     //addon info:
-    public string userName;
+    public string mouseName;
     public string mouseInd;
 
     [JsonIgnore]
@@ -978,6 +978,7 @@ public class Moving : MonoBehaviour
     int lickCheckFunctionsStatus = -1; //return from lick check functions, used when somewhere depend on judging lick
     int posCheckFunctionsStatus = -1; //return from position check functions, used when somewhere depend on judging mouse pos
     int quitMark = 0;
+    public bool MouseNameRequired = false;
     
 
 
@@ -2209,7 +2210,7 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="info"></param>
     public void SetMouseInfo(string info){
-        contextInfo.userName = info.StartsWith("userName:")?   info.Split(":")[1] : contextInfo.userName;
+        contextInfo.mouseName = info.StartsWith("userName:")?   info.Split(":")[1] : contextInfo.mouseName;
         contextInfo.mouseInd = info.StartsWith("mouseInd:")?   info.Split(":")[1] : contextInfo.mouseInd;
     }
 
@@ -3816,6 +3817,10 @@ public class Moving : MonoBehaviour
             _cachedPropertyInfo = typeof(ContextInfo).GetProperties();
         }
 
+        MouseNameRequired = iniReader.ReadIniContent("settings", "MouseNameRequired", "true") == "true";
+        ui_update.mouseNameAssigned = iniReader.ReadIniContent("settings", "MouseName", "");
+
+        
         List<List<string>> tempIniReadContent = iniReader.GetReadContent();
         static string Fmt(List<string> list) => string.Join("\n",
             list.OrderBy(c => c.Split(",")[0]).ThenBy(c => c.Split(",")[1])

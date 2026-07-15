@@ -259,17 +259,17 @@ public static class LogEventController
     // ========== 根据参数智能点击录制按钮 ==========
     // start = true  : 希望开始录制，仅在状态0时点击
     // start = false : 希望停止录制，仅在状态1时点击
-    public static void SmartClickRecordButton(bool start)
+    public static bool SmartClickRecordButton(bool start)
     {
         int _isNoRecord = IsRecordButtonStateZero(); // true=未录制, false=录制中
-        if (_isNoRecord == -1) return;
+        if (_isNoRecord == -1) return false;
         bool isNoRecord = _isNoRecord == 1;
         bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
 
         if (!shouldClick)
         {
             UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isNoRecord ? "0(未录制)" : "1(录制中)")}");
-            return;
+            return false;
         }
 
         // 执行点击
@@ -277,12 +277,12 @@ public static class LogEventController
         if (hRecord == IntPtr.Zero)
         {
             UnityEngine.Debug.LogError("未找到录制按钮");
-            return;
+            return false;
         }
         if (!IsWindowEnabled(hRecord))
         {
             UnityEngine.Debug.LogWarning("录制按钮当前不可用");
-            return;
+            return false;
         }
         // if(start){
         //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
@@ -294,7 +294,9 @@ public static class LogEventController
         //     UnityEngine.Debug.Log($"已停止录制");
         // }
         SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
-        UnityEngine.Debug.Log($"已{(start? "开始" :"停止")}录制");
-
+        isNoRecord = IsRecordButtonStateZero() == 1;
+        shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
+        UnityEngine.Debug.Log($"录制{(shouldClick? "失败": (start? "开始" :"停止"))}");
+        return !shouldClick;
     }
 }

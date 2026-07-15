@@ -1,0 +1,1 @@
+conda run -n web pyinstaller TimingEditor.spec

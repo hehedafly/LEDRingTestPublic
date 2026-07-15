@@ -36,7 +36,7 @@ public class UIUpdate : MonoBehaviour
     public List<InputField> inputFields = new List<InputField>();
     public Dropdown backgroundSwitch;
     Dictionary<string, string> inputFieldContent = new Dictionary<string, string>();
-    List<Dropdown> dropdowns = new List<Dropdown>();
+    public List<Dropdown> dropdowns = new List<Dropdown>();
     List<Dropdown> soundDropdowns = new List<Dropdown>();
     public List<UnityEngine.UI.Button> buttons = new List<UnityEngine.UI.Button>();
 
@@ -94,257 +94,7 @@ public class UIUpdate : MonoBehaviour
     };
     
     private int _FrameCount = 0; private float _TimeCount = 0; private float _FrameRate = 0;
-
-    //public Image LineChartImage;
-    [System.Serializable]
-    struct Timing {
-        public string type;//button, dropdown...
-        public string name;//pass to ControlsParse
-        public int hierarchy;
-        [JsonIgnore]
-        public float time;//time been set in seconds in unity time
-        public string timingMethod;
-        public int Id;//unique id for each timingcollection
-        public int parentId;
-        public string parentName;
-        public float value;
-
-        public Timing SetLowerHierarchy() {
-            hierarchy--;
-            return this;
-        }
-        // public Timing(string _type, string _name, int _hierarchy, float _time, string _timingMethod, int _Id, int _parentId) {
-        //     type = _type;
-        //     name = _name;
-        //     hierarchy = _hierarchy;
-        //     time = _time;
-        //     timingMethod = _timingMethod;
-        //     Id = _Id;
-        //     parentId = _parentId;
-
-        // }
-    }
-
-    class TimingCollection{
-
-        public TimingCollection(List<Timing> _timings = null) {
-            if (_timings == null) {
-                return;
-            }
-            _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
-            foreach (Timing timing in _timings) {
-                timings.Add(timing.Id, timing);
-                maxId = Math.Max(maxId, timing.Id);
-            }
-        }
-        
-        public TimingCollection(string _json) {
-            
-            var _timingstr = _json.Split("||JSON_RECORD||");
-            _timingstr = _timingstr.Count() == 1? _json.Split("|JR|"): _timingstr;
-            try {
-                var _timings = _timingstr.Select(s => JsonConvert.DeserializeObject<Timing>(s)).ToList();
-                if (_timings is not null) {
-                    _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
-                    foreach (Timing timing in _timings) {
-                        timings.Add(timing.Id, timing);
-                        maxId = Math.Max(maxId, timing.Id);
-                    }
-                }
-            }
-            catch {
-                timings = new Dictionary<int, Timing>();
-            }
-        }
-
-        public Timing? this[int hierarchy, string name]{
-
-            get{
-                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.hierarchy == hierarchy);
-                if (_timings.Count == 0){
-                    return null;
-                }
-                foreach (Timing timing in _timings){
-                    if (timing.name == name){
-                        return timing;
-                    }
-                }
-                return null;
-            }
-
-            set{
-                if (value.HasValue){
-                    Remove(name, hierarchy);
-                }
-                else{
-                    timings[GetId(hierarchy, name)] = value.Value;
-                }
-            }
-        }
-
-        public TimingCollection this[int hierarchy]{
-            get{
-                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.hierarchy == hierarchy);
-                if (_timings.Count == 0){
-                    return new TimingCollection();
-                }
-                return new TimingCollection(_timings);
-            }
-        }
-
-        // public string this[string name]
-        public TimingCollection this[string name]
-        {//不强制但建议在仅有一阶选项时使用
-            get{
-                List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.name == name);
-                // _timings.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
-                if (_timings.Count == 0){
-                    return null;
-                }
-                // return _timings[0].timingMethod;
-                return new TimingCollection(_timings);
-            }
-        }
-
-        public List<Timing> Times(){
-            return timings.Values.ToList();
-        }
-
-        public List<int> Keys(){
-            return timings.Values.Select(t => t.Id).ToList();
-        }
-
-        public Dictionary<int, string> Values() {
-            return timings.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.name);
-        }
-
-        public bool ContainsKey(string key) {
-            return timings.Values.Any(t => t.name == key);
-        }
-
-        public List<int> Hierarchies() {
-            return timings.Values.Select(t => t.hierarchy).ToList();
-        }
-
-        public int GetTimingOrderInSelectHierarchy(int hierarchy, int timingId) {
-            if (!timings.ContainsKey(timingId)) { return -1; }
-            if(!this[hierarchy].Keys().Contains(timingId)){ return -2; }
-            return this[hierarchy].Keys().IndexOf(timingId);
-        }
-        
-        List<Timing> GetTimingsByHierarchyAndName(int hierarchy, string name) {
-            int maxHierarchy = hierarchy == -1 ? 999 : hierarchy;
-            var res = timings.Values.ToList().Where(t => t.name == name && t.hierarchy >= hierarchy && t.hierarchy <= maxHierarchy).ToList();
-            res.Sort((t1, t2) => t1.hierarchy.CompareTo(t2.hierarchy));
-
-            return res;
-        }
-
-        public Timing Add(string name, string timingMethod, string type, int hierarchy = 0, int parentId = -1, float time = -1, string parentName = "", float value = -1) {//hierarchy默认为一阶选项，当parentId不为-1时，hierarchy自动指定为父项hierarchy+1
-            int Id = ++maxId;
-            if (parentId != -1) {
-                Timing? parentTiming = GetTiming(parentId);
-                if (parentTiming != null) {
-                    hierarchy = parentTiming.Value.hierarchy + 1;
-                }
-            }
-            if (time == -1) { time = Time.fixedUnscaledTime; }
-            Timing timing = new Timing { type = type, name = name, hierarchy = hierarchy, time = time, timingMethod = timingMethod, Id = Id, parentId = parentId, parentName = parentName, value = value };
-            timings.Add(Id, timing);
-            return timing;
-        }
-
-        public List<Timing> Remove(string name, int hierarchy = -1, bool iterate = false) {//如未指定hierarchy，则删除第一个hierarchy下第一个对应name的定时
-            var selectedTiming = GetTimingsByHierarchyAndName(hierarchy, name);
-            if (selectedTiming.Count == 0) { return new List<Timing>(); }
-            return Remove(selectedTiming[0].Id, iterate);
-        }
-        public List<Timing> Remove(int timingId, bool iterate = false) {
-            List<int> keysInOrder = timings.Keys.ToList();
-            keysInOrder.Sort((t1, t2) => timings[t1].hierarchy.CompareTo(timings[t2].hierarchy));
-            List<int> removedId = new List<int>{timingId};
-            List<Timing> removedTiming = new List<Timing>();
-            List<int> childId = new List<int>();
-            foreach (int key in keysInOrder) {
-                if (removedId.Contains(key)) {
-                    removedTiming.Add(timings[key]);
-                    timings.Remove(key);
-                }
-                else if (removedId.Contains(timings[key].parentId)) {
-                    if (iterate) {
-                        removedTiming.Add(timings[key]);
-                        removedId.Add(timings[key].Id);
-                        timings.Remove(key);
-                    }
-                    else {
-                        childId.Add(key);
-                        timings[key] = timings[key].SetLowerHierarchy();
-                        // Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
-                    }
-                }
-                else if (childId.Contains(timings[key].parentId)) {
-                    childId.Add(key);
-                    timings[key] = timings[key].SetLowerHierarchy();
-                    // Debug.Log($"set Child {timings[key].name} hierarchy to {timings[key].hierarchy}");
-                }
-            }
-            if (timings.Count() == 0) {//应该没问题
-                maxId = 0;
-            }
-            return removedTiming;
-        }
-
-        public List<Timing> Clear() {
-            if (timings.Count == 0) { return new List<Timing>(); }
-            var res = timings.Values.ToList();
-            timings.Clear();
-            maxId = 0;
-            return res;
-        }
-
-        public Timing? GetTiming(int id) {
-            if (timings.ContainsKey(id)) {
-                return timings[id];
-            }
-            return null;
-        }
-        
-        public int GetId(int hierarchy, string name){
-            var _timings = GetTimingsByHierarchyAndName(hierarchy, name);
-            if (_timings.Count == 0){
-                return -1;
-            }
-            return _timings[0].Id;
-        }
-
-        public string GetTimingMethod(int hierarchy, string name) {
-            var _timings = GetTimingsByHierarchyAndName(hierarchy, name);
-            var _timingMethods = _timings.Select(t => t.timingMethod).ToList();
-            if (_timingMethods.Count == 0) { return ""; }
-            else { return _timingMethods[0].ToString(); }
-        }
-
-        public string GetName(int Id) {
-            var _t = GetTiming(Id);
-            if (!_t.HasValue) { return ""; }
-            return _t.Value.name;
-        }
-
-        public List<Timing> GetTimingChildren(int parentId) {
-            List<Timing> _timings = this.timings.Values.ToList().FindAll(t => t.parentId == parentId);
-            return _timings.OrderBy(t => t.Id).ToList();
-        }
-
-        public string Export() {
-            return string.Join("|JR|",
-                timings.Values.Select(t => JsonConvert.SerializeObject(t))
-                );
-        }
-
-        Dictionary<int, Timing> timings = new Dictionary<int, Timing>();
-        int maxId = -1;
-        public int Count { get { return timings.Count; } }
-    }
+    public string mouseNameAssigned = "";
 
     public int ButtonAddSelf(UnityEngine.UI.Button button){
         if (buttons.Contains(button)) { return 0; }
@@ -618,6 +368,10 @@ public class UIUpdate : MonoBehaviour
                 if(stringArg.StartsWith("FromTiming")){
                     moving.Exit();
                 }else{
+                    if(moving.MouseNameRequired && inputFieldContent["MouseInfoName"] == "" && moving.NowTrial > 5){
+                        bool forceExit = MessageBoxForUnity.YesOrNo("MouseName should be provided, back to fill mouseName?", "warning") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES;
+                        if(forceExit){break;}
+                    }
                     moving.PreExit();
                     alarm.TrySetAlarm("Exit", 1.0f, out _, addInfo:"FromTiming");
                     SetButtonColor("ExitButton", Color.yellow);
@@ -637,7 +391,7 @@ public class UIUpdate : MonoBehaviour
                 string[] temp_str_split = temp_str[3..].Split("=");
                 if(temp_str.Length == 0 || temp_str_split.Length == 0){break;}
                 if (temp_str.StartsWith("///")) {
-                    string variableName = temp_str_split[0];
+                    string variableName = temp_str_split[0].Trim();
 
                     if (threeSplashCommands.Contains(variableName)){
                         switch (variableName){
@@ -881,11 +635,13 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "LogeventStart":{
-                LogEventController.SmartClickRecordButton(true);
+                int fail = 0;
+                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to start"); break;}};
                 break;
             }
             case "LogeventEnd":{
-                for(int i=0;i<5;i++){LogEventController.SmartClickRecordButton(false);}
+                int fail = 0;
+                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to end"); break;}};
                 break;
             }
             default:{
@@ -937,7 +693,7 @@ public class UIUpdate : MonoBehaviour
                             }
                         }
                         else if (soundOptionSelected.StartsWith("Dropdown")) {//dropdowns
-                            string parentNameAfter = soundOptionSelected.Substring(8);
+                            string parentNameAfter = soundOptionSelected[8..];
                             int _tempId = moving.TrialSoundPlayModeExplain.IndexOf(parentNameAfter);
 
                             int _result = moving.ChangeSoundPlayMode(_tempId, 2, soundOptionsDict[_tempId].GetComponentInChildren<Dropdown>().captionText.text);
@@ -947,13 +703,21 @@ public class UIUpdate : MonoBehaviour
                 }
                 else if (elementsName.StartsWith("MouseInfo")) {
                     string _content = elementsName.Substring(9);
-                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "userName" }, { "Index", "mouseInd" } };
+                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "userName" }, { "Index", "mouseInd" }, {"NameDropdown", "userName"} };
                     if (stringArg.StartsWith("passive")) {//format: passive
 
                     }
                     else {
                         if (headCorrespond.TryGetValue(_content, out string _info)) {
+                            if(_content == "NameDropdown"){
+                                stringArg = stringArg.Split(";")[1];
+                                InputField mouseNameInput = inputFields.Find(i => i.name == "MouseInfoName");
+                                if(mouseNameInput != null){
+                                    mouseNameInput.text = stringArg;
+                                }
+                            }
                             moving.SetMouseInfo(_info + ":" + stringArg);
+                            inputFieldContent["MouseInfoName"] = stringArg;
                         }
                     }
                 }
@@ -1321,10 +1085,10 @@ public class UIUpdate : MonoBehaviour
         moving = GetComponent<Moving>();
         inputFields.Add(serialMessageInputs);
         buttons.Add(startButton);
-        dropdowns.Add(modeSelect);
-        dropdowns.Add(triggerModeSelect);
-        dropdowns.Add(backgroundSwitch);
-        dropdowns.Add(TimingBaseDropdown);
+        if(!dropdowns.Contains(modeSelect        )){dropdowns.Add(modeSelect        );}
+        if(!dropdowns.Contains(triggerModeSelect )){dropdowns.Add(triggerModeSelect );}
+        if(!dropdowns.Contains(backgroundSwitch  )){dropdowns.Add(backgroundSwitch  );}
+        if(!dropdowns.Contains(TimingBaseDropdown)){dropdowns.Add(TimingBaseDropdown);}
         soundOptionsDict = new Dictionary<int, UnityEngine.UI.Button>();
         logScrollBar.GetComponent<ScrScrollBar>().ui_update = this;
         TimingBaseScrDropdown = TimingBaseDropdown.GetComponent<ScrDropDown>();
@@ -1416,6 +1180,33 @@ public class UIUpdate : MonoBehaviour
         foreach(var key in _ic.Keys) {
             if(key == "IFTimingSet" && _ic[key] != "null") {
                 ControlsParse("IFTimingSet", 1);
+            }
+        }
+
+        Dropdown mouseNameDropdown = dropdowns.Find(dropdown => dropdown.name == "MouseInfoNameDropdown");
+        InputField mouseNameInput = inputFields.Find(inputField => inputField.name == "MouseInfoName");
+        if(mouseNameAssigned.Contains(';')){
+            string[] mouseNames = mouseNameAssigned.Split(';');
+            if (mouseNameDropdown != null) {
+                mouseNameDropdown.ClearOptions();
+                foreach(string mouseName in mouseNames){
+                    mouseNameDropdown.AddOptions(new List<string>{mouseName});
+                }
+                // mouseNameDropdown.value = -1;
+            }
+            if(mouseNameInput != null){
+                mouseNameInput.GetComponent<RectTransform>().sizeDelta = new Vector2(90, mouseNameInput.GetComponent<RectTransform>().sizeDelta.y);
+            }
+        }
+        else{
+            if(mouseNameInput != null){
+                mouseNameInput.text = mouseNameAssigned;
+                inputFieldContent["MouseInfoName"] = mouseNameAssigned;
+
+            }
+            if(mouseNameDropdown != null){
+                dropdowns.Remove(mouseNameDropdown);
+                Destroy(mouseNameDropdown.gameObject);
             }
         }
     }

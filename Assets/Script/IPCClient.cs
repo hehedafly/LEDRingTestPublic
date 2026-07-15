@@ -31,7 +31,7 @@ public class IPCClient : MonoBehaviour
     /// </summary> <summary>
     /// 
     /// </summary>
-    int EnableInitAfterConnection = -1;
+    int enableInitAfterConnection = -1;
     // int frameInd = -1;
 
     /// <summary>
@@ -361,18 +361,23 @@ public class IPCClient : MonoBehaviour
 
     #endregion
 
-    void InitAfterConnection(){
+    int InitAfterConnection(){//1:success, 0:failed
         mouseDrawer = new MouseDrawer(image, mouseDrawerTrailShader, 0.002f, 30);
         MDDrawInit(sceneInfo:sceneInfo.ToArray());
         
         if(selectedAreas.Count() < selectAreaCount){
-            MessageBoxForUnity.Ensure($"only {selectedAreas.Count()} selectarea received, missed {selectAreaCount - selectedAreas.Count()}, sync failed", "sync error");
-            Silent = true;
+            // MessageBoxForUnity.Ensure($"only {selectedAreas.Count()} selectarea received, missed {selectAreaCount - selectedAreas.Count()}, sync failed", "sync error");
+            uiUpdate.MessageUpdate($"only {selectedAreas.Count()} selectarea received, missed {selectAreaCount - selectedAreas.Count()}, sync failed");
+            // Silent = true;
             activited = false;
+            return 0;
         }else{
             if(selectedAreas.Count > selectAreaCount){
-                MessageBoxForUnity.Ensure($"too many selectarea received, only {selectedAreas.Count()} needed, now selectAreas: {string.Join("\n", from sa in selectedAreas select string.Join(",", sa))}", "sync warning");
+                // MessageBoxForUnity.Ensure($"too many selectarea received, only {selectedAreas.Count()} needed, now selectAreas: {string.Join("\n", from sa in selectedAreas select string.Join(",", sa))}", "sync warning");
+                uiUpdate.MessageUpdate($"too many selectarea received, only {selectedAreas.Count()} needed, now selectAreas: {string.Join("\n", from sa in selectedAreas select string.Join(",", sa))}");
             }
+            moving.WriteInfo(sceneInfo);
+
             List<int[]>DestinationCircleAreas = GetselectedArea().Where(area => area[0] / 32 == 1 && area[1] == 0).ToList();
             int tempradius = 0;
             double tempdisttocenter = 0;
@@ -411,8 +416,8 @@ public class IPCClient : MonoBehaviour
                 List<float> areaList = area.Select(v => (float)v).ToList();
                 moving.WriteInfo(areaList);
             }
-
         }
+        return 1;
     }
 
     public void ClosePythonScript(bool force = false){
@@ -430,6 +435,7 @@ public class IPCClient : MonoBehaviour
         }
         activited = false;
         Silent = true;
+        enableInitAfterConnection = -1;
     }
 
     void Awake()
@@ -465,14 +471,18 @@ public class IPCClient : MonoBehaviour
     void FixedUpdate()
     {   
         if(activited){MDUpdate();}
-        else if(EnableInitAfterConnection != -1){MDInit(); mouseDrawer = null;EnableInitAfterConnection = -1;}
+        else if(enableInitAfterConnection != -1){MDInit(); mouseDrawer = null;enableInitAfterConnection = -1;}
 
-        if(EnableInitAfterConnection >= 25){//等待一段时间后自动初始化，避免连接瞬间不稳定导致的重复初始化
-            InitAfterConnection();
-            EnableInitAfterConnection = -2;
-            moving.IPCConnected();
-        }else if(EnableInitAfterConnection >= 0){
-            EnableInitAfterConnection ++;
+        if(enableInitAfterConnection >= 25){//等待一段时间后自动初始化，避免连接瞬间不稳定导致的重复初始化
+            int _res = InitAfterConnection();
+            if(_res == 1){
+                enableInitAfterConnection = -2;
+                moving.IPCConnected();
+            }else{
+                enableInitAfterConnection = -1;
+            }
+        }else if(enableInitAfterConnection >= 0){
+            enableInitAfterConnection ++;
         }
         // if(mouseDrawerThread != null && mouseDrawerThread.IsAlive){
         //     // mouseDrawer.UpdateTrail();
@@ -494,9 +504,10 @@ public class IPCClient : MonoBehaviour
                 if(sharedmm != null){
                     // sharedmm.WriteContent($"cmd:test{Time.time}", false);
                     // Debug.Log($"time: {Time.time}");
-                    List<string> readMsgs = sharedmm.ReadMsg(0, "new");
+                    List<string> readMsgs = sharedmm.ReadMsg(0, enableInitAfterConnection == -1? "all": "new");
                     readMsgs.Reverse();
                     bool posUpdated = false;
+                    // Debug.Log($"from Python count: {readMsgs.Count}");
                     foreach(string msg in readMsgs){
                         string msgHead = msg.Split(':')[0];
                         switch(msgHead){
@@ -574,6 +585,7 @@ public class IPCClient : MonoBehaviour
                         timeMsgs.Reverse();
                         bool timeUpdated = false;
                         foreach(string msg in timeMsgs){
+                            Debug.Log("msg from pyhon: "+ msg);
                             if(msg.StartsWith("time:") && !timeUpdated){
                                 if(double.TryParse(msg[5..], out double time)){
                                     pythonTimeOffset = Time.realtimeSinceStartup - time;
@@ -581,18 +593,16 @@ public class IPCClient : MonoBehaviour
                                 }
                                 // break;
                             }else if(msg.StartsWith("scene:")){
-                            // Debug.Log("msg from pyhon: "+ msg);
                                 if(pythonTimeOffset != 0){
                                     //sceneInfo *4 / *5, selectAreaCount
                                     sceneInfo = msg[6..].Split(";").ToList().Select(v => Convert.ToSingle(v)).ToList();
                                     selectAreaCount = (int)sceneInfo.Last();    sceneInfo.RemoveAt(sceneInfo.Count - 1);
                                     activited = true;
-                                    moving.WriteInfo(sceneInfo);
                                     moving.WriteInfo(recType:11);
                                     uiUpdate.MessageUpdate($"time synchronized: offset: {pythonTimeOffset}");
                                     uiUpdate.MessageUpdate("scene info:" + string.Join(";", sceneInfo));
 
-                                    EnableInitAfterConnection = 0;
+                                    enableInitAfterConnection = 0;
                                     break;
                                 }
                             }

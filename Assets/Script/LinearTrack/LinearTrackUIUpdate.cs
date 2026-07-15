@@ -23,6 +23,11 @@ public class LinearTrackUIUpdate : MonoBehaviour
     public Scrollbar log_scrollbar;
     public Text context_info;
     public Text log_message;
+    string logMessage = "";
+    List<string> logMessageList = new List<string>();
+    string LastAddedLogMessage = "";
+    float LastAddedLogMessageTime = -1;
+    int logPage = 0;
     public Image LineChartImage;
     public Image posIndicateImage;
     public Text reference_info;
@@ -125,9 +130,35 @@ public class LinearTrackUIUpdate : MonoBehaviour
         }
     }
 
-    public void MessageUpdate(string add_log_message="", bool _pauseChange = false, bool _pauseMoving = false){
+    public string MessageUpdate(string add_log_message="", bool _pauseChange = false, bool _pauseMoving = false, bool returnAllMsg = false, bool attachToLastLine = false){
+        if(returnAllMsg){
+            return logMessage + "\n" + context_info.text;
+        }
+
         if(add_log_message!=""){
-            log_message.text += DateTime.Now.ToString("HH:mm:ss ")+add_log_message;
+            if(add_log_message == LastAddedLogMessage && Time.fixedUnscaledTime - LastAddedLogMessageTime < 0.5f){
+                return "";
+            }
+
+            if(logMessage.Length > 8000){
+                logMessageList.Add(logMessage);
+                logMessage = "";
+                if(logPage == logMessageList.Count - 1){
+                    logPage ++;
+                }
+            }
+
+            if(attachToLastLine){
+                logMessage = (logMessage.EndsWith("\n")? logMessage.Substring(0, logMessage.Length-1) :"") + "  --" + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
+            }else{
+                logMessage += DateTime.Now.ToString("HH:mm:ss ") + add_log_message + (add_log_message.EndsWith("\n")? "": "\n");
+            }
+            LastAddedLogMessage = add_log_message;
+            LastAddedLogMessageTime = Time.fixedUnscaledTime;
+
+            if(logPage == logMessageList.Count){
+                log_message.text = logMessage;
+            }
         }else{
             bool isPausingBefore = context_info.text.Contains("paused");
             if(!_pauseChange){_pauseMoving = isPausingBefore;}
@@ -137,6 +168,7 @@ public class LinearTrackUIUpdate : MonoBehaviour
                     temp_context_info += $"lick_correct:{position_control.lick_count_correct}        lick_threshold: min {position_control.lick_count_succes_threshold[0]};max {position_control.lick_count_succes_threshold[1]}";
             context_info.text=temp_context_info; 
         }
+        return "";
     }
 
     public void PositionIndicateUpdate(float[] _contextInfo){//update all
