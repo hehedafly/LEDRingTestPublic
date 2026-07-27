@@ -83,6 +83,7 @@ public class UIUpdate : MonoBehaviour
     bool IFSerialMessageEdited = true;
     string IFSerialMessageRecLastFrame = "";
     int IFSerialMessageHistoryInvId = 0;
+
     [HideInInspector]
     public List<GameObject> LightObjects = new List<GameObject>();
     [HideInInspector]
@@ -631,17 +632,18 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "MessagePost": {
-                PostMessageToWeChat("收鼠收鼠收鼠"+ " 现在" + DateTime.Now.ToString("HH:mm:ss "), "鼠训完了！");
+                string mouseName = inputFieldContent["MouseInfoName"];
+                PostMessageToWeChat("收鼠收鼠收鼠" + " 现在" + DateTime.Now.ToString("HH:mm:ss "), $"{(mouseName.Length > 0? mouseName: "鼠")}训完了！");
                 break;
             }
             case "LogeventStart":{
                 int fail = 0;
-                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to start"); break;}};
+                while(LogEventController.SmartClickRecordButton(true) < 0){fail++; if(fail > 3){MessageUpdate("logevent record failed to start"); break;}};
                 break;
             }
             case "LogeventEnd":{
                 int fail = 0;
-                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to end"); break;}};
+                while(LogEventController.SmartClickRecordButton(false) < 0){fail++; if(fail > 5){MessageUpdate("logevent record failed to end"); break;}};
                 break;
             }
             default:{
@@ -703,17 +705,23 @@ public class UIUpdate : MonoBehaviour
                 }
                 else if (elementsName.StartsWith("MouseInfo")) {
                     string _content = elementsName.Substring(9);
-                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "userName" }, { "Index", "mouseInd" }, {"NameDropdown", "userName"} };
+                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "Name" }, { "UserName", "UserName" }, {"NameDropdown", "Name"} };
                     if (stringArg.StartsWith("passive")) {//format: passive
 
                     }
                     else {
-                        if (headCorrespond.TryGetValue(_content, out string _info)) {
+                        if (headCorrespond.TryGetValue(_content, out string _info) && stringArg.StartsWith("type_dropdown")) {
                             if(_content == "NameDropdown"){
-                                stringArg = stringArg.Split(";")[1];
-                                InputField mouseNameInput = inputFields.Find(i => i.name == "MouseInfoName");
-                                if(mouseNameInput != null){
-                                    mouseNameInput.text = stringArg;
+                                if (value != -1){
+                                    stringArg = stringArg.Split(";")[1];
+                                    InputField mouseNameInput = inputFields.Find(i => i.name == "MouseInfoName");
+                                    if(mouseNameInput != null){
+                                        mouseNameInput.text = stringArg;
+                                    }
+                                    inputFieldContent["MouseInfoName"] = stringArg;
+                                }
+                                else {
+                                    _info = "null";
                                 }
                             }
                             moving.SetMouseInfo(_info + ":" + stringArg);
@@ -1192,7 +1200,10 @@ public class UIUpdate : MonoBehaviour
                 foreach(string mouseName in mouseNames){
                     mouseNameDropdown.AddOptions(new List<string>{mouseName});
                 }
+                // mouseNameDropdown.GetComponent<ScrDropDown>().ignoreValueChange = true;
                 // mouseNameDropdown.value = -1;
+                // mouseNameDropdown.GetComponent<ScrDropDown>().ignoreValueChange = false;
+
             }
             if(mouseNameInput != null){
                 mouseNameInput.GetComponent<RectTransform>().sizeDelta = new Vector2(90, mouseNameInput.GetComponent<RectTransform>().sizeDelta.y);

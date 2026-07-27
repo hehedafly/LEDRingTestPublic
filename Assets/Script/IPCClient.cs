@@ -297,11 +297,12 @@ public class IPCClient : MonoBehaviour
     int CreateSharedmm(bool heartbeat = false){
         sharedmm = new Sharedmm("UnityProject", "server", heartbeat);
         try{
-            sharedmm.Init("UnityShareMemoryTest", 32+5*16*1024);
+            sharedmm.Init("UnityShareMemoryTest", Sharedmm.TOTAL_SIZE);
         }
         catch(System.Exception e){
             sharedmm = null;
             Debug.Log(e.Message);
+            if(uiUpdate != null){ uiUpdate.MessageUpdate($"IPC init failed: {e.Message}"); }
             activited = false;
             Silent = true;
             // Quit();
@@ -450,11 +451,19 @@ public class IPCClient : MonoBehaviour
 
     void Start()
     {
-        
+
     }
-  
+
+    void OnDestroy()
+    {
+        // 兜底关闭：Unity 退出 / Play Mode 停止 / 域重载时确保原生共享内存资源被释放，
+        // 避免残留实例被 GC 回收时与残余 FixedUpdate 调用交错导致崩溃。
+        // CloseSharedmm 内部幂等（sharedmm!=null && !closed 才处理）。
+        CloseSharedmm();
+    }
+
     void Update(){
-        if(activited && Time.unscaledTime - lastTime >= 1){
+        if(activited && sharedmm != null && !sharedmm.IsClosed && Time.unscaledTime - lastTime >= 1){
             lastTime = Time.unscaledTime;
             int res = sharedmm.UpdateOnlineStatus();
             if(res < 0){
@@ -497,7 +506,7 @@ public class IPCClient : MonoBehaviour
             }
         }
 
-        if(!Silent && sharedmm != null && sharedmm.CheckServerOnlineStatus()){//if set slient to true, "else" part will close sharedmm
+        if(!Silent && sharedmm != null && !sharedmm.IsClosed && sharedmm.CheckServerOnlineStatus()){//if set slient to true, "else" part will close sharedmm
 
             if(activited){
                 // string tempStr = $"From Unity-- Now Time:{Time.time}";

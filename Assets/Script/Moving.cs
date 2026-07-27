@@ -587,7 +587,7 @@ class ContextInfo{
     
     //addon info:
     public string mouseName;
-    public string mouseInd;
+    public string userName;
 
     [JsonIgnore]
     List<int>    barPosLs        {get;}
@@ -2210,8 +2210,8 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="info"></param>
     public void SetMouseInfo(string info){
-        contextInfo.mouseName = info.StartsWith("userName:")?   info.Split(":")[1] : contextInfo.mouseName;
-        contextInfo.mouseInd = info.StartsWith("mouseInd:")?   info.Split(":")[1] : contextInfo.mouseInd;
+        contextInfo.mouseName = info.StartsWith("Name:")?   info.Split(":")[1] : contextInfo.mouseName;
+        contextInfo.userName = info.StartsWith("UserName:")?   info.Split(":")[1] : contextInfo.userName;
     }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
@@ -2412,7 +2412,7 @@ public class Moving : MonoBehaviour
                             EndTrial(trialSuccess: false, ignoreBarLatstingTime:true);
                         }
 
-                        if(lickInd == -4){LickingCheckPubic(-4, simulate:true);}
+                        if(lickInd == -4){LickingCheck(-4, simulate:true);}
                     }
                 }
                 ui_update.MessageUpdate();
@@ -2856,7 +2856,7 @@ public class Moving : MonoBehaviour
                 if(tempType == 0){
                     TriggerRespond(true, 9);
                 }else if(tempType == 1){
-                    LickingCheckPubic(lickInd:-3);
+                    LickingCheck(lickInd:-3);
                 }
                 break;
             }
@@ -3282,6 +3282,7 @@ public class Moving : MonoBehaviour
 
     public void OpenPythonScript(bool show = false){
         List<string> options = exeLauncher.CommandParser(openPythonSciptCommand);
+        if(options.Count != 4){ui_update.MessageUpdate($"Failed to open python script{(options.Count > 0? $"with {openPythonSciptCommand}:": ", openPythonSciptCommand is blank")}");}
         if(show){ui_update.MessageUpdate($"python script opened by: {openPythonSciptCommand}");}
         exeLauncher.LaunchPython(
             options[0], options[1], options[2], options[3]

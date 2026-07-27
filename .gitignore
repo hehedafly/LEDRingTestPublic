@@ -14,4 +14,9 @@ Buildings/
 .vs
 /build
 AGENT_PROJECT_OVERVIEW.md
-*.bak
+Assets/Scenes.7z.meta
+Assets/Scenes.7z.meta
+/Assets/Script/__pycache__
+Assets/Script/IPCTest.py
+Assets/Script/__pycache__/IPCTest.cpython-314.pyc
+Assets/Script/IPCTest.py

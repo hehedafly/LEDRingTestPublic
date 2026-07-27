@@ -188,6 +188,9 @@ public class ExeLauncher
 
     public List<string> CommandParser(string fullCommand)
     {
+        if(string.IsNullOrEmpty(fullCommand) || !fullCommand.Contains(">")){
+            return new List<string>();
+        }
         string[] CmdParts = fullCommand.Split('>')[1].Split(new[] { ' ' }, 2);
         string ExePath = CmdParts[0].Replace('/', '\\');
         string[] ScriptArgs = CmdParts.Length > 1 ? CmdParts[1].Split(new[] { ' ' }, 2) : new string[]{};
@@ -259,17 +262,18 @@ public static class LogEventController
     // ========== 根据参数智能点击录制按钮 ==========
     // start = true  : 希望开始录制，仅在状态0时点击
     // start = false : 希望停止录制，仅在状态1时点击
-    public static bool SmartClickRecordButton(bool start)
+    // 返回值：0 表示未执行点击，1 表示执行点击，-1 表示未找到录制按钮，-2 表示录制按钮不可用
+    public static int SmartClickRecordButton(bool start)
     {
         int _isNoRecord = IsRecordButtonStateZero(); // true=未录制, false=录制中
-        if (_isNoRecord == -1) return false;
+        if (_isNoRecord == -1) return -1;
         bool isNoRecord = _isNoRecord == 1;
         bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
 
         if (!shouldClick)
         {
             UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isNoRecord ? "0(未录制)" : "1(录制中)")}");
-            return false;
+            return 0;
         }
 
         // 执行点击
@@ -277,12 +281,12 @@ public static class LogEventController
         if (hRecord == IntPtr.Zero)
         {
             UnityEngine.Debug.LogError("未找到录制按钮");
-            return false;
+            return -1;
         }
         if (!IsWindowEnabled(hRecord))
         {
             UnityEngine.Debug.LogWarning("录制按钮当前不可用");
-            return false;
+            return -2;
         }
         // if(start){
         //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
@@ -296,7 +300,7 @@ public static class LogEventController
         SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
         isNoRecord = IsRecordButtonStateZero() == 1;
         shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
-        UnityEngine.Debug.Log($"录制{(shouldClick? "失败": (start? "开始" :"停止"))}");
-        return !shouldClick;
+        UnityEngine.Debug.Log($"{(start? "开始" :"结束")} 录制 {(shouldClick? "失败": "成功")}");
+        return shouldClick? 1: 0;
     }
 }
