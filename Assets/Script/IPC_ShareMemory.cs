@@ -41,7 +41,7 @@ if(sharedmm.CheckServerOnlineStatus()){
 
 
 /**********************************************************************************************
-    initialization: 0..HEADER_SIZE-1 0x00, HEADER_SIZE.. 0xFF   (HEADER_SIZE=64)
+    initialization: 0..HEADER_SIZE-1 0x00, HEADER_SIZE.. 0xFF   (HEADER_SIZE=128, 布局见下方常量处注释)
     name = server/<custom>
     index = 0(server) or 1-4
     care = certain name("UnityProject")/"", only one allowed in this version, if "": ignore all write/read Mark, else update marks base on cared one
@@ -107,9 +107,14 @@ if(sharedmm.CheckServerOnlineStatus()){
 
         // ---- 协议元数据（头部大小/版本/异或校验）：C# 与 Python 两端必须完全一致，改动需同步重新部署 ----
         public const int HEADER_SIZE = 128;                     // 头部元数据字节数（原为32），其后写缓冲区顺延
-        public const int TOTAL_SIZE = HEADER_SIZE + 5 * 16 * 1024;
-        const byte PROTOCOL_VERSION = 1;                       // 协议版本，破坏性改动时+1
+        public const int MAX_CLIENT_COUNT = 4;                       // 头部魔数
+        public const int TOTAL_SIZE = HEADER_SIZE + (MAX_CLIENT_COUNT + 1) * 16 * 1024;
+        const byte PROTOCOL_VERSION = 2;                       // 协议版本，破坏性改动时+1
         const byte VERSION_MAGIC = 0xA5;                       // 异或校验魔数
+        // ---- 头部字节布局(偏移固定进规则, 不单独变量化) ----
+        // 0:server在线 1:maxClientNum 2:当前client数 3-14:client在线状态(12B,保留冗余)
+        // 15:头部大小(=HEADER_SIZE) 16:协议版本 17:异或校验(buf15^buf16^MAGIC)
+        // 18..HEADER_SIZE-1:名称登记区, 每槽20B=[uid:1][len:1][name:16(0x00填充)][0xFF][0xFF], 先到先得; server不登记
  
         IntPtr m_hSharedMemoryFile = IntPtr.Zero;
         IntPtr m_pwData = IntPtr.Zero;
@@ -126,10 +131,13 @@ if(sharedmm.CheckServerOnlineStatus()){
         bool shmInitiled = false;
         long m_MemSize = TOTAL_SIZE;
 
-        string name;
+        string shareMemoryName;
+        string userName;
+        long lngSize;
         string care;
         int UID;
         int careIndex;//write时关注对应用户读取自己内容情况
+        int mySlotOffset = -1;//本实例占用的名称槽偏移(18..), 退出时清理
         // int contentBegin;
         unsafe byte* ShmBuffer;
         int maxClientNum;
@@ -167,16 +175,20 @@ if(sharedmm.CheckServerOnlineStatus()){
  
         /// <summary>
         /// name: "server" or other client name, not the name of the shared memory(claim in Init func)
+        /// maxClientNum: 4 in default
         /// </summary>
-        /// <param name="_name"></param>
+        /// <param name="_shareMemoryName"></param>
         /// <param name="_care"></param> <summary>
         /// 
         /// </summary>
-        /// <param name="_name"></param>
+        /// <param name="_shareMemoryName"></param>
         /// <param name="_care"></param>
-        public Sharedmm(string _name, string _care, bool _heartbeat = false)
+        public Sharedmm(string _shareMemoryName, string _care, long _lngSize = -1, bool _heartbeat = false)
         {
-            name = _name;
+            if (_lngSize <= 0 || _lngSize > TOTAL_SIZE){_lngSize = TOTAL_SIZE;}
+
+            shareMemoryName = _shareMemoryName;
+            lngSize = _lngSize;
             care = _care;
             UID = -1;
             careIndex = -1;
@@ -195,19 +207,18 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// <summary>
         /// init, throw exception if failed to create
         /// </summary>
-        /// <param name="strName">共享内存名称</param>
-        /// <param name="lngSize">共享内存大小</param>
+        /// <param name="userName"></param>
         /// <returns></returns>
-        unsafe public int Init(string strName, long lngSize)
+        unsafe public int Init(string userName)
         {
-            if (lngSize <= 0 || lngSize > TOTAL_SIZE){lngSize = TOTAL_SIZE;}
+            this.userName = userName;
 
             // m_MemSize = lngSize;
-            if (strName.Length > 0){
-                if (name == "server"){
-                    m_hSharedMemoryFile = CreateFileMapping(INVALID_HANDLE_VALUE, IntPtr.Zero, 0x04, 0, (uint)lngSize, strName);
+            if (userName.Length > 0){
+                if (userName == "server"){
+                    m_hSharedMemoryFile = CreateFileMapping(INVALID_HANDLE_VALUE, IntPtr.Zero, 0x04, 0, (uint)lngSize, shareMemoryName);
                 }else{
-                    m_hSharedMemoryFile = CreateFileMapping(INVALID_HANDLE_VALUE, IntPtr.Zero, 0x04, 0, (uint)lngSize, strName);
+                    m_hSharedMemoryFile = CreateFileMapping(INVALID_HANDLE_VALUE, IntPtr.Zero, 0x04, 0, (uint)lngSize, shareMemoryName);
                     // m_hSharedMemoryFile = OpenFileMapping(FILE_MAP_ALL_ACCESS, true, strName);
                 }
 
@@ -225,7 +236,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                     int errorCode = GetLastError();
                     if (errorCode == ERROR_ALREADY_EXISTS)  //已经创建
                     {
-                        if(name == "server"){
+                        if(userName == "server"){
                             throw new Exception("To map to a existing shm, name shouldn't be \"server\"");
                         }
                         // m_bAlreadyExist = true;
@@ -257,7 +268,13 @@ if(sharedmm.CheckServerOnlineStatus()){
                     // int size = Marshal.SizeOf(typeof(byte));
                     ShmBuffer = (byte*)m_pwData.ToPointer();
 
-                    if(name != "server"){
+                    if(Encoding.UTF8.GetByteCount(userName) > 16){
+                        ReleaseNative();
+                        closed = true;
+                        throw new Exception($"user name too long (>16 bytes): {userName}");
+                    }
+
+                    if(userName != "server"){
                         List<byte> nowServerStatus = ReadShmHead().ToList();
                         maxClientNum = nowServerStatus[1];
                         if(nowServerStatus[2] >= maxClientNum){
@@ -283,7 +300,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                             }
                             WriteByte(2, (byte)(nowServerStatus[2] % 255 +1));
                             WriteByte(3 + UID - 1, 1);
-                            ApplyForCare();
+                            RegisterSelf();
                             
                             Debug.Log($"UID: {UID}");
                         }
@@ -293,11 +310,9 @@ if(sharedmm.CheckServerOnlineStatus()){
                             writeBufferStartPosAll.Add(i);
                         }
                         
-                        if(care == "server"){careIndex = 0;}
-                        else{careIndex = 0;}//暂时不支持client间互相关注
+                        ResolveCare();                     // care=""→-1; "server"→0; 其它→扫名称区匹配
                         careOnlineStatus.Add(nowServerStatus[0]);
-                        // careOnlineStatus.Add(care == "server"? -1: nowServerStatus[3 + careIndex]);
-                        careOnlineStatus.Add(-1);//暂时不支持client间互相关注
+                        careOnlineStatus.Add(-1);
 
                         writeBufferStartPos = writeBufferStartPosAll[UID];
                         newestStartPos = 15;
@@ -307,6 +322,12 @@ if(sharedmm.CheckServerOnlineStatus()){
                     }else{
                         UID = 0;
                         maxClientNum = 4;
+                        // 容量检查: maxClientNum 个 client 各需一个名称槽(20B, 从18起), server 不占槽; 资源须小于 header
+                        if(18 + maxClientNum * 20 > HEADER_SIZE){
+                            ReleaseNative();
+                            closed = true;
+                            throw new Exception($"maxClientNum {maxClientNum} exceeds header capacity (HEADER_SIZE={HEADER_SIZE})");
+                        }
                         writeBufferStartPosAll.Clear();
                         for (int i = HEADER_SIZE; i < HEADER_SIZE + (maxClientNum + 1) * writeBufferLength; i += writeBufferLength)
                         {
@@ -316,8 +337,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                         WriteBytes(HEADER_SIZE, 0xFF, (maxClientNum + 1) * writeBufferLength);
                         WriteByte(0, 1);
                         WriteByte(1, (byte)maxClientNum);
-                        WriteBytes(3, 0x00, 4);
-                        WriteBytes(7, 0x00, HEADER_SIZE - 3 - 7);   // 清申请/名字区，末3字节留给版本元数据
+                        // 在线区(3-14)与名称区(18..)已被上面的整头清零覆盖; 版本区(15-17)随后由 WriteVersionInfo 写入
                         writeBufferStartPos = writeBufferStartPosAll[UID];
                         WriteBytes(writeBufferStartPos, 0x00, 15);
                         writtenmark = 0;
@@ -384,11 +404,12 @@ if(sharedmm.CheckServerOnlineStatus()){
             try{
                 if(shmInitiled){
                     if(manually && IsValidHandle(m_pwData) && IsValidHandle(m_hSharedMemoryFile)){
-                        if(name == "server"){
+                        if(userName == "server"){
                             WriteByte(0, 0);
                         }else{
                             // WriteByte(2, (byte)(nowServerStatus[2]-1));
                             WriteByte(2 + UID, 0);
+                            if(mySlotOffset >= 0){ WriteBytes(mySlotOffset, 0x00, 20); }   // 清自己的名称槽
                         }
                     }
                     ReleaseNative();           // 统一释放 + 复位
@@ -654,8 +675,8 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// </summary>
         /// <returns></returns>
         public byte[] ReadShmHead(){
-            byte[] tempResult = new byte[7];
-            var _ = ReadByte(ref tempResult, 0, 7);
+            byte[] tempResult = new byte[15];   // 0-14: server在线/maxClientNum/当前数/在线状态区(3-14)
+            var _ = ReadByte(ref tempResult, 0, 15);
             
             return tempResult;
         }
@@ -670,13 +691,13 @@ if(sharedmm.CheckServerOnlineStatus()){
             if(head[2 + UID] == 0){
                 return -3; //server set offline
             }
-            if(name == "server"){
+            if(userName == "server"){
                 int onlineClients = 0;
                 for(int i = 0; i < maxClientNum; i++){
                     if(head[3 + i] > 0){onlineClients++;}
                 }
                 WriteByte(2, (byte)onlineClients);
-                CheckApplies();
+                ResolveCare();          // server 也扫名称区解析自己的 care 目标(如 "UnityProject")
 
                 if(!heartbeat){return 1;}
 
@@ -693,6 +714,7 @@ if(sharedmm.CheckServerOnlineStatus()){
                                 onlineClients = Math.Max(0, onlineClients - 1);
                                 WriteByte(2, (byte)onlineClients);
                                 WriteByte(3 + i, 0);
+                                ClearSlotByUid(i + 1);             // 清下线client的名称槽
                                 clientOfflineTick[i] = 0;
                                 if(careIndex == i + 1){careIndex = -1;}
                             }
@@ -703,7 +725,8 @@ if(sharedmm.CheckServerOnlineStatus()){
             }
             else{
                 if(head[0] == 0){return -1;}//server offline
-                else if(heartbeat){
+                if(careIndex == -1){ ResolveCare(); }   // care目标可能后连入,未解析则重扫
+                if(heartbeat){
                     WriteByte(2 + UID, (byte)(head[2 + UID] % 255 + 1));
 
                     if(head[0] != careOnlineStatus[0]){
@@ -731,30 +754,83 @@ if(sharedmm.CheckServerOnlineStatus()){
             }
         }
 
-        void CheckApplies(){
-            if(name != "server" || careIndex != -1){return;}
-
-            int applyUid = ReadByte(7);
-            int nameLength = ReadByte(8);
-            if(applyUid <= 0 || nameLength <= 0){return;}
-
-            byte[] applyNameBytes = new byte[Math.Min(nameLength, HEADER_SIZE - 12)];
-            var _ = ReadByte(ref applyNameBytes, 9, applyNameBytes.Length);
-            string applyName = Encoding.UTF8.GetString(applyNameBytes);
-            if(applyName == care){
-                careIndex = applyUid;
+        /// <summary>
+        /// 从名称区(18..)前向后找第一个空槽写入自己的 uid+名字(先到先得)。server 不登记。
+        /// </summary>
+        public int RegisterSelf(){
+            byte[] nameBytes = Encoding.UTF8.GetBytes(userName);
+            if(nameBytes.Length > 16){ nameBytes = nameBytes.Take(16).ToArray(); }   // 已在 Init 校验, 双保险
+            int slots = (HEADER_SIZE - 18) / 20;
+            for(int i = 0; i < slots; i++){
+                int off = 18 + i * 20;
+                if(ReadByte(off + 1) == 0){          // len==0 视为空槽
+                    WriteBytes(off, 0x00, 20);       // 先清本槽(名字区0x00填充)
+                    WriteByte(off, (byte)UID);
+                    WriteByte(off + 1, (byte)nameBytes.Length);
+                    WriteBytes(off + 2, nameBytes);
+                    WriteByte(off + 18, 0xFF);
+                    WriteByte(off + 19, 0xFF);
+                    mySlotOffset = off;
+                    return 1;
+                }
             }
-            WriteByte(7, 0xFF);
+            return -1;   // 无空槽(超容量), 理论上被 maxClientNum 检查挡住
         }
 
-        public int ApplyForCare(){
-            byte[] nameBytes = Encoding.UTF8.GetBytes(name);
-            int maxNameLen = HEADER_SIZE - 12;              // 名字区 9 .. HEADER_SIZE-4，不能覆盖末尾3字节版本元数据
-            if(nameBytes.Length > maxNameLen){ nameBytes = nameBytes.Take(maxNameLen).ToArray(); }
-            WriteByte(7, (byte)UID);
-            WriteByte(8, (byte)nameBytes.Length);
-            WriteBytes(9, nameBytes);
-            return 1;
+        /// <summary>
+        /// 解析 care 目标: ""→-1; "server"→0; 其它→扫名称区匹配名字, 命中则 careIndex=槽内uid。
+        /// </summary>
+        public void ResolveCare(){
+            if(string.IsNullOrEmpty(care)){ careIndex = -1; return; }
+            if(care == "server"){ careIndex = 0; return; }
+            int slots = (HEADER_SIZE - 18) / 20;
+            for(int i = 0; i < slots; i++){
+                int off = 18 + i * 20;
+                int len = ReadByte(off + 1);
+                if(len >= 1 && len <= 16){
+                    byte[] nb = new byte[len];
+                    var _ = ReadByte(ref nb, off + 2, len);
+                    if(Encoding.UTF8.GetString(nb) == care){
+                        careIndex = ReadByte(off);   // 槽内 uid
+                        return;
+                    }
+                }
+            }
+            careIndex = -1;   // 目标尚未登记, 后续 tick 重试
+        }
+
+        /// <summary>
+        /// 扫描名称区(18..)，返回用户名等于 targetName 的槽内 uid；找不到返回 -1。供按名解析对端 buffer id。
+        /// </summary>
+        public int GetUidByName(string targetName){
+            if(string.IsNullOrEmpty(targetName)){ return -1; }
+            int slots = (HEADER_SIZE - 18) / 20;
+            for(int i = 0; i < slots; i++){
+                int off = 18 + i * 20;
+                int len = ReadByte(off + 1);
+                if(len >= 1 && len <= 16){
+                    byte[] nb = new byte[len];
+                    var _ = ReadByte(ref nb, off + 2, len);
+                    if(Encoding.UTF8.GetString(nb) == targetName){
+                        return ReadByte(off);
+                    }
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// 按 uid 清除名称区中对应的槽(用于参与者下线)。
+        /// </summary>
+        void ClearSlotByUid(int uid){
+            int slots = (HEADER_SIZE - 18) / 20;
+            for(int i = 0; i < slots; i++){
+                int off = 18 + i * 20;
+                if(ReadByte(off + 1) >= 1 && ReadByte(off) == uid){
+                    WriteBytes(off, 0x00, 20);
+                    return;
+                }
+            }
         }
 
         /// <summary>
@@ -764,9 +840,9 @@ if(sharedmm.CheckServerOnlineStatus()){
             byte s = (byte)HEADER_SIZE;
             byte v = PROTOCOL_VERSION;
             byte x = (byte)(s ^ v ^ VERSION_MAGIC);
-            WriteByte(HEADER_SIZE - 3, s);
-            WriteByte(HEADER_SIZE - 2, v);
-            WriteByte(HEADER_SIZE - 1, x);
+            WriteByte(15, s);
+            WriteByte(16, v);
+            WriteByte(17, x);
             return 1;
         }
 
@@ -774,9 +850,9 @@ if(sharedmm.CheckServerOnlineStatus()){
         /// 客户端校验协议元数据一致性。异或/大小/版本任一不符即返回 false（按启动失败处理）。
         /// </summary>
         public bool ValidateVersionInfo(out string reason){
-            byte s = (byte)ReadByte(HEADER_SIZE - 3);
-            byte v = (byte)ReadByte(HEADER_SIZE - 2);
-            byte x = (byte)ReadByte(HEADER_SIZE - 1);
+            byte s = (byte)ReadByte(15);
+            byte v = (byte)ReadByte(16);
+            byte x = (byte)ReadByte(17);
             if((byte)(s ^ v ^ VERSION_MAGIC) != x){
                 reason = $"metadata checksum/layout mismatch (s={s}, v={v}, x={x})";
                 return false;

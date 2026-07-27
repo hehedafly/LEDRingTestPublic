@@ -295,9 +295,9 @@ public class IPCClient : MonoBehaviour
     #endregion
 
     int CreateSharedmm(bool heartbeat = false){
-        sharedmm = new Sharedmm("UnityProject", "server", heartbeat);
+        sharedmm = new Sharedmm("UnityShareMemoryTest", "server", _heartbeat: heartbeat);
         try{
-            sharedmm.Init("UnityShareMemoryTest", Sharedmm.TOTAL_SIZE);
+            sharedmm.Init("UnityProject");
         }
         catch(System.Exception e){
             sharedmm = null;
@@ -630,18 +630,18 @@ public class IPCClient : MonoBehaviour
                 // Quit();
             }
         }else{
-            if(activited){
+            // 修复：断连时统一走 CloseSharedmm() 包装器(会置 Silent=true/activited=false/enableInitAfterConnection=-1),
+            // 否则仅置空 sharedmm 而不置 Silent, 下一帧 !Silent&&sharedmm==null 会立刻重连→Init失败→误报"IPC init failed";
+            // 并按“是否曾建立连接”区分文案, 避免掉线时打印建连期的“failed to sync”。
+            bool wasActivated = activited;
+            if(sharedmm != null){
+                Array.Fill(pos, -1);
+                CloseSharedmm();
+                uiUpdate.MessageUpdate(wasActivated ? "lost connection" : "failed to sync, no message received");
+            }else if(activited){
                 Activated = false;
                 Array.Fill(pos, -1);
                 uiUpdate.MessageUpdate($"lost connection");
-
-            }
-            // Debug.Log("no one online or not activated");
-            if(sharedmm != null){
-                Array.Fill(pos, -1);
-                sharedmm.CloseSharedmm(manually:true);
-                sharedmm = null;
-                uiUpdate.MessageUpdate($"failed to sync, no message received");
             }
         }
     }
