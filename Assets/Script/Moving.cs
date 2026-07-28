@@ -954,9 +954,9 @@ public class Moving : MonoBehaviour
     ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     /// <summary>
-    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual
+    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual, 10-p_lightControl
     /// </summary>
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord, p_waterServeWhenLick, p_waterServeManual".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord, p_waterServeWhenLick, p_waterServeManual, p_lightControl".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
@@ -2724,6 +2724,7 @@ public class Moving : MonoBehaviour
     const int BUFFER_SIZE = 4096;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
+    byte[] lastAddedCommand = null;
     #endregion file writing end
     
     #region methods of communicating
@@ -2733,15 +2734,25 @@ public class Moving : MonoBehaviour
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置
+    public void CommandParsePublic(string limitedCommand, bool urgent = false, bool checkRepetition = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置
         string tempHead = limitedCommand.Split(":")[0];
         //   "li",      "en",       "pr",     "ci",       "log", "echo", "vc",           "cmd",     "debugLog", "st",    "si",       "ms"
-        string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9] };
+        string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9]};
         if(!availableHead.Contains(tempHead)){return;}
-        if(urgent){
-            CommandParse(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
-        }else{
-            commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        else{
+            if(Arduino_var_list.Contains(tempHead)){
+                limitedCommand = $"{Arduino_var_map[tempHead]}={limitedCommand.Split(":")[1]}";
+            }
+        }
+
+        byte[] newCommand = commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand));
+        if((!checkRepetition || lastAddedCommand != null) && newCommand.Equals(lastAddedCommand)){
+            if(urgent){
+                CommandParse(newCommand);
+            }else{
+                commandQueue.Enqueue(newCommand);
+            }
+            lastAddedCommand = newCommand;
         }
     }
 

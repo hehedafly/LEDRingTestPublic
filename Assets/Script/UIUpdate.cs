@@ -762,6 +762,8 @@ public class UIUpdate : MonoBehaviour
                             // SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
                         }
                         SetButtonColor($"{_type}Enable", Color.green, !_enabled);
+                    }else if (_content == "LightControl"){
+                        moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
                     }
                 }
                 else if (elementsName.StartsWith("TimingBaseSelect")) {

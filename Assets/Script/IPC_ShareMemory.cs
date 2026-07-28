@@ -671,7 +671,7 @@ if(sharedmm.CheckServerOnlineStatus()){
         }
 
         /// <summary>
-        /// 0:server online status 1:maxClientNum, 2:nowClientNum,3-6:ClientOnlineStat, 7:clientIndex applied
+        /// 0:server online status 1:maxClientNum, 2:nowClientNum,3-14:ClientOnlineStat
         /// </summary>
         /// <returns></returns>
         public byte[] ReadShmHead(){
