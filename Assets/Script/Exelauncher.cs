@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Collections;
 using System.Collections.Generic;
 
 public class ExeLauncher
@@ -263,6 +264,7 @@ public static class LogEventController
     // start = true  : 希望开始录制，仅在状态0时点击
     // start = false : 希望停止录制，仅在状态1时点击
     // 返回值：0 表示未执行点击，1 表示执行点击，-1 表示未找到录制按钮，-2 表示录制按钮不可用
+    /* 旧同步版本已弃用：点击后立即单次校验，导致停止录制方向的假失败。改用下方协程版 SmartClickRecordButtonCo。
     public static int SmartClickRecordButton(bool start)
     {
         int _isNoRecord = IsRecordButtonStateZero(); // true=未录制, false=录制中
@@ -302,5 +304,44 @@ public static class LogEventController
         shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
         UnityEngine.Debug.Log($"{(start? "开始" :"结束")} 录制 {(shouldClick? "失败": "成功")}");
         return shouldClick? 1: 0;
+    }
+    */
+
+    // 协程版：点击后轮询等待目标应用异步更新状态，消除停止方向的假失败；点击本身 Task 化避免阻塞主线程。
+    // onResult: 0=无需点击(已在期望态) 1=点击后已达期望态(成功) -1=未找到按钮 -2=按钮不可用 -3=点击后超时仍未达期望态(真失败)
+    public static IEnumerator SmartClickRecordButtonCo(bool start, System.Action<int> onResult = null, float verifyTimeout = 2f)
+    {
+        int _isNoRecord = IsRecordButtonStateZero();
+        if (_isNoRecord == -1) { onResult?.Invoke(-1); yield break; }
+        bool isNoRecord = _isNoRecord == 1;
+        bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
+        if (!shouldClick) { onResult?.Invoke(0); yield break; }
+
+        IntPtr hRecord = FindRecordButton();
+        if (hRecord == IntPtr.Zero) { onResult?.Invoke(-1); yield break; }
+        if (!IsWindowEnabled(hRecord)) { onResult?.Invoke(-2); yield break; }
+
+        // Task 化点击：SendMessageTimeout 可能阻塞至多 1.5s，放到后台线程避免卡主线程
+        Task clickTask = Task.Run(() =>
+        {
+            SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
+        });
+        yield return new WaitUntil(() => clickTask.IsCompleted);
+
+        // 轮询：停止录制时目标应用重新启用 Load 按钮是异步的，需给足时间
+        float elapsed = 0f;
+        while (elapsed < verifyTimeout)
+        {
+            int s = IsRecordButtonStateZero();
+            if (s != -1)
+            {
+                bool nowNoRecord = s == 1;
+                bool reached = start ? !nowNoRecord : nowNoRecord;  // start期望状态1(录制中), stop期望状态0(未录制)
+                if (reached) { onResult?.Invoke(1); yield break; }
+            }
+            yield return new WaitForSeconds(0.05f);
+            elapsed += 0.05f;
+        }
+        onResult?.Invoke(-3);   // 超时未达期望态：真失败
     }
 }

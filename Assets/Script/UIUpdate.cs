@@ -211,6 +211,31 @@ public class UIUpdate : MonoBehaviour
         }
     }
 
+    // 录制按钮点击的协程包装：调用协程版智能点击；-1/-2(没找到/不可用)按上限重试，-3(超时真失败)只提示不重试。
+    IEnumerator LogeventRecordCo(bool start)
+    {
+        int fail = 0;
+        int maxFail = start ? 3 : 5;
+        while (true)
+        {
+            int result = 0;
+            yield return StartCoroutine(LogEventController.SmartClickRecordButtonCo(start, r => result = r));
+
+            if (result == -1 || result == -2)
+            {
+                fail++;
+                if (fail > maxFail) { MessageUpdate(start ? "logevent record failed to start" : "logevent record failed to end"); break; }
+                yield return new WaitForSeconds(0.05f);
+                continue;
+            }
+            if (result == -3)
+            {
+                MessageUpdate(start ? "logevent record start unverified (timeout)" : "logevent record end unverified (timeout)");
+            }
+            break;
+        }
+    }
+
     public int ControlsParsePublic(string elementsName, float value, string stringArg = "", bool ignoreTiming = true, bool forceTiming = false) {//scrButton中调用时ignoreTiming为false
         return ControlsParse(elementsName, value, stringArg, ignoreTiming, forceTiming);
     }
@@ -637,13 +662,11 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "LogeventStart":{
-                int fail = 0;
-                while(LogEventController.SmartClickRecordButton(true) < 0){fail++; if(fail > 3){MessageUpdate("logevent record failed to start"); break;}};
+                StartCoroutine(LogeventRecordCo(true));
                 break;
             }
             case "LogeventEnd":{
-                int fail = 0;
-                while(LogEventController.SmartClickRecordButton(false) < 0){fail++; if(fail > 5){MessageUpdate("logevent record failed to end"); break;}};
+                StartCoroutine(LogeventRecordCo(false));
                 break;
             }
             default:{

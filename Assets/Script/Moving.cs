@@ -931,7 +931,7 @@ public class Moving : MonoBehaviour
     // 通信方式配置: 0-自动检测, 1-仅USB, 2-仅串口
     // int communicationMode = 0;
     // bool isUsbConnected = false;  // 当前是否为USB连接
-    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3"};
+    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3", "V2.4"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
