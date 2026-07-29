@@ -387,7 +387,7 @@ public class Position_control : MonoBehaviour
             }
 
             tf.position=rec_pos;
-            if(waiting==1 && moving.AlarmPublic.GetAlarm("contextEndWait") <= -1){//已同步完成且等待alarm到期(未设置返-2/到期返-1)，正常进入下一context
+            if(waiting==1 && Time.unscaledTime-counter>context_info_ls[now_context].wait_sec){//已同步完成，正常进入下一context
                 waiting = 0;
                 counter = 0;
                 DeactivateFillScreenColor();
@@ -403,7 +403,7 @@ public class Position_control : MonoBehaviour
                 }
 
                 if(now_trial>trial_per_section){
-                    moving.AlarmPublic.TrySetAlarm("contextEndWait", 100000f, out _, force:true);//会话结束，长时间暂停
+                    counter = Time.unscaledTime+10000;
                     ActivateFullSCreenColor(Color.green);
                     DeactivateFillScreenColor();
                     // fullScreenColor.GetComponent<FullscreenColorQuad>().quadColor = Color.green;
@@ -435,7 +435,7 @@ public class Position_control : MonoBehaviour
                     float temp_length_diff = X - lengthRec[1];
                     X = contextZoneStartAndEnd[i_context_zone+1];//不超过context end
                     lengthRec[1] = X - temp_length_diff;
-                    moving.AlarmPublic.TrySetAlarm("contextEndWait", context_info_ls[now_context].wait_sec, out _, force:true);//离开context，启动结束等待alarm
+                    counter=Time.unscaledTime;
                     if(context_info_ls[now_context].wait_sec>0){
                         now_context_success=lick_count_rec[1]>=lick_count_succes_threshold[0] && lick_count_rec[1]<=lick_count_succes_threshold[1];
                         //temp_quad=Instantiate(prefab_quad, new Vector3(x, 0, 0), prefab_quad.transform.rotation);

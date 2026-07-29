@@ -6,18 +6,17 @@ using UnityEngine.UI;
 
 public class Scr_Dropdown : MonoBehaviour
 {
-    [SerializeField] public LinearTrackUIUpdate ui_update;
+    private GameObject obj_main = null;
     private Dropdown dropdown;
     // Start is called before the first frame update
     public void Dropdown_value_change(int value){
         if(dropdown==null){return;}
-        if(ui_update==null){ GameObject o = GameObject.Find("obj_main"); if(o!=null){ ui_update = o.GetComponent<LinearTrackUIUpdate>(); } }
-        if(ui_update!=null){ ui_update.ControlsParsePublic(name, value); }
+        if(obj_main!=null){obj_main.GetComponent<LinearTrackUIUpdate>().Controls_parse(name, value);}
     }
     void Start()
     {
         dropdown=GetComponent<Dropdown>();
-        if(ui_update==null){ GameObject o = GameObject.Find("obj_main"); if(o!=null){ ui_update = o.GetComponent<LinearTrackUIUpdate>(); } }
+        obj_main = GameObject.Find("obj_main");
     }
 
     // Update is called once per frame

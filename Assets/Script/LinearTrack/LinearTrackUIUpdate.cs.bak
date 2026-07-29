@@ -38,16 +38,10 @@ public class LinearTrackUIUpdate : MonoBehaviour
     private InputField serialMessageInputs;
     private InputField mode1ConfigInputs;
     private LinearTrackMoving linearTrackMoving;
-    public LinearTrackMoving Moving { get { return linearTrackMoving; } }
-    TimingCollection timings = new TimingCollection();//预留：本轮不启用，便于后续定时扩展
     private Position_control position_control;
     private InputField focus_input_field = null;
     
-    public void ControlsParsePublic(string controls_name, float value, string string_arg="", bool ignoreTiming = true, bool forceTiming = false){//预留定时扩展入口，本轮直接转发至 Controls_parse
-        Controls_parse(controls_name, value, string_arg, ignoreTiming, forceTiming);
-    }
-
-    public void Controls_parse(string controls_name,float value, string string_arg="", bool ignoreTiming = true, bool forceTiming = false){
+    public void Controls_parse(string controls_name,float value, string string_arg=""){
         //if(string_arg==""){return;}
         switch (controls_name){
             case "SliderMaxSpd":{

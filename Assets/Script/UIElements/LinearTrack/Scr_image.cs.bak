@@ -7,15 +7,15 @@ public class Scr_image : MonoBehaviour
 {
     // Start is called before the first frame update
     public Text info_text;
-    [SerializeField] public LinearTrackUIUpdate ui_update;
+    private GameObject obj_main;
 
     public void set_info_text(string info){
         info_text.text = info;
     }
     void Start()
     {
-        if(ui_update==null){ GameObject o = GameObject.Find("obj_main"); if(o!=null){ ui_update = o.GetComponent<LinearTrackUIUpdate>(); } }
-        if(name == "ImgLineChart" && ui_update!=null){set_info_text(ui_update.thresholds[0].ToString());}
+        obj_main = GameObject.Find("obj_main");
+        if(name == "ImgLineChart"){set_info_text(obj_main.GetComponent<LinearTrackUIUpdate>().thresholds[0].ToString());}
     }
 
     // Update is called once per frame

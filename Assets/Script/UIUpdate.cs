@@ -1169,18 +1169,13 @@ public class UIUpdate : MonoBehaviour
 
         alarm = new Alarm();
         alarm.TrySetAlarm("manualScrollWait", -1, out _);
-        // foreach(InputField inputField in other_inputs){
-        //     if (inputField.name=="IFSerialMessage"){serialMessageInputs=inputField;}
-        //     else if (inputField.name=="IFConfigValue"){
-        //         mode1ConfigInputs = inputField;
-        //         mode1ConfigInputs.placeholder.GetComponent<Text>().text = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1].ToString();
-        //     }
-        // }
 
+        Dictionary<string, string> _inputFieldContent_prefill = IFContentLoaded.Split(";;;").ToDictionary(c => c.Split("=>")[0], c => c.Split("=>")[1]);
         foreach (InputField inputField in inputFields) {
-            if (!inputFieldContent.TryAdd(inputField.name, inputField.text)) {
+            if (!inputFieldContent.TryAdd(inputField.name, _inputFieldContent_prefill.ContainsKey(inputField.name)? _inputFieldContent_prefill[inputField.name]: inputField.text)) {
                 inputFieldContent[inputField.name] = "null";
             }
+            if(inputFieldContent.TryGetValue(inputField.name, out string _t)){inputField.text = _t;}
         }
         
         TimingMethodDropdown.ClearOptions();
@@ -1190,14 +1185,14 @@ public class UIUpdate : MonoBehaviour
         TimingMethodDropdown.value = 0;
         TimingMethodDropdown.RefreshShownValue();
 
-        if (IFContentLoaded != "") {
-            foreach (string content in IFContentLoaded.Split(";;;")) {
-                string IFName = content.Split("=>")[0];
-                if (inputFieldContent.ContainsKey(IFName)) {
-                    inputFieldContent[IFName] = content.Split("=>")[1];
-                }
-            }
-        }
+        // if (IFContentLoaded != "") {
+        //     foreach (string content in IFContentLoaded.Split(";;;")) {
+        //         string IFName = content.Split("=>")[0];
+        //         if (inputFieldContent.ContainsKey(IFName)) {
+        //             inputFieldContent[IFName] = content.Split("=>")[1];
+        //         }
+        //     }
+        // }
         foreach(GameObject l in LightObjects){
             string type = LightDefaultColors.Where(n => l.name.ToLower().EndsWith(n.Key)).Select(n => n.Key).FirstOrDefault();
             if(type == null){continue;}
@@ -1213,6 +1208,10 @@ public class UIUpdate : MonoBehaviour
         foreach(var key in _ic.Keys) {
             if(key == "IFTimingSet" && _ic[key] != "null") {
                 ControlsParse("IFTimingSet", 1);
+                inputFieldContent["IFTimingSet"] = "null";
+                InputField _IF = inputFields.FirstOrDefault(_if => _if.name == "IFTimingSet");
+                if(_IF != null){_IF.text = "";}
+                break;
             }
         }
 

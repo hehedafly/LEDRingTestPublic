@@ -1525,7 +1525,7 @@ RectTransform:
   m_GameObject: {fileID: 429640367}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.3339844, y: 1.3339844, z: 1.3339844}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1255349262}
@@ -1536,11 +1536,12 @@ RectTransform:
   - {fileID: 2130491861}
   - {fileID: 1717440206}
   - {fileID: 1094313996}
-  m_Father: {fileID: 584057467}
+  - {fileID: 1274758065}
+  m_Father: {fileID: 1400331052}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 482, y: 159}
+  m_AnchoredPosition: {x: 576, y: 212.10352}
   m_SizeDelta: {x: 1, y: 1}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &429727943
@@ -2489,8 +2490,7 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 429640368}
+  m_Children: []
   m_Father: {fileID: 1868669274}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3008,7 +3008,6 @@ RectTransform:
   - {fileID: 2088462325}
   - {fileID: 1198546785}
   - {fileID: 1686792765}
-  - {fileID: 1274758065}
   m_Father: {fileID: 287800049}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3227,6 +3226,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba6c7c6b5eed23c4fa1e704adf299238, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!114 &849937818
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4098,6 +4098,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba6c7c6b5eed23c4fa1e704adf299238, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!114 &972935191
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5885,16 +5886,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1274758064}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: -1, z: 1}
+  m_LocalScale: {x: 0.74963397, y: -0.74963397, z: 0.74963397}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 817719486}
+  m_Father: {fileID: 429640368}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 930, y: 310}
+  m_AnchoredPosition: {x: -40, y: 300}
   m_SizeDelta: {x: 40, y: 450}
   m_Pivot: {x: 0, y: -1}
 --- !u!114 &1274758066
@@ -5910,6 +5911,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   info_text: {fileID: 0}
+  ui_update: {fileID: 0}
 --- !u!114 &1274758067
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6231,8 +6233,8 @@ Camera:
   m_LensShift: {x: 0, y: 0}
   m_NormalizedViewPortRect:
     serializedVersion: 2
-    x: 0.39
-    y: -0.5
+    x: 0.32
+    y: -0.4
     width: 0.5
     height: 1
   near clip plane: 0.3
@@ -6423,7 +6425,8 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 429640368}
   m_Father: {fileID: 817719486}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -7319,6 +7322,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _ScrollRect: {fileID: 2088462326}
+  ui_update: {fileID: 0}
 --- !u!1 &1612147944
 GameObject:
   m_ObjectHideFlags: 0
@@ -8283,6 +8287,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   info_text: {fileID: 1263762771}
+  ui_update: {fileID: 0}
 --- !u!1 &1852012086
 GameObject:
   m_ObjectHideFlags: 0
@@ -9117,6 +9122,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 230ca6b138fab4b4fb30bb9ff7409033, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!1 &1943646385
 GameObject:
   m_ObjectHideFlags: 0
@@ -9417,6 +9423,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 230ca6b138fab4b4fb30bb9ff7409033, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!1 &1979121243
 GameObject:
   m_ObjectHideFlags: 0
