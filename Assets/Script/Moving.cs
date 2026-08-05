@@ -2746,7 +2746,7 @@ public class Moving : MonoBehaviour
         }
 
         byte[] newCommand = commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand));
-        if((!checkRepetition || lastAddedCommand != null) && newCommand.Equals(lastAddedCommand)){
+        if(!checkRepetition || lastAddedCommand != null || !newCommand.SequenceEqual(lastAddedCommand)){
             if(urgent){
                 CommandParse(newCommand);
             }else{

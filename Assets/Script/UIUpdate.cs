@@ -511,12 +511,12 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "InfraRedIn":{
-                moving.CommandParsePublic("entrance:-1:In");
-                moving.CommandParsePublic("entrance:-1:Leave");
+                moving.CommandParsePublic($"{moving.LsTypes[1]}:-1:In");
+                moving.CommandParsePublic($"{moving.LsTypes[1]}:-1:Leave");
                 break;
             }
             case "PressLever":{
-                moving.CommandParsePublic("press:-1");
+                moving.CommandParsePublic($"{moving.LsTypes[2]}:-1");
                 break;
             }
             case "logScroll":{
@@ -1170,7 +1170,7 @@ public class UIUpdate : MonoBehaviour
         alarm = new Alarm();
         alarm.TrySetAlarm("manualScrollWait", -1, out _);
 
-        Dictionary<string, string> _inputFieldContent_prefill = IFContentLoaded.Split(";;;").ToDictionary(c => c.Split("=>")[0], c => c.Split("=>")[1]);
+        Dictionary<string, string> _inputFieldContent_prefill = IFContentLoaded.Length > 5? IFContentLoaded.Split(";;;").ToDictionary(c => c.Split("=>")[0], c => c.Split("=>")[1]): new Dictionary<string, string>();
         foreach (InputField inputField in inputFields) {
             if (!inputFieldContent.TryAdd(inputField.name, _inputFieldContent_prefill.ContainsKey(inputField.name)? _inputFieldContent_prefill[inputField.name]: inputField.text)) {
                 inputFieldContent[inputField.name] = "null";

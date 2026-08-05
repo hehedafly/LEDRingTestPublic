@@ -19,7 +19,7 @@ public class Context_generate : MonoBehaviour
     public GameObject landmarkDefault;
     public Material materialWallpaperDefault;
     public GameObject player;
-    private Position_control position_control;
+    private LinearTrackMoving position_control;
     private LinearTrackUIUpdate ui_update;
     private IniReader ini_Reader;
     private int context_repeat_num;
@@ -191,7 +191,7 @@ public class Context_generate : MonoBehaviour
         }
          
         ini_Reader=new IniReader(GetConfigPath());
-        position_control = player.GetComponent<Position_control>();
+        position_control = player.GetComponent<LinearTrackMoving>();
         ui_update = player.GetComponent<LinearTrackUIUpdate>();
         //TextAsset txt = Resources.Load(context_config) as TextAsset;
         //GameObject obj_reward_zone= Instantiate(prefab_reward_zone, new Vector3(10.0f, 0.0f, 0.49f), Quaternion.identity);
@@ -240,7 +240,7 @@ public class Context_generate : MonoBehaviour
                 context_struct_map[context].Generate_context(start_pos, prefabTunnel, GetPrefab("tunnel_no_ceil_and_end"), GetPrefab(context_struct_map[context].landmark_name, "landmark"), GetMaterial(context_struct_map[context].wallpaper), GetMaterial(context_struct_map[context].wallpaper_reward_zone));
                 context_zone[temp_i]=start_pos;                                                context_zone[temp_i+1]=context_zone[temp_i]+context_struct_map[context].length;
                 reward_zone[temp_i]=start_pos+context_struct_map[context].reward_zone_start;   reward_zone[temp_i+1]=reward_zone[temp_i]+context_struct_map[context].reward_zone_length;
-                temp_ls.Add(new Position_control.Context_info(
+                temp_ls.Add(new LinearTrackMoving.Context_info(
                     context_struct_map[context].start,
                     context_struct_map[context].lick_count_max,
                     context_struct_map[context].end_mark.Split(',')[0], 

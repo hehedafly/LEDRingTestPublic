@@ -40,7 +40,6 @@ public class LinearTrackUIUpdate : MonoBehaviour
     private LinearTrackMoving linearTrackMoving;
     public LinearTrackMoving Moving { get { return linearTrackMoving; } }
     TimingCollection timings = new TimingCollection();//预留：本轮不启用，便于后续定时扩展
-    private Position_control position_control;
     private InputField focus_input_field = null;
     
     public void ControlsParsePublic(string controls_name, float value, string string_arg="", bool ignoreTiming = true, bool forceTiming = false){//预留定时扩展入口，本轮直接转发至 Controls_parse
@@ -62,7 +61,7 @@ public class LinearTrackUIUpdate : MonoBehaviour
             }
             case "IFThreshold_x":{
                 thresholds[0] = Convert.ToInt32(value);
-                //position_control.dic_water_serving_speed_threshold = Convert.ToInt32(value);
+                //linearTrackMoving.dic_water_serving_speed_threshold = Convert.ToInt32(value);
                 if(value >= linearTrackMoving.maxRolling_value){linearTrackMoving.maxRolling_value = (int)value+100;}
                 reference_info.text=value.ToString();
                 break;
@@ -93,25 +92,25 @@ public class LinearTrackUIUpdate : MonoBehaviour
                 // string temp_str=$"p_lick_mode={Convert.ToInt32(value)}";
                 // if(linearTrackMoving.DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
 
-                if(value>0 && (int)value != position_control.serve_water_mode){
+                if(value>0 && (int)value != linearTrackMoving.serve_water_mode){
                     mode1ConfigDropdown.ClearOptions();
 
-                    int dic_size = Convert.ToInt32(position_control.Get_set_dic_water_serving((int)value, key_text: out string temp_text)[0]);
+                    int dic_size = Convert.ToInt32(linearTrackMoving.Get_set_dic_water_serving((int)value, key_text: out string temp_text)[0]);
                     List<string> keys_arr = new List<string>();
                     for(int i=0; i<dic_size; i++){
-                        _ =position_control.Get_set_dic_water_serving((int)value, out temp_text, index:i);
+                        _ =linearTrackMoving.Get_set_dic_water_serving((int)value, out temp_text, index:i);
                         keys_arr.Add(temp_text);
                     }
                     mode1ConfigDropdown.AddOptions(keys_arr);
-                    float temp_value=position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, Convert.ToInt32(value))[1];
+                    float temp_value=linearTrackMoving.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, Convert.ToInt32(value))[1];
                     mode1ConfigInputs.placeholder.GetComponent<Text>().text=temp_value.ToString();
                 }
                 else{
                     mode1ConfigDropdown.ClearOptions();
                 }
 
-                position_control.serve_water_mode = Convert.ToInt32(value);
-                position_control.Trial_args_init(false);//更换mode时清除无用信息
+                linearTrackMoving.serve_water_mode = Convert.ToInt32(value);
+                linearTrackMoving.Trial_args_init(false);//更换mode时清除无用信息
                 modeSelect.value = Convert.ToInt32(value);
                 modeSelect.RefreshShownValue();
                 
@@ -119,15 +118,15 @@ public class LinearTrackUIUpdate : MonoBehaviour
                 break;
             }
             case "Mode1Config":{
-                float temp_value = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1];
-                mode1ConfigInputs.placeholder.GetComponent<Text>().text = temp_value.ToString();
+                float temp_value = linearTrackMoving.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, linearTrackMoving.serve_water_mode)[1];
+                mode1ConfigInputs.placeholder.GetComponent<Text>().text=temp_value.ToString();
                 break;
             }
             case "IFConfigValue":{
-                if(position_control.serve_water_mode == 0){break;}
+                if(linearTrackMoving.serve_water_mode == 0){break;}
 
-                float temp_value = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1];
-                position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, value, position_control.serve_water_mode);
+                float temp_value = linearTrackMoving.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, linearTrackMoving.serve_water_mode)[1];
+                linearTrackMoving.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, value, linearTrackMoving.serve_water_mode);
                 mode1ConfigInputs.placeholder.GetComponent<Text>().text = value.ToString();
                 MessageUpdate($"config changed:{mode1ConfigDropdown.captionText.text} from {temp_value} to {value}\n");
                 break;
@@ -169,9 +168,9 @@ public class LinearTrackUIUpdate : MonoBehaviour
             bool isPausingBefore = context_info.text.Contains("paused");
             if(!_pauseChange){_pauseMoving = isPausingBefore;}
 
-            string  temp_context_info =  $"trail:{position_control.Now_trial}        now context:{position_control.NowContext}  {(position_control.Trial_syncing? "syncing" : "")}  {(_pauseMoving? "paused" : "")}\n";
-                    temp_context_info += $"lick:     pre--{position_control.lick_count_rec[0]}        in--{position_control.lick_count_rec[1]}        after--{position_control.lick_count_rec[2]}\n";
-                    temp_context_info += $"lick_correct:{position_control.lick_count_correct}        lick_threshold: min {position_control.lick_count_succes_threshold[0]};max {position_control.lick_count_succes_threshold[1]}";
+            string  temp_context_info =  $"trail:{linearTrackMoving.Now_trial}        now context:{linearTrackMoving.NowContext}  {(linearTrackMoving.Trial_syncing? "syncing" : "")}  {(_pauseMoving? "paused" : "")}\n";
+                    temp_context_info += $"lick:     pre--{linearTrackMoving.lick_count_rec[0]}        in--{linearTrackMoving.lick_count_rec[1]}        after--{linearTrackMoving.lick_count_rec[2]}\n";
+                    temp_context_info += $"lick_correct:{linearTrackMoving.lick_count_correct}        lick_threshold: min {linearTrackMoving.lick_count_succes_threshold[0]};max {linearTrackMoving.lick_count_succes_threshold[1]}";
             context_info.text=temp_context_info; 
         }
         return "";
@@ -196,7 +195,6 @@ public class LinearTrackUIUpdate : MonoBehaviour
     void Awake()
     {
         linearTrackMoving=GetComponent<LinearTrackMoving>();
-        position_control=GetComponent<Position_control>();
         foreach(UnityEngine.UI.Slider slider in sliders){
             switch(slider.name){
                 case "SliderMaxSpd":{
@@ -214,14 +212,14 @@ public class LinearTrackUIUpdate : MonoBehaviour
             if (inputField.name=="IFSerialMessage"){serialMessageInputs=inputField;}
             else if (inputField.name=="IFConfigValue"){
                 mode1ConfigInputs = inputField;
-                mode1ConfigInputs.placeholder.GetComponent<Text>().text = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1].ToString();
+                mode1ConfigInputs.placeholder.GetComponent<Text>().text = linearTrackMoving.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, linearTrackMoving.serve_water_mode)[1].ToString();
             }
         }
 
         lineChart = new LineChartMultiChannel(LineChartWidth, LineChartHeight, LineChartImage, linearTrackMoving, this);
         lineChart.Init();
 
-        positionIndicator = new PosIndicate((int)posIndicateImage.GetComponent<RectTransform>().rect.width, (int)posIndicateImage.GetComponent<RectTransform>().rect.height, posIndicateImage, position_control, this);
+        positionIndicator = new PosIndicate((int)posIndicateImage.GetComponent<RectTransform>().rect.width, (int)posIndicateImage.GetComponent<RectTransform>().rect.height, posIndicateImage, linearTrackMoving, this);
         positionIndicator.Init();
     }
 

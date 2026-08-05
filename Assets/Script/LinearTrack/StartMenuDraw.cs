@@ -225,7 +225,7 @@ public class StartMenuDraw : MonoBehaviour
         private string context_config_path;
     #endif
 
-    private string metaConfigName = "/metaConfig.ini";//保留：metaConfig 间接选择配置文件，暂不启用
+    // private string metaConfigName = "/metaConfig.ini";//保留：metaConfig 间接选择配置文件，暂不启用
     private string openINIFileName;
 
     public GameObject Rows;
