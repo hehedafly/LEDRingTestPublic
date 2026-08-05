@@ -2738,12 +2738,13 @@ public class Moving : MonoBehaviour
         string tempHead = limitedCommand.Split(":")[0];
         //   "li",      "en",       "pr",     "ci",       "log", "echo", "vc",           "cmd",     "debugLog", "st",    "si",       "ms"
         string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9]};
-        if(!availableHead.Contains(tempHead)){return;}
-        else{
-            if(Arduino_var_list.Contains(tempHead)){
-                limitedCommand = $"{Arduino_var_map[tempHead]}={limitedCommand.Split(":")[1]}";
-            }
+
+        if(Arduino_var_list.Contains(tempHead)){
+            limitedCommand = $"{Arduino_var_map[tempHead]}={limitedCommand.Split(":")[1]}";
+            DataSend(limitedCommand, needParse:false, inVerifyOrVerifyNeedless:checkRepetition);
+            return;
         }
+        else if (!availableHead.Contains(tempHead)){return;}
 
         byte[] newCommand = commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand));
         if(!checkRepetition || lastAddedCommand != null || !newCommand.SequenceEqual(lastAddedCommand)){

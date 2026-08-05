@@ -15356,7 +15356,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1407331290}
   m_HandleRect: {fileID: 1407331287}
   m_Direction: 2
-  m_Value: 0
+  m_Value: 1
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -25500,7 +25500,7 @@ MonoBehaviour:
   m_HandleRect: {fileID: 943313903}
   m_Direction: 0
   m_MinValue: 0
-  m_MaxValue: 4096
+  m_MaxValue: 4095
   m_WholeNumbers: 1
   m_Value: 0
   m_OnValueChanged:
@@ -25510,6 +25510,18 @@ MonoBehaviour:
         m_TargetAssemblyTypeName: ScrSlider, Assembly-CSharp
         m_MethodName: OnValueChanged
         m_Mode: 4
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 1604233004}
+        m_TargetAssemblyTypeName: ScrSlider, Assembly-CSharp
+        m_MethodName: OnValueChanged
+        m_Mode: 0
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine

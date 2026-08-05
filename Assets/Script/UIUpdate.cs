@@ -786,7 +786,8 @@ public class UIUpdate : MonoBehaviour
                         }
                         SetButtonColor($"{_type}Enable", Color.green, !_enabled);
                     }else if (_content == "LightControl"){
-                        moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
+                        // moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
+                        moving.DataSend($"p_lightControl={value}", needParse:true, inVerifyOrVerifyNeedless: true);
                     }
                 }
                 else if (elementsName.StartsWith("TimingBaseSelect")) {
