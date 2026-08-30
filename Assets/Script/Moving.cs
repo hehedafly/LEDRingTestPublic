@@ -1582,20 +1582,32 @@ public class Moving : MonoBehaviour
                     tempSp.Open();
                     Debug.Log("COM available: " + port);
 
-                    // 发送 RESET 信号 (3个0xCC) 让 Arduino 复位并重新握手
+                    // 清空上次连接失败残留的数据（关键！否则会读到旧的 ACK_OK）
+                    tempSp.DiscardInBuffer();
+                    tempSp.DiscardOutBuffer();
+
+                    // 发送 RESET 信号让 pyboard 复位并重新握手
                     tempSp.WriteLine("//forceinit");
                     // tempSp.DiscardInBuffer();  // 清空缓冲区
 
                     // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
-                    int failCount = 0; int maxFailCount = 10;
-                    string initMsg = tempSp.ReadLine();  // 阻塞等待
-                    while(initMsg.Length == 0 && failCount < maxFailCount){
-                        initMsg = tempSp.ReadLine();
-                        failCount++;
+                    int failCount = 0; int maxFailCount = 20;
+                    string initMsg = "";
+                    try{
+                        // 跳过任何非 initialed 行（banner/残留ACK_OK/空行），直到读到 initialed 或超时
+                        do{
+                            initMsg = tempSp.ReadLine();
+                            if(initMsg.StartsWith("initialed:")){break;}
+                            failCount++;
+                        }while(failCount < maxFailCount);
+                        Debug.Log("Received: " + initMsg);
                     }
-                    Debug.Log("Received: " + initMsg);
+                    catch(TimeoutException e){
+                        if(initMsg.Length == 0){throw new TimeoutException(e.Message);}
+                    }
 
                     if (initMsg.StartsWith("initialed:")){
+                        initMsg = "initialed:" + initMsg.Split("initialed:").Last();
                         string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
 
                         // 验证版本兼容性
@@ -1606,10 +1618,14 @@ public class Moving : MonoBehaviour
                         // 发送 ACK 确认，Arduino 收到后退出握手循环
                         string response = "";
                         int newlineCount = 0;
-                        for(int i = 0; i < 3; i++){tempSp.WriteLine("\nACK\n");}
+                        tempSp.DiscardInBuffer();
+                        for(int i = 0; i < 5; i++){tempSp.WriteLine("\nACK\n");}
                         while (newlineCount < maxFailCount){
                             char c = (char)tempSp.ReadChar();
                             if (c == '\n' || c == '\r'){
+                                if(response.Contains("initialed:")){
+                                    response = response.Split("initialed:").Last();
+                                }
                                 newlineCount++;
                                 response = response.Replace("\r", "").Replace("\n", "");
                             }else{

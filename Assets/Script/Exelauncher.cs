@@ -206,142 +206,322 @@ public class ExeLauncher
 public static class LogEventController
 {
     // ========== Win32 API 导入 ==========
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
-    // [DllImport("user32.dll", SetLastError = true)]
-    // private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnumChildWindows(IntPtr hwndParent, EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, System.Text.StringBuilder lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowEnabled(IntPtr hWnd);
 
     [DllImport("user32.dll")]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
+    private static extern IntPtr GetDlgItem(IntPtr hDlg, int nIDDlgItem);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
 
     private const uint BM_CLICK = 0x00F5;
+    private const uint WM_GETTEXT = 0x000D;
     private const uint SMTO_NORMAL = 0x0000;
+    private const uint SMTO_ABORTIFHUNG = 0x0002;
+    private const int IDOK = 1;
+    private const int IDYES = 6;
 
-    // ========== 辅助方法：获取录制按钮句柄 ==========
+    private const string MainWindowTitle = "LogEvent";
+    private const string MainWindowClass = "#32770";
+    private const string RecordButtonText = "Record";
+    private const string LoadButtonText = "Load";
+
+    // 最近一次后台点击任务是否已执行发送，true=已尝试发送 BM_CLICK。仅供 LastRecordClickState 读取。
+    private static Task<bool> pendingClickTask = null;
+    private static bool pendingClickStart = false;
+
+    // 每个方向上次真正排队点击的时间。SendMessageTimeout 超时不代表消息一定没被处理，
+    // 因此不能一超时就在下一次轮询立即补发，否则会排队多个 BM_CLICK，表现为“需要点两次”。
+    private static double _lastStartClickRealtime = -999d;
+    private static double _lastEndClickRealtime = -999d;
+    private static double _lastMissingButtonLogRealtime = -999d;
+
+    // 后台线程查询到的状态缓存。Unity 主线程只读取该缓存，不再直接枚举窗口，
+    // 避免 LogEvent 窗口不存在或挂起时 GetWindowText/EnumWindows 阻塞主线程。
+    private static readonly object _stateLock = new object();
+    private static int _cachedRecordButtonState = -1;
+    private static double _lastStateQueryRealtime = -999d;
+
+    private static readonly object _winEnumLock = new object();
+    private static double NowRealtimeSeconds()
+    {
+        return (double)System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    // ========== 通用窗口/控件查找 ==========
+    private static string GetWindowText(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return "";
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(512);
+        // 跨进程窗口可能挂起，GetWindowText 会阻塞调用线程。改用 SendMessageTimeout
+        // 的 WM_GETTEXT，并在目标无响应时立即返回，避免“未找到按钮”时卡死。
+        SendMessageTimeout(hWnd, WM_GETTEXT, (IntPtr)sb.Capacity, sb, SMTO_ABORTIFHUNG, 250, out IntPtr _);
+        return sb.ToString();
+    }
+
+    private static string GetWindowClassName(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return "";
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(256);
+        GetClassName(hWnd, sb, sb.Capacity);
+        return sb.ToString();
+    }
+
+    private static IntPtr _enumChildResult = IntPtr.Zero;
+    private static string _enumChildTarget = "";
+    private static readonly EnumWindowsProc _enumChildProc = EnumChildWindowsProc;
+
+    private static bool EnumChildWindowsProc(IntPtr hWnd, IntPtr lParam)
+    {
+        if (GetWindowClassName(hWnd) == "Button" && GetWindowText(hWnd) == _enumChildTarget)
+        {
+            _enumChildResult = hWnd;
+            return false;
+        }
+        return true;
+    }
+
+    private static IntPtr FindChildButton(IntPtr parent, string buttonText)
+    {
+        if (parent == IntPtr.Zero || string.IsNullOrEmpty(buttonText)) return IntPtr.Zero;
+        lock (_winEnumLock)
+        {
+            _enumChildResult = IntPtr.Zero;
+            _enumChildTarget = buttonText;
+            EnumChildWindows(parent, _enumChildProc, IntPtr.Zero);
+            return _enumChildResult;
+        }
+    }
+
+    private static IntPtr _enumTopResult = IntPtr.Zero;
+    private static readonly EnumWindowsProc _enumTopProc = EnumTopWindowsProc;
+
+    private static bool EnumTopWindowsProc(IntPtr hWnd, IntPtr lParam)
+    {
+        // LogEvent 主窗口和 AfxMessageBox 都可能以 "LogEvent" 为标题。
+        // 必须选择包含 "Load" 按钮的那个窗口；否则弹窗出现时会把弹窗误当成主窗口。
+        if (GetWindowText(hWnd) == MainWindowTitle && GetWindowClassName(hWnd) == MainWindowClass)
+        {
+            if (FindChildButton(hWnd, LoadButtonText) != IntPtr.Zero)
+            {
+                _enumTopResult = hWnd;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static IntPtr FindLogEventMainWindow()
+    {
+        lock (_winEnumLock)
+        {
+            _enumTopResult = IntPtr.Zero;
+            EnumWindows(_enumTopProc, IntPtr.Zero);
+            return _enumTopResult;
+        }
+    }
+
     private static IntPtr FindRecordButton()
     {
-        IntPtr hWnd = FindWindow(null, "LogEvent");
+        IntPtr hWnd = FindLogEventMainWindow();
         if (hWnd == IntPtr.Zero) return IntPtr.Zero;
-        return FindWindowEx(hWnd, IntPtr.Zero, "Button", "Record");
+        return FindChildButton(hWnd, RecordButtonText);
     }
 
-    // ========== 辅助方法：获取 Load 按钮句柄 ==========
     private static IntPtr FindLoadButton()
     {
-        IntPtr hWnd = FindWindow(null, "LogEvent");
+        IntPtr hWnd = FindLogEventMainWindow();
         if (hWnd == IntPtr.Zero) return IntPtr.Zero;
-        return FindWindowEx(hWnd, IntPtr.Zero, "Button", "Load");
+        return FindChildButton(hWnd, LoadButtonText);
     }
 
-    // ========== 检测录制按钮状态（通过 Load 按钮的可用性） ==========
-    // 返回值：true 表示状态0（未录制，Load 按钮可用），false 表示状态1（录制中，Load 按钮不可用）
-    public static int IsRecordButtonStateZero()
+    // ========== 状态查询 ==========
+    // 返回 1=未录制（Load 可用），0=录制中（Load 不可用），-1=未找到 Load 按钮。
+    private static int QueryRecordButtonState()
     {
         IntPtr hLoad = FindLoadButton();
-        if (hLoad == IntPtr.Zero)
-        {
-            UnityEngine.Debug.LogWarning("未找到 Load 按钮");
-            return -1;
-        }
-        // Load 按钮可用 => 未录制（状态0），返回 true
-        return IsWindowEnabled(hLoad)? 1: 0;
+        int state = hLoad == IntPtr.Zero ? -1 : (IsWindowEnabled(hLoad) ? 1 : 0);
+        SetCachedRecordButtonState(state);
+        return state;
     }
 
-    // ========== 根据参数智能点击录制按钮 ==========
-    // start = true  : 希望开始录制，仅在状态0时点击
-    // start = false : 希望停止录制，仅在状态1时点击
-    // 返回值：0 表示未执行点击，1 表示执行点击，-1 表示未找到录制按钮，-2 表示录制按钮不可用
-    /* 旧同步版本已弃用：点击后立即单次校验，导致停止录制方向的假失败。改用下方协程版 SmartClickRecordButtonCo。
-    public static int SmartClickRecordButton(bool start)
+    private static void SetCachedRecordButtonState(int state)
     {
-        int _isNoRecord = IsRecordButtonStateZero(); // true=未录制, false=录制中
-        if (_isNoRecord == -1) return -1;
-        bool isNoRecord = _isNoRecord == 1;
-        bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
-
-        if (!shouldClick)
+        lock (_stateLock)
         {
-            UnityEngine.Debug.Log($"Smart click skipped: start={start}, current state={(isNoRecord ? "0(未录制)" : "1(录制中)")}");
-            return 0;
+            _cachedRecordButtonState = state;
+            _lastStateQueryRealtime = NowRealtimeSeconds();
         }
-
-        // 执行点击
-        IntPtr hRecord = FindRecordButton();
-        if (hRecord == IntPtr.Zero)
-        {
-            UnityEngine.Debug.LogError("未找到录制按钮");
-            return -1;
-        }
-        if (!IsWindowEnabled(hRecord))
-        {
-            UnityEngine.Debug.LogWarning("录制按钮当前不可用");
-            return -2;
-        }
-        // if(start){
-        //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
-        //     UnityEngine.Debug.Log($"已开始录制");
-        // }
-        // else{
-        //     // PostMessage(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
-        //     SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1000, out IntPtr _);
-        //     UnityEngine.Debug.Log($"已停止录制");
-        // }
-        SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
-        isNoRecord = IsRecordButtonStateZero() == 1;
-        shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
-        UnityEngine.Debug.Log($"{(start? "开始" :"结束")} 录制 {(shouldClick? "失败": "成功")}");
-        return shouldClick? 1: 0;
     }
-    */
 
-    // 协程版：点击后轮询等待目标应用异步更新状态，消除停止方向的假失败；点击本身 Task 化避免阻塞主线程。
-    // onResult: 0=无需点击(已在期望态) 1=点击后已达期望态(成功) -1=未找到按钮 -2=按钮不可用 -3=点击后超时仍未达期望态(真失败)
-    public static IEnumerator SmartClickRecordButtonCo(bool start, System.Action<int> onResult = null, float verifyTimeout = 2f)
+    // 仅供 Unity 主线程读取后台查询结果，不执行任何 Win32 窗口枚举，因此不会阻塞。
+    public static int GetCachedRecordButtonState()
     {
-        int _isNoRecord = IsRecordButtonStateZero();
-        if (_isNoRecord == -1) { onResult?.Invoke(-1); yield break; }
-        bool isNoRecord = _isNoRecord == 1;
-        bool shouldClick = (start && isNoRecord) || (!start && !isNoRecord);
-        if (!shouldClick) { onResult?.Invoke(0); yield break; }
-
-        IntPtr hRecord = FindRecordButton();
-        if (hRecord == IntPtr.Zero) { onResult?.Invoke(-1); yield break; }
-        if (!IsWindowEnabled(hRecord)) { onResult?.Invoke(-2); yield break; }
-
-        // Task 化点击：SendMessageTimeout 可能阻塞至多 1.5s，放到后台线程避免卡主线程
-        Task clickTask = Task.Run(() =>
+        lock (_stateLock)
         {
-            SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_NORMAL, 1500, out IntPtr _);
-        });
-        yield return new WaitUntil(() => clickTask.IsCompleted);
+            return _cachedRecordButtonState;
+        }
+    }
 
-        // 轮询：停止录制时目标应用重新启用 Load 按钮是异步的，需给足时间
-        float elapsed = 0f;
-        while (elapsed < verifyTimeout)
+    private static bool IsCachedStateFresh(bool start)
+    {
+        lock (_stateLock)
         {
-            int s = IsRecordButtonStateZero();
-            if (s != -1)
+            int state = _cachedRecordButtonState;
+            double age = NowRealtimeSeconds() - _lastStateQueryRealtime;
+            return age >= 0d && age <= 2.0d && state != -1 && (start ? state == 0 : state == 1);
+        }
+    }
+
+    public static int IsRecordButtonStateZero()
+    {
+        int state = GetCachedRecordButtonState();
+        if (state == -1)
+        {
+            bool shouldLog = false;
+            lock (_stateLock)
             {
-                bool nowNoRecord = s == 1;
-                bool reached = start ? !nowNoRecord : nowNoRecord;  // start期望状态1(录制中), stop期望状态0(未录制)
-                if (reached) { onResult?.Invoke(1); yield break; }
+                double now = NowRealtimeSeconds();
+                if (now - _lastMissingButtonLogRealtime > 1.0d)
+                {
+                    _lastMissingButtonLogRealtime = now;
+                    shouldLog = true;
+                }
             }
-            yield return new WaitForSeconds(0.05f);
-            elapsed += 0.05f;
+            if (shouldLog)
+            {
+                UnityEngine.Debug.LogWarning("未找到 Load 按钮（后台查询中）");
+            }
         }
-        onResult?.Invoke(-3);   // 超时未达期望态：真失败
+        return state;
+    }
+
+    // ========== 自动关闭 LogEvent 模态弹窗 ==========
+    private static bool _dismissedPopup = false;
+    private static readonly EnumWindowsProc _enumPopupProc = EnumPopupWindowsProc;
+
+    private static bool EnumPopupWindowsProc(IntPtr hWnd, IntPtr lParam)
+    {
+        if (GetWindowText(hWnd) != MainWindowTitle || GetWindowClassName(hWnd) != MainWindowClass)
+            return true;
+
+        // 主窗口包含 Load 按钮，跳过
+        if (FindChildButton(hWnd, LoadButtonText) != IntPtr.Zero)
+            return true;
+
+        // 只处理标准 MessageBox：优先点“是”（覆盖文件），否则点“确定”。
+        IntPtr hTarget = GetDlgItem(hWnd, IDYES);
+        if (hTarget == IntPtr.Zero) hTarget = GetDlgItem(hWnd, IDOK);
+        if (hTarget == IntPtr.Zero) hTarget = FindChildButton(hWnd, "Yes");
+        if (hTarget == IntPtr.Zero) hTarget = FindChildButton(hWnd, "OK");
+        if (hTarget == IntPtr.Zero) hTarget = FindChildButton(hWnd, "是");
+        if (hTarget == IntPtr.Zero) hTarget = FindChildButton(hWnd, "确定");
+        if (hTarget == IntPtr.Zero) return true;
+
+        SendMessageTimeout(hTarget, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out IntPtr _);
+        _dismissedPopup = true;
+        return true; // 继续枚举，关闭所有弹窗
+    }
+
+    private static bool DismissLogEventPopups()
+    {
+        lock (_winEnumLock)
+        {
+            _dismissedPopup = false;
+            EnumWindows(_enumPopupProc, IntPtr.Zero);
+            return _dismissedPopup;
+        }
+    }
+
+    // ========== 后台可靠点击 ==========
+    private static bool ClickRecordButtonWhenReady(bool start, int sendTimeoutMs)
+    {
+        // 先关闭弹窗并等待 Record 按钮可用；只有按钮可点击时才投递 BM_CLICK，
+        // 避免模态弹窗阻塞导致 SendMessageTimeout 超时后消息又被延迟处理。
+        int waitMs = Math.Min(sendTimeoutMs, 2000);
+        System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < waitMs)
+        {
+            DismissLogEventPopups();
+
+            int state = QueryRecordButtonState();
+            bool reached = start ? (state == 0) : (state == 1);
+            if (reached) return true; // 等待期间状态已到达期望值，无需再点
+
+            IntPtr hRecord = FindRecordButton();
+            if (hRecord != IntPtr.Zero && IsWindowEnabled(hRecord))
+            {
+                MarkClickSent(start);
+                SendMessageTimeout(hRecord, BM_CLICK, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, (uint)Math.Min(sendTimeoutMs, 2000), out IntPtr _);
+                return true;
+            }
+
+            System.Threading.Thread.Sleep(50);
+        }
+        return false;
+    }
+
+    private static void MarkClickSent(bool start)
+    {
+        lock (_stateLock)
+        {
+            if (start) _lastStartClickRealtime = NowRealtimeSeconds();
+            else _lastEndClickRealtime = NowRealtimeSeconds();
+        }
+    }
+
+    // ========== 单次可靠点击录制按钮 ==========
+    // start = true  : 期望开始录制，仅在状态 1（未录制）时点击。
+    // start = false : 期望停止录制，仅在状态 0（录制中）时点击。
+    // 返回值：0=已在期望状态(无需点击) 1=已安排后台点击/等待补发。
+    // 本方法绝不直接枚举窗口，状态查询、弹窗关闭、按钮查找和点击都在后台 Task 中执行，
+    // 防止 LogEvent 未启动、窗口被销毁或目标进程挂起时卡死 Unity 主线程。
+    public static int ScheduleRecordClick(bool start, int sendTimeoutMs = 5000)
+    {
+        // 仅在缓存较新时才直接判定“已在期望状态”；缓存过期则仍启动后台任务复核，
+        // 避免因上次状态残留造成漏点或误判。
+        if (IsCachedStateFresh(start)) return 0;
+
+        lock (_stateLock)
+        {
+            // 任一方向已有在途点击时，不启动第二个后台任务，避免开/关点击互相穿插。
+            if (pendingClickTask != null && !pendingClickTask.IsCompleted) return 1;
+
+            // 冷却时间：给 LogEvent 留出处理时间。实际发送时间由 ClickRecordButtonWhenReady 写入。
+            double lastRealtime = start ? _lastStartClickRealtime : _lastEndClickRealtime;
+            double minInterval = start ? 0.5d : 1.0d;
+            if (NowRealtimeSeconds() - lastRealtime < minInterval) return 1;
+
+            pendingClickStart = start;
+            pendingClickTask = Task.Run(() => ClickRecordButtonWhenReady(start, sendTimeoutMs));
+            return 1;
+        }
+    }
+
+    // 查询最近一次该方向后台点击任务的执行结果，供需要精细控制补发的调用方使用。
+    // 1=已尝试发送 BM_CLICK 0=等待窗口/按钮可用超时，未发送 -1=该方向无已完成任务/仍在途(不要立即补发)
+    public static int LastRecordClickState(bool start)
+    {
+        if (pendingClickTask == null || pendingClickStart != start) return -1;
+        if (!pendingClickTask.IsCompleted) return -1;
+        return pendingClickTask.Result ? 1 : 0;
     }
 }

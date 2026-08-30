@@ -211,28 +211,21 @@ public class UIUpdate : MonoBehaviour
         }
     }
 
-    // 录制按钮点击的协程包装：调用协程版智能点击；-1/-2(没找到/不可用)按上限重试，-3(超时真失败)只提示不重试。
-    IEnumerator LogeventRecordCo(bool start)
+    // 录制按钮点击：单次可靠点击 + 定时轮询。
+    // start = true  : 开始录制，期望到达“录制中”状态；每 0.5s 检查一次，共 6 次（约 3s）
+    // start = false : 停止录制，期望到达“未录制”状态；每 1.0s 检查一次，共 6 次（约 6s）
+    // 点击由 LogEventController.ScheduleRecordClick 在后台 Task 执行，并自动处理：
+    // 自动关闭 LogEvent 弹窗、同一方向防重、冷却补发，避免排队 BM_CLICK 造成开/关双切换。
+    void StartLogeventCheck(bool start)
     {
-        int fail = 0;
-        int maxFail = start ? 3 : 5;
-        while (true)
-        {
-            int result = 0;
-            yield return StartCoroutine(LogEventController.SmartClickRecordButtonCo(start, r => result = r));
+        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+        int result = LogEventController.ScheduleRecordClick(start);
+        if (result == 0) return;   // 已在期望状态，无需点击
 
-            if (result == -1 || result == -2)
-            {
-                fail++;
-                if (fail > maxFail) { MessageUpdate(start ? "logevent record failed to start" : "logevent record failed to end"); break; }
-                yield return new WaitForSeconds(0.05f);
-                continue;
-            }
-            if (result == -3)
-            {
-                MessageUpdate(start ? "logevent record start unverified (timeout)" : "logevent record end unverified (timeout)");
-            }
-            break;
+        // 其余情况（1=已安排后台点击/等待补发）都启动定时轮询。
+        if (!alarm.TrySetAlarm("LogeventCheck", start ? 0.5f : 1.0f, out _, 5, addInfo: start ? "1" : "0", force:true))
+        {
+            UnityEngine.Debug.LogWarning("LogeventCheck alarm slots exhausted, cannot monitor record button");
         }
     }
 
@@ -399,6 +392,7 @@ public class UIUpdate : MonoBehaviour
                         if(forceExit){break;}
                     }
                     moving.PreExit();
+                    alarm.TrySetAlarm("pauseTiming", 0.2f, out _, addInfo:"FromTiming");
                     alarm.TrySetAlarm("Exit", 1.0f, out _, addInfo:"FromTiming");
                     SetButtonColor("ExitButton", Color.yellow);
                 }
@@ -662,11 +656,11 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "LogeventStart":{
-                StartCoroutine(LogeventRecordCo(true));
+                StartLogeventCheck(true);
                 break;
             }
             case "LogeventEnd":{
-                StartCoroutine(LogeventRecordCo(false));
+                StartLogeventCheck(false);
                 break;
             }
             default:{
@@ -1384,8 +1378,42 @@ public class UIUpdate : MonoBehaviour
                     // buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>().UpdateOptionsFunctionEnableStatus(0);
                     break;
                 }
+                case "LogeventCheck":{
+                    bool start = alarm.GetAlarmAddInfo("LogeventCheck") == "1";
+                    int s = LogEventController.IsRecordButtonStateZero();
+                    bool reached = start ? (s == 0) : (s == 1);
+                    if (reached)
+                    {
+                        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                        MessageUpdate(start ? "logevent recording started" : "logevent recording ended");
+                    }
+                    else if (alarm.GetAlarm("LogeventCheck") == -1)
+                    {
+                        // 最后一次触发（无剩余重复次数）仍未到达期望状态 => 失败，不再补发。
+                        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                        MessageUpdate(start ? "logevent record failed to start" : "logevent record failed to end");
+                    }
+                    else
+                    {
+                        // 未到达期望状态：交给 ScheduleRecordClick 判断是否补发。
+                        // 它内部会关闭弹窗、防止重复投递，并留出冷却时间观察状态。
+                        int clickResult = LogEventController.ScheduleRecordClick(start);
+                        if (clickResult == 0)
+                        {
+                            alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                            MessageUpdate(start ? "logevent recording started" : "logevent recording ended");
+                        }
+                    }
+                    break;
+                }
                 case "ClosePythonScript":{
                     moving.ClosePythonScript(alarm.GetAlarmAddInfo("ClosePythonScript") == "force");
+                    break;
+                }
+                case "pauseTiming":{
+                    UnityEngine.UI.Button pauseButton = buttons.Find(b => b.name == "TimingPause");
+                    bool pause = pauseButton.GetComponent<ScrButton>().pressCount % 2 == 1;
+                    if(!pause){pauseButton.GetComponent<ScrButton>().pressCount ++;ControlsParsePublic("TimingPause", 1);}
                     break;
                 }
                 default:{
