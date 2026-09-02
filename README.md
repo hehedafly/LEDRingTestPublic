@@ -125,8 +125,8 @@ IPC 连接在以下情况下需要：
 
 | 输入字段           | 功能             | 说明                                   |
 |--------------------|------------------|----------------------------------------|
-| **MouseInfoName**  | 设置鼠标名称     | `userName` 属性                        |
-| **MouseInfoIndex** | 设置鼠标索引     | `mouseInd` 属性                        |
+| **MouseInfoName**  | 设置鼠名         | `mouseName` 字段                     |
+| **MouseInfoUserName** | 设置用户名      | `userName` 字段                       |
 
 ### 灯光指示器
 
@@ -180,6 +180,7 @@ Post Processing V3.4.0
 | `barOffset`        | int              | 以度为单位的常量显示偏移（添加到所有位置） |
 | `pump_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的泵编号（数量必须 ≥ `available_pos` 数量，或为空以自动索引 0,1,2...） |
 | `lick_pos`         | 以逗号分隔的整数 | 每个 `available_pos` 索引的触摸面板/舔喷嘴编号（与 `pump_pos` 相同规则） |
+| `TrackPosMark`     | 以逗号分隔的整数 | 每个 `available_pos` 索引的跟踪标记编号（空则自动索引 0,1,2...） |
 | `MatStartMethod`   | string           | 材料选择方法：`random` 或 `assign`   |
 | `MatAssign`        | pattern          | 材料分配模式（与 `assign_pos` 相同语法） |
 | `MatAvailable`     | 以逗号分隔的字符串 | 可用的材料名称（必须与 `[matSettings] matList` 匹配） |
@@ -275,12 +276,19 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 | `minIgnoreLickInterval` | float       | 忽略舔食的最小间隔（秒）             |
 | `maxExtraRewardCount` | int           | 最多额外奖励次数                      |
 | `ServeRandomRewardAtEnd` | randomX~Y or int | 会话结束时提供的随机奖励数量       |
-| `checkConfigContent` | bool            | 启用配置验证检查                     |
-| `openLogevent`     | bool             | 启用通过 LogEvent.exe 的外部日志记录 |
-| `logEventPath`     | string           | LogEvent.exe 的路径                   |
+| `checkConfigContent` | bool            | 启用配置验证检查（启动时弹窗列出已读/默认配置供核对） |
+| `MSRecordDifferentiate` | bool        | 显微镜记录区分模式 |
+| `OGtriggerRandomControl` | bool       | 光遗传学触发的随机控制 |
+| `OGtriggerCompensation` | bool        | 光遗传学触发补偿 |
+| `openLogEvent`     | bool             | 启用通过 LogEvent.exe 的外部日志记录 |
+| `logEventPath`     | string           | LogEvent.exe 的路径（启动后会回写实际路径） |
 | `openPythonScript` | bool             | 启用 Python 脚本集成（用于视频跟踪） |
 | `PythonScriptCommand` | string         | Python 脚本命令行参数                 |
 | `closePythonScriptBeforeExit` | bool    | 退出时关闭 Python 脚本               |
+| `strictIPCStatusUpdate` | bool        | 严格 IPC 状态更新模式 |
+| `IPCHeartbeat`     | bool             | 启用 IPC 心跳检测 |
+| `MouseNameRequired`| bool             | 启动时是否强制要求填写鼠名（默认 true） |
+| `MouseName`        | string           | 默认鼠名/用户名 |
 
 ### 声音设置
 
@@ -313,22 +321,23 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 
 | 参数               | 格式             | 说明                                   |
 |--------------------|------------------|----------------------------------------|
-| `serialSpeed`      | int              | 波特率（例如，250000）                |
+| `serialSpeed`      | int              | 波特率（默认 115200，例如 250000）    |
 | `blackList`        | 以逗号分隔的字符串 | 要忽略的 COM 端口（例如，`COM1,COM3`） |
 | `recommendPort`    | 以逗号分隔的字符串 | 优先连接的 COM 端口（例如，`COM7`）。连接时会优先尝试这些端口 |
 | `compatibleVersion` | 以逗号分隔的字符串 | 接受的 Arduino 固件版本（例如，`V2.2`） |
 
-**支持的Arduino变量**：
-- `p_lick_mode` - 舔食模式
-- `p_trial` - 当前试验
-- `p_trial_set` - 试验设置
-- `p_now_pos` - 当前位置
-- `p_lick_rec_pos` - 舔食记录位置
-- `p_INDEBUGMODE` - 调试模式标志
-- `p_OGActiveMills` - 光遗传学激活时间
-- `p_miniscopeRecord` - 显微镜记录
-- `p_waterServeWhenLick` - 舔食时给水
-- `p_waterServeManual` - 手动给水
+**支持的Arduino变量**（`Arduino_var_list`，索引即传输下标 0-10）：
+- `p_lick_mode` - 舔食模式（索引0）
+- `p_trial` - 当前试验（索引1）
+- `p_trial_set` - 试验设置（索引2）
+- `p_now_pos` - 当前位置（索引3）
+- `p_lick_rec_pos` - 舔食记录位置（索引4）
+- `p_INDEBUGMODE` - 调试模式标志（索引5）
+- `p_OGActiveMills` - 光遗传学激活时间（索引6）
+- `p_miniscopeRecord` - 显微镜记录（索引7）
+- `p_waterServeWhenLick` - 舔食时给水（索引8）
+- `p_waterServeManual` - 手动给水（索引9）
+- `p_lightControl` - 灯光控制（索引10）
 
 **Arduino数组类型变量**：
 - `p_waterServeMicros` - 给水时间微秒记录
@@ -339,8 +348,9 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 
 | 参数               | 格式             | 说明                                   |
 |--------------------|------------------|----------------------------------------|
-| `matList`          | 以逗号分隔的字符串 | 配置中定义的所有可用材料名称         |
+| `matList`          | 以逗号分隔的字符串 | 配置中定义的所有可用材料名称（默认 `default,barMat,centerShaftMat,backgroundMat`） |
 | `centerShaft`      | bool             | 启用中心参考轴显示                   |
+| `centerShaftPos`   | int              | 中心轴位置角度（`[centerShaft]` 节，默认 0） |
 
 #### 每种材料的属性（例如，`[barMat]`，`[barMat2]`，`[centerShaft]`）
 
@@ -480,13 +490,12 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 
 | 输入字段           | 功能             | 用法                                   |
 |--------------------|------------------|----------------------------------------|
-| `IFSerialMessage`  | 串口命令         | 发送命令到 Arduino（前缀 `/` 表示变量赋值，`//` 表示原始命令） |
-| `IFTimingBySec`    | 定时（秒）       | 以秒为单位设置按钮定时               |
-| `IFTimingByTrial`  | 定时（试验）     | 按试验计数设置按钮定时               |
-| `IFTimingSet`      | 定时配置         | 导入/导出定时配置                     |
+| `IFSerialMessage`  | 串口命令         | 发送命令到 Arduino（`/` 变量赋值，`//` 原始命令，`///` 调试改属性，`~/` 仅日志） |
+| `IFTimingValue`    | 定时值           | 定时值输入（配合 `Timing Method` 下拉选择秒/试验等定时方式） |
+| `IFTimingSet`      | 定时配置         | 导入/导出定时配置（JSON）           |
 | `OGTime` / `MSTime`| 设备持续时间     | 设置光遗传学/显微镜持续时间（毫秒）  |
-| `MouseInfoName`    | 鼠标名称         | 设置鼠标标识符                        |
-| `MouseInfoIndex`   | 鼠标索引         | 设置鼠标索引                          |
+| `MouseInfoName`    | 鼠名             | 设置 `mouseName` 字段                |
+| `MouseInfoUserName`| 用户名           | 设置 `userName` 字段                  |
 
 ### 下拉菜单
 
@@ -519,9 +528,11 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `OGStart`          | 开始光遗传学设备 |
 | `OGStop`           | 停止光遗传学设备 |
 | `OGEnable`         | 切换光遗传学启用 |
+| `OGLightControl`   | 光遗传学灯光控制 |
 | `MSStart`          | 开始显微镜设备   |
 | `MSStop`           | 停止显微镜设备   |
 | `MSEnable`         | 切换显微镜启用   |
+| `MSLightControl`   | 显微镜灯光控制   |
 
 ### 舔喷嘴仿真
 
@@ -551,8 +562,12 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `PageUp` / `PageDown` | 导航日志页面   |
 | `IPCRefreshButton` | 刷新 IPC 连接    |
 | `IPCDisconnect`    | 断开 IPC 连接    |
-| `MessagePost`      | 发送微信通知     |
+| `MessagePost`      | 发送微信通知（推送目标由 config `[pushSetting] pushTargets` 配置） |
 | `OpenPythonScript` | 启动 Python 脚本（根据 config.ini 中的 PythonScriptCommand 配置） |
+| `ClosePythonScript`| 关闭当前运行的 Python 脚本 |
+| `LogeventStart`    | 开始 LogEvent.exe 外部录制 |
+| `LogeventEnd`      | 结束 LogEvent.exe 外部录制 |
+| `logScroll`        | 日志滚动条（拖动后 5s 恢复自动滚动） |
 
 ---
 
@@ -598,8 +613,13 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `minIgnoreLickInterval` | float       | 最小忽略间隔                          |
 | `maxExtraRewardCount` | int           | 最多额外奖励                          |
 | `randomRewardPerTrial` | List<int>    | 每个试验的随机奖励                    |
-| `userName`         | string           | 用户/鼠标名称                        |
-| `mouseInd`         | string           | 鼠标索引                              |
+| `materialsInfo`    | List<string>     | 材料信息列表                          |
+| `manuplateMethods` | string           | OG/MS 设备触发方法的汇总描述文本    |
+| `MSRecordDifferentiate` | bool        | 显微镜记录区分模式                    |
+| `OGtriggerRandomControl` | bool       | 光遗传学触发随机控制                  |
+| `OGtriggerCompensation` | bool        | 光遗传学触发补偿                      |
+| `userName`         | string           | 用户/鼠名（公共字段，经 MouseInfo 输入框设置） |
+| `mouseName`        | string           | 鼠名（公共字段，经 MouseInfo 输入框设置） |
 
 ---
 
@@ -723,14 +743,16 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 使用 Ctrl+Shift+Click 设置定时按钮按下，或指定定时值：
 
 #### 按时间（秒）
-1. 在 `IFTimingBySec` 输入字段中输入值
-2. Ctrl+Shift+Click 目标按钮
-3. 按钮在指定时间后执行
+1. 在 `IFTimingValue` 输入字段中输入值
+2. 在 `Timing Method` 下拉选择 `sec`
+3. Ctrl+Shift+Click 目标按钮
+4. 按钮在指定时间后执行
 
 #### 按试验计数
-1. 在 `IFTimingByTrial` 输入字段中输入值
-2. Ctrl+Shift+Click 目标按钮
-3. 按钮在指定的试验计数后执行
+1. 在 `IFTimingValue` 输入字段中输入值
+2. 在 `Timing Method` 下拉选择 `trialStart`/`trialEnd`/`trialInTarget`
+3. Ctrl+Shift+Click 目标按钮
+4. 按钮在指定的试验计数后执行
 
 ### 层级定时
 

@@ -26,14 +26,13 @@ public class CommandConverter
 
 
     public byte[] ProcessSerialPortBytes(byte[] readBuffer){
-    
         for (int i = 0; i < readBuffer.Length; i++){
             if (IsStartOfMessage(readBuffer, i)){
                 int endIndex = FindMarkOfMessage(false, readBuffer, i);
                 if (endIndex != -1 && endIndex - i >= 4){
                     int _msgLength = readBuffer[i+2];
                     if(endIndex - i -3 != _msgLength){
-                        Debug.LogWarning("incomplete msg received: "+string.Join(",", readBuffer[i..(endIndex+1)]));
+                        Debug.LogWarning("incomplete msg received: "+string.Join(",", readBuffer[i..(endIndex+1)]) + ", means:" + Encoding.ASCII.GetString(readBuffer));
                         return new byte[]{};
                     }
                     byte[] completeMessage = new byte[endIndex - i];

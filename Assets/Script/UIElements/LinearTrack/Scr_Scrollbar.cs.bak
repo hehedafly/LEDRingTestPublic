@@ -7,8 +7,9 @@ using UnityEngine.UI;
 public class Scr_Scrollbar : MonoBehaviour
 {
     public ScrollRect _ScrollRect;
-    [SerializeField] public LinearTrackUIUpdate ui_update;
+    //private LinearTrackUIUpdate ui_update;
     private Scrollbar scrollbar;
+    private GameObject obj_main;
     private bool scrollbar_change_manual=false;
     public bool Value_change_manual {get{return scrollbar_change_manual;} set{scrollbar_change_manual=value;}}
     // Start is called before the first frame update
@@ -45,7 +46,8 @@ public class Scr_Scrollbar : MonoBehaviour
     void Start()
     {
         scrollbar=GetComponent<Scrollbar>();
-        if(ui_update==null){ GameObject o = GameObject.Find("obj_main"); if(o!=null){ ui_update = o.GetComponent<LinearTrackUIUpdate>(); } }
+        obj_main = GameObject.Find("obj_main");
+        //ui_update=obj_main.GetComponent<LinearTrackUIUpdate>();
     }
 
     // Update is called once per frame

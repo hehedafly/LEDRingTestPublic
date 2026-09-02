@@ -1525,7 +1525,7 @@ RectTransform:
   m_GameObject: {fileID: 429640367}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.3339844, y: 1.3339844, z: 1.3339844}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1255349262}
@@ -1536,11 +1536,12 @@ RectTransform:
   - {fileID: 2130491861}
   - {fileID: 1717440206}
   - {fileID: 1094313996}
-  m_Father: {fileID: 584057467}
+  - {fileID: 1274758065}
+  m_Father: {fileID: 1400331052}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 482, y: 159}
+  m_AnchoredPosition: {x: 576, y: 212.10352}
   m_SizeDelta: {x: 1, y: 1}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &429727943
@@ -1980,7 +1981,6 @@ GameObject:
   - component: {fileID: 478333651}
   - component: {fileID: 478333652}
   - component: {fileID: 478333650}
-  - component: {fileID: 478333653}
   - component: {fileID: 478333655}
   m_Layer: 8
   m_Name: obj_main
@@ -2012,6 +2012,17 @@ MonoBehaviour:
   context_Generate: {fileID: 80699027}
   port_black_list:
   - COM1
+  contextZoneStartAndEnd: 
+  rewardZoneStartAndEnd: 
+  now_context_success: 0
+  trial_per_section: 0
+  serve_water_mode: 0
+  lick_count_correct: 0
+  lick_count_max: 0
+  waterServedCount: 0
+  lick_count_rec: 000000000000000000000000
+  lick_count_succes_threshold: 0400000008000000
+  fullScreenColor: {fileID: 6988635616286715725, guid: dfa929edfa1f999459cd4dcc1d7658c8, type: 3}
 --- !u!4 &478333651
 Transform:
   m_ObjectHideFlags: 0
@@ -2060,29 +2071,6 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 120
   m_CollisionDetection: 0
---- !u!114 &478333653
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 478333649}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: da784b9f52cbda342a56b155e6388c34, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  contextZoneStartAndEnd: 
-  rewardZoneStartAndEnd: 
-  now_context_success: 0
-  trial_per_section: 0
-  serve_water_mode: 0
-  lick_count_correct: 0
-  lick_count_max: 8
-  waterServedCount: 0
-  lick_count_rec: 000000000000000000000000
-  lick_count_succes_threshold: 0100000008000000
-  fullScreenColor: {fileID: 923581741}
 --- !u!114 &478333655
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2489,8 +2477,7 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 429640368}
+  m_Children: []
   m_Father: {fileID: 1868669274}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3008,7 +2995,6 @@ RectTransform:
   - {fileID: 2088462325}
   - {fileID: 1198546785}
   - {fileID: 1686792765}
-  - {fileID: 1274758065}
   m_Father: {fileID: 287800049}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -3227,6 +3213,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba6c7c6b5eed23c4fa1e704adf299238, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!114 &849937818
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4098,6 +4085,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba6c7c6b5eed23c4fa1e704adf299238, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!114 &972935191
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5885,16 +5873,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1274758064}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: -1, z: 1}
+  m_LocalScale: {x: 0.74963397, y: -0.74963397, z: 0.74963397}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 817719486}
+  m_Father: {fileID: 429640368}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 930, y: 310}
+  m_AnchoredPosition: {x: -40, y: 300}
   m_SizeDelta: {x: 40, y: 450}
   m_Pivot: {x: 0, y: -1}
 --- !u!114 &1274758066
@@ -5910,6 +5898,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   info_text: {fileID: 0}
+  ui_update: {fileID: 0}
 --- !u!114 &1274758067
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6231,8 +6220,8 @@ Camera:
   m_LensShift: {x: 0, y: 0}
   m_NormalizedViewPortRect:
     serializedVersion: 2
-    x: 0.39
-    y: -0.5
+    x: 0.32
+    y: -0.4
     width: 0.5
     height: 1
   near clip plane: 0.3
@@ -6423,7 +6412,8 @@ RectTransform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 429640368}
   m_Father: {fileID: 817719486}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -7250,8 +7240,8 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1225709806}
   m_HandleRect: {fileID: 1225709805}
   m_Direction: 2
-  m_Value: 0
-  m_Size: 0
+  m_Value: 1
+  m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
     m_PersistentCalls:
@@ -7319,6 +7309,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _ScrollRect: {fileID: 2088462326}
+  ui_update: {fileID: 0}
 --- !u!1 &1612147944
 GameObject:
   m_ObjectHideFlags: 0
@@ -8283,6 +8274,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   info_text: {fileID: 1263762771}
+  ui_update: {fileID: 0}
 --- !u!1 &1852012086
 GameObject:
   m_ObjectHideFlags: 0
@@ -9117,6 +9109,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 230ca6b138fab4b4fb30bb9ff7409033, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!1 &1943646385
 GameObject:
   m_ObjectHideFlags: 0
@@ -9417,6 +9410,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 230ca6b138fab4b4fb30bb9ff7409033, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ui_update: {fileID: 0}
 --- !u!1 &1979121243
 GameObject:
   m_ObjectHideFlags: 0

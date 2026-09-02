@@ -587,7 +587,7 @@ class ContextInfo{
     
     //addon info:
     public string mouseName;
-    public string mouseInd;
+    public string userName;
 
     [JsonIgnore]
     List<int>    barPosLs        {get;}
@@ -931,7 +931,7 @@ public class Moving : MonoBehaviour
     // 通信方式配置: 0-自动检测, 1-仅USB, 2-仅串口
     // int communicationMode = 0;
     // bool isUsbConnected = false;  // 当前是否为USB连接
-    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3"};
+    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3", "V2.4"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
@@ -954,9 +954,9 @@ public class Moving : MonoBehaviour
     ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     /// <summary>
-    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual
+    /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual, 10-p_lightControl
     /// </summary>
-    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord, p_waterServeWhenLick, p_waterServeManual".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
+    List<string> Arduino_var_list =  "p_lick_mode, p_trial, p_trial_set, p_now_pos, p_lick_rec_pos, p_INDEBUGMODE, p_OGActiveMills, p_miniscopeRecord, p_waterServeWhenLick, p_waterServeManual, p_lightControl".Replace(" ", "").Split(',').ToList(); public List<string> ArduinoVarList { get { return Arduino_var_list; }}
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
@@ -1582,20 +1582,32 @@ public class Moving : MonoBehaviour
                     tempSp.Open();
                     Debug.Log("COM available: " + port);
 
-                    // 发送 RESET 信号 (3个0xCC) 让 Arduino 复位并重新握手
+                    // 清空上次连接失败残留的数据（关键！否则会读到旧的 ACK_OK）
+                    tempSp.DiscardInBuffer();
+                    tempSp.DiscardOutBuffer();
+
+                    // 发送 RESET 信号让 pyboard 复位并重新握手
                     tempSp.WriteLine("//forceinit");
                     // tempSp.DiscardInBuffer();  // 清空缓冲区
 
                     // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
-                    int failCount = 0; int maxFailCount = 10;
-                    string initMsg = tempSp.ReadLine();  // 阻塞等待
-                    while(initMsg.Length == 0 && failCount < maxFailCount){
-                        initMsg = tempSp.ReadLine();
-                        failCount++;
+                    int failCount = 0; int maxFailCount = 20;
+                    string initMsg = "";
+                    try{
+                        // 跳过任何非 initialed 行（banner/残留ACK_OK/空行），直到读到 initialed 或超时
+                        do{
+                            initMsg = tempSp.ReadLine();
+                            if(initMsg.StartsWith("initialed:")){break;}
+                            failCount++;
+                        }while(failCount < maxFailCount);
+                        Debug.Log("Received: " + initMsg);
                     }
-                    Debug.Log("Received: " + initMsg);
+                    catch(TimeoutException e){
+                        if(initMsg.Length == 0){throw new TimeoutException(e.Message);}
+                    }
 
                     if (initMsg.StartsWith("initialed:")){
+                        initMsg = "initialed:" + initMsg.Split("initialed:").Last();
                         string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
 
                         // 验证版本兼容性
@@ -1606,10 +1618,14 @@ public class Moving : MonoBehaviour
                         // 发送 ACK 确认，Arduino 收到后退出握手循环
                         string response = "";
                         int newlineCount = 0;
-                        for(int i = 0; i < 3; i++){tempSp.WriteLine("\nACK\n");}
+                        tempSp.DiscardInBuffer();
+                        for(int i = 0; i < 5; i++){tempSp.WriteLine("\nACK\n");}
                         while (newlineCount < maxFailCount){
                             char c = (char)tempSp.ReadChar();
                             if (c == '\n' || c == '\r'){
+                                if(response.Contains("initialed:")){
+                                    response = response.Split("initialed:").Last();
+                                }
                                 newlineCount++;
                                 response = response.Replace("\r", "").Replace("\n", "");
                             }else{
@@ -2210,8 +2226,8 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="info"></param>
     public void SetMouseInfo(string info){
-        contextInfo.mouseName = info.StartsWith("userName:")?   info.Split(":")[1] : contextInfo.mouseName;
-        contextInfo.mouseInd = info.StartsWith("mouseInd:")?   info.Split(":")[1] : contextInfo.mouseInd;
+        contextInfo.mouseName = info.StartsWith("Name:")?   info.Split(":")[1] : contextInfo.mouseName;
+        contextInfo.userName = info.StartsWith("UserName:")?   info.Split(":")[1] : contextInfo.userName;
     }
 
     int lickCountGetSet(string getOrSet, int lickInd, int lickTrial){
@@ -2412,7 +2428,7 @@ public class Moving : MonoBehaviour
                             EndTrial(trialSuccess: false, ignoreBarLatstingTime:true);
                         }
 
-                        if(lickInd == -4){LickingCheckPubic(-4, simulate:true);}
+                        if(lickInd == -4){LickingCheck(-4, simulate:true);}
                     }
                 }
                 ui_update.MessageUpdate();
@@ -2724,6 +2740,7 @@ public class Moving : MonoBehaviour
     const int BUFFER_SIZE = 4096;
     const int BUFFER_THRESHOLD = 32;
     float[] time_rec_for_log = new float[2]{0, 0};
+    byte[] lastAddedCommand = null;
     #endregion file writing end
     
     #region methods of communicating
@@ -2733,15 +2750,26 @@ public class Moving : MonoBehaviour
         return portList;
     }
 
-    public void CommandParsePublic(string limitedCommand, bool urgent = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置
+    public void CommandParsePublic(string limitedCommand, bool urgent = false, bool checkRepetition = false){//仅接收舔、红外、压杆信号模拟，视频检测移动到特定位置
         string tempHead = limitedCommand.Split(":")[0];
         //   "li",      "en",       "pr",     "ci",       "log", "echo", "vc",           "cmd",     "debugLog", "st",    "si",       "ms"
-        string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9] };
-        if(!availableHead.Contains(tempHead)){return;}
-        if(urgent){
-            CommandParse(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
-        }else{
-            commandQueue.Enqueue(commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand)));
+        string[] availableHead = new string[] { lsTypes[0], lsTypes[1], lsTypes[2], lsTypes[3], lsTypes[9]};
+
+        if(Arduino_var_list.Contains(tempHead)){
+            limitedCommand = $"{Arduino_var_map[tempHead]}={limitedCommand.Split(":")[1]}";
+            DataSend(limitedCommand, needParse:false, inVerifyOrVerifyNeedless:checkRepetition);
+            return;
+        }
+        else if (!availableHead.Contains(tempHead)){return;}
+
+        byte[] newCommand = commandConverter.ProcessSerialPortBytes(commandConverter.ConvertToByteArray(limitedCommand));
+        if(!checkRepetition || lastAddedCommand != null || !newCommand.SequenceEqual(lastAddedCommand)){
+            if(urgent){
+                CommandParse(newCommand);
+            }else{
+                commandQueue.Enqueue(newCommand);
+            }
+            lastAddedCommand = newCommand;
         }
     }
 
@@ -2856,7 +2884,7 @@ public class Moving : MonoBehaviour
                 if(tempType == 0){
                     TriggerRespond(true, 9);
                 }else if(tempType == 1){
-                    LickingCheckPubic(lickInd:-3);
+                    LickingCheck(lickInd:-3);
                 }
                 break;
             }
@@ -3282,6 +3310,7 @@ public class Moving : MonoBehaviour
 
     public void OpenPythonScript(bool show = false){
         List<string> options = exeLauncher.CommandParser(openPythonSciptCommand);
+        if(options.Count != 4){ui_update.MessageUpdate($"Failed to open python script{(options.Count > 0? $"with {openPythonSciptCommand}:": ", openPythonSciptCommand is blank")}");}
         if(show){ui_update.MessageUpdate($"python script opened by: {openPythonSciptCommand}");}
         exeLauncher.LaunchPython(
             options[0], options[1], options[2], options[3]

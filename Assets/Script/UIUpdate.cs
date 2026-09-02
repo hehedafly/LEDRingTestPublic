@@ -83,6 +83,7 @@ public class UIUpdate : MonoBehaviour
     bool IFSerialMessageEdited = true;
     string IFSerialMessageRecLastFrame = "";
     int IFSerialMessageHistoryInvId = 0;
+
     [HideInInspector]
     public List<GameObject> LightObjects = new List<GameObject>();
     [HideInInspector]
@@ -207,6 +208,24 @@ public class UIUpdate : MonoBehaviour
         else {
             if (show) { alarm.TrySetAlarm("showButtonTimingSubDropdown", 1, out _, addInfo: "0"); }
             return targetScrDropdown.UpdateOptions(selectId:selectId, selectText:selectText);
+        }
+    }
+
+    // 录制按钮点击：单次可靠点击 + 定时轮询。
+    // start = true  : 开始录制，期望到达“录制中”状态；每 0.5s 检查一次，共 6 次（约 3s）
+    // start = false : 停止录制，期望到达“未录制”状态；每 1.0s 检查一次，共 6 次（约 6s）
+    // 点击由 LogEventController.ScheduleRecordClick 在后台 Task 执行，并自动处理：
+    // 自动关闭 LogEvent 弹窗、同一方向防重、冷却补发，避免排队 BM_CLICK 造成开/关双切换。
+    void StartLogeventCheck(bool start)
+    {
+        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+        int result = LogEventController.ScheduleRecordClick(start);
+        if (result == 0) return;   // 已在期望状态，无需点击
+
+        // 其余情况（1=已安排后台点击/等待补发）都启动定时轮询。
+        if (!alarm.TrySetAlarm("LogeventCheck", start ? 0.5f : 1.0f, out _, 5, addInfo: start ? "1" : "0", force:true))
+        {
+            UnityEngine.Debug.LogWarning("LogeventCheck alarm slots exhausted, cannot monitor record button");
         }
     }
 
@@ -373,6 +392,7 @@ public class UIUpdate : MonoBehaviour
                         if(forceExit){break;}
                     }
                     moving.PreExit();
+                    alarm.TrySetAlarm("pauseTiming", 0.2f, out _, addInfo:"FromTiming");
                     alarm.TrySetAlarm("Exit", 1.0f, out _, addInfo:"FromTiming");
                     SetButtonColor("ExitButton", Color.yellow);
                 }
@@ -485,12 +505,12 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "InfraRedIn":{
-                moving.CommandParsePublic("entrance:-1:In");
-                moving.CommandParsePublic("entrance:-1:Leave");
+                moving.CommandParsePublic($"{moving.LsTypes[1]}:-1:In");
+                moving.CommandParsePublic($"{moving.LsTypes[1]}:-1:Leave");
                 break;
             }
             case "PressLever":{
-                moving.CommandParsePublic("press:-1");
+                moving.CommandParsePublic($"{moving.LsTypes[2]}:-1");
                 break;
             }
             case "logScroll":{
@@ -631,17 +651,16 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "MessagePost": {
-                PostMessageToWeChat("收鼠收鼠收鼠"+ " 现在" + DateTime.Now.ToString("HH:mm:ss "), "鼠训完了！");
+                string mouseName = inputFieldContent["MouseInfoName"];
+                PostMessageToWeChat("收鼠收鼠收鼠" + " 现在" + DateTime.Now.ToString("HH:mm:ss "), $"{(mouseName.Length > 0? mouseName: "鼠")}训完了！");
                 break;
             }
             case "LogeventStart":{
-                int fail = 0;
-                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to start"); break;}};
+                StartLogeventCheck(true);
                 break;
             }
             case "LogeventEnd":{
-                int fail = 0;
-                while(!LogEventController.SmartClickRecordButton(true)){fail++; if(fail > 3){MessageUpdate("logevent record failed to end"); break;}};
+                StartLogeventCheck(false);
                 break;
             }
             default:{
@@ -703,17 +722,23 @@ public class UIUpdate : MonoBehaviour
                 }
                 else if (elementsName.StartsWith("MouseInfo")) {
                     string _content = elementsName.Substring(9);
-                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "userName" }, { "Index", "mouseInd" }, {"NameDropdown", "userName"} };
+                    Dictionary<string, string> headCorrespond = new Dictionary<string, string> { { "Name", "Name" }, { "UserName", "UserName" }, {"NameDropdown", "Name"} };
                     if (stringArg.StartsWith("passive")) {//format: passive
 
                     }
                     else {
-                        if (headCorrespond.TryGetValue(_content, out string _info)) {
+                        if (headCorrespond.TryGetValue(_content, out string _info) && stringArg.StartsWith("type_dropdown")) {
                             if(_content == "NameDropdown"){
-                                stringArg = stringArg.Split(";")[1];
-                                InputField mouseNameInput = inputFields.Find(i => i.name == "MouseInfoName");
-                                if(mouseNameInput != null){
-                                    mouseNameInput.text = stringArg;
+                                if (value != -1){
+                                    stringArg = stringArg.Split(";")[1];
+                                    InputField mouseNameInput = inputFields.Find(i => i.name == "MouseInfoName");
+                                    if(mouseNameInput != null){
+                                        mouseNameInput.text = stringArg;
+                                    }
+                                    inputFieldContent["MouseInfoName"] = stringArg;
+                                }
+                                else {
+                                    _info = "null";
                                 }
                             }
                             moving.SetMouseInfo(_info + ":" + stringArg);
@@ -754,6 +779,9 @@ public class UIUpdate : MonoBehaviour
                             // SetButtonColor(buttons.Find(button => button.name == $"{_type}Enable"), Color.green);
                         }
                         SetButtonColor($"{_type}Enable", Color.green, !_enabled);
+                    }else if (_content == "LightControl"){
+                        // moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
+                        moving.DataSend($"p_lightControl={value}", needParse:true, inVerifyOrVerifyNeedless: true);
                     }
                 }
                 else if (elementsName.StartsWith("TimingBaseSelect")) {
@@ -1136,18 +1164,13 @@ public class UIUpdate : MonoBehaviour
 
         alarm = new Alarm();
         alarm.TrySetAlarm("manualScrollWait", -1, out _);
-        // foreach(InputField inputField in other_inputs){
-        //     if (inputField.name=="IFSerialMessage"){serialMessageInputs=inputField;}
-        //     else if (inputField.name=="IFConfigValue"){
-        //         mode1ConfigInputs = inputField;
-        //         mode1ConfigInputs.placeholder.GetComponent<Text>().text = position_control.Get_set_dic_water_serving(mode1ConfigDropdown.captionText.text, position_control.serve_water_mode)[1].ToString();
-        //     }
-        // }
 
+        Dictionary<string, string> _inputFieldContent_prefill = IFContentLoaded.Length > 5? IFContentLoaded.Split(";;;").ToDictionary(c => c.Split("=>")[0], c => c.Split("=>")[1]): new Dictionary<string, string>();
         foreach (InputField inputField in inputFields) {
-            if (!inputFieldContent.TryAdd(inputField.name, inputField.text)) {
+            if (!inputFieldContent.TryAdd(inputField.name, _inputFieldContent_prefill.ContainsKey(inputField.name)? _inputFieldContent_prefill[inputField.name]: inputField.text)) {
                 inputFieldContent[inputField.name] = "null";
             }
+            if(inputFieldContent.TryGetValue(inputField.name, out string _t)){inputField.text = _t;}
         }
         
         TimingMethodDropdown.ClearOptions();
@@ -1157,14 +1180,14 @@ public class UIUpdate : MonoBehaviour
         TimingMethodDropdown.value = 0;
         TimingMethodDropdown.RefreshShownValue();
 
-        if (IFContentLoaded != "") {
-            foreach (string content in IFContentLoaded.Split(";;;")) {
-                string IFName = content.Split("=>")[0];
-                if (inputFieldContent.ContainsKey(IFName)) {
-                    inputFieldContent[IFName] = content.Split("=>")[1];
-                }
-            }
-        }
+        // if (IFContentLoaded != "") {
+        //     foreach (string content in IFContentLoaded.Split(";;;")) {
+        //         string IFName = content.Split("=>")[0];
+        //         if (inputFieldContent.ContainsKey(IFName)) {
+        //             inputFieldContent[IFName] = content.Split("=>")[1];
+        //         }
+        //     }
+        // }
         foreach(GameObject l in LightObjects){
             string type = LightDefaultColors.Where(n => l.name.ToLower().EndsWith(n.Key)).Select(n => n.Key).FirstOrDefault();
             if(type == null){continue;}
@@ -1180,6 +1203,10 @@ public class UIUpdate : MonoBehaviour
         foreach(var key in _ic.Keys) {
             if(key == "IFTimingSet" && _ic[key] != "null") {
                 ControlsParse("IFTimingSet", 1);
+                inputFieldContent["IFTimingSet"] = "null";
+                InputField _IF = inputFields.FirstOrDefault(_if => _if.name == "IFTimingSet");
+                if(_IF != null){_IF.text = "";}
+                break;
             }
         }
 
@@ -1192,7 +1219,10 @@ public class UIUpdate : MonoBehaviour
                 foreach(string mouseName in mouseNames){
                     mouseNameDropdown.AddOptions(new List<string>{mouseName});
                 }
+                // mouseNameDropdown.GetComponent<ScrDropDown>().ignoreValueChange = true;
                 // mouseNameDropdown.value = -1;
+                // mouseNameDropdown.GetComponent<ScrDropDown>().ignoreValueChange = false;
+
             }
             if(mouseNameInput != null){
                 mouseNameInput.GetComponent<RectTransform>().sizeDelta = new Vector2(90, mouseNameInput.GetComponent<RectTransform>().sizeDelta.y);
@@ -1348,8 +1378,42 @@ public class UIUpdate : MonoBehaviour
                     // buttonTimingBaseSubDropdown.GetComponent<ScrDropDown>().UpdateOptionsFunctionEnableStatus(0);
                     break;
                 }
+                case "LogeventCheck":{
+                    bool start = alarm.GetAlarmAddInfo("LogeventCheck") == "1";
+                    int s = LogEventController.IsRecordButtonStateZero();
+                    bool reached = start ? (s == 0) : (s == 1);
+                    if (reached)
+                    {
+                        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                        MessageUpdate(start ? "logevent recording started" : "logevent recording ended");
+                    }
+                    else if (alarm.GetAlarm("LogeventCheck") == -1)
+                    {
+                        // 最后一次触发（无剩余重复次数）仍未到达期望状态 => 失败，不再补发。
+                        alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                        MessageUpdate(start ? "logevent record failed to start" : "logevent record failed to end");
+                    }
+                    else
+                    {
+                        // 未到达期望状态：交给 ScheduleRecordClick 判断是否补发。
+                        // 它内部会关闭弹窗、防止重复投递，并留出冷却时间观察状态。
+                        int clickResult = LogEventController.ScheduleRecordClick(start);
+                        if (clickResult == 0)
+                        {
+                            alarm.DeleteAlarm("LogeventCheck", forceDelete:true);
+                            MessageUpdate(start ? "logevent recording started" : "logevent recording ended");
+                        }
+                    }
+                    break;
+                }
                 case "ClosePythonScript":{
                     moving.ClosePythonScript(alarm.GetAlarmAddInfo("ClosePythonScript") == "force");
+                    break;
+                }
+                case "pauseTiming":{
+                    UnityEngine.UI.Button pauseButton = buttons.Find(b => b.name == "TimingPause");
+                    bool pause = pauseButton.GetComponent<ScrButton>().pressCount % 2 == 1;
+                    if(!pause){pauseButton.GetComponent<ScrButton>().pressCount ++;ControlsParsePublic("TimingPause", 1);}
                     break;
                 }
                 default:{

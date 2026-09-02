@@ -225,7 +225,7 @@ public class StartMenuDraw : MonoBehaviour
         private string context_config_path;
     #endif
 
-    private string metaConfigName = "/metaConfig.ini";
+    // private string metaConfigName = "/metaConfig.ini";//保留：metaConfig 间接选择配置文件，暂不启用
     private string openINIFileName;
 
     public GameObject Rows;
@@ -379,8 +379,10 @@ public class StartMenuDraw : MonoBehaviour
         #if !UNITY_EDITOR
             context_config_path = Application.dataPath+"/Resources";
             //context_config_path = Application.dataPath+"/Resources/config.ini";
-            ini_reader = new IniReader(context_config_path+metaConfigName);
-            string nowConfigFileName = ini_reader.ReadIniContent("configInfo", "preference", "config.ini");
+            // 保留：metaConfig.ini 间接选择配置文件（当前直接使用 config.ini，暂不启用）
+            // ini_reader = new IniReader(context_config_path+metaConfigName);
+            // string nowConfigFileName = ini_reader.ReadIniContent("configInfo", "preference", "config.ini");
+            string nowConfigFileName = "config.ini";
             context_config_path += "/" +nowConfigFileName;
             
             if(!System.IO.File.Exists(context_config_path)){
@@ -388,8 +390,10 @@ public class StartMenuDraw : MonoBehaviour
                 Application.Quit();//临时
             }
         #else
-            ini_reader = new IniReader(context_config_path+metaConfigName);
-            string nowConfigFileName = ini_reader.ReadIniContent("configInfo", "preference", "config.ini");
+            // 保留：metaConfig.ini 间接选择配置文件（当前直接使用 config.ini，暂不启用）
+            // ini_reader = new IniReader(context_config_path+metaConfigName);
+            // string nowConfigFileName = ini_reader.ReadIniContent("configInfo", "preference", "config.ini");
+            string nowConfigFileName = "config.ini";
             context_config_path += "/"+nowConfigFileName;
             if(!System.IO.File.Exists(context_config_path)){
                 MessageBox(IntPtr.Zero, "No config file!", "Error", (int)MessageBoxType.OK);

@@ -176,23 +176,48 @@ public class ScrDropDown : MonoBehaviour
         }
     }
 
+    void OnSelectItem(Toggle _){
+        // if (!toggle.isOn)
+        //     toggle.isOn = true;
+
+        // int selectedIndex = -1;
+        // Transform tr = toggle.transform;
+        // Transform parent = tr.parent;
+        // for (int i = 0; i < parent.childCount; i++)
+        // {
+        //     if (parent.GetChild(i) == tr)
+        //     {
+        //         // Subtract one to account for template child.
+        //         selectedIndex = i - 1;
+        //         break;
+        //     }
+        // }
+        OnValueChanged();
+    }
+
     // Update is called once per frame
     void Update()
     {
-        // IsShow = dropdown.IsShown;
-        if (EnableOptionsFunction) {
-            // Debug.Log($"{name} ShowStatus: {isShow}; updated: {updated}");
-            if (isShow && !updated) {
-                updated = true;
-                // UpdateOptions();
+
+        // Debug.Log($"{name} ShowStatus: {isShow}; updated: {updated}");
+        if(!EnableOptionsFunction){
+            isShow = dropdown.GetComponentsInChildren<Toggle>().Count() > 0;
+        }
+        if (isShow && !updated) {
+            updated = true;
+            foreach(Toggle toggle in this.GetComponentsInChildren<Toggle>()){
+                toggle.onValueChanged.AddListener(x => OnSelectItem(toggle));
+            }
+            // UpdateOptions();
+            if (EnableOptionsFunction) {
                 Debug.Log($"update, name: {name}");
                 UpdateOptionsFunctionEnableStatus();
             }
-            else if (!isShow && updated) {
-                updated = false;
-                ui_update.ControlsParsePublic(name, dropdown.value, $"hide;{nowSubHierarchyIndex}");
+        }
+        else if (!isShow && updated) {
+            updated = false;
+            ui_update.ControlsParsePublic(name, dropdown.value, $"hide;{nowSubHierarchyIndex}");
 
-            }
         }
         if (ignoreValueChange) { ignoreValueChange = false; }
         

@@ -8,7 +8,7 @@ using UnityEngine.UI;
   
 public class PosIndicate : ImageDrawer  
 {  
-    public PosIndicate(int _Width, int _Height, Image _image, Position_control _position_control, LinearTrackUIUpdate _ui_update) :base(_Width, _Height, _image){
+    public PosIndicate(int _Width, int _Height, Image _image, LinearTrackMoving _position_control, LinearTrackUIUpdate _ui_update) :base(_Width, _Height, _image){
         width = _Width;
         height = _Height;
         position_control = _position_control;
@@ -31,7 +31,7 @@ public class PosIndicate : ImageDrawer
     private GameObject[] posIndicateLabels;// greenlight, redlight, arrow
     private Text[] posIndicateTexts; // pos, start, end, rew start, rew end
     private LinearTrackUIUpdate ui_update = null;
-    private Position_control position_control = null;
+    private LinearTrackMoving position_control = null;
     //private Moving_for_test moving_For_Test = null;
     private void DrawClear(bool force_clear = false){
         for (int i = 0; i < pixels.Length; i++)  {  

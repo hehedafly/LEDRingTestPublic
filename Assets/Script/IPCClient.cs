@@ -295,13 +295,14 @@ public class IPCClient : MonoBehaviour
     #endregion
 
     int CreateSharedmm(bool heartbeat = false){
-        sharedmm = new Sharedmm("UnityProject", "server", heartbeat);
+        sharedmm = new Sharedmm("UnityShareMemoryTest", "server", _heartbeat: heartbeat);
         try{
-            sharedmm.Init("UnityShareMemoryTest", 32+5*16*1024);
+            sharedmm.Init("UnityProject");
         }
         catch(System.Exception e){
             sharedmm = null;
             Debug.Log(e.Message);
+            if(uiUpdate != null){ uiUpdate.MessageUpdate($"IPC init failed: {e.Message}"); }
             activited = false;
             Silent = true;
             // Quit();
@@ -450,11 +451,19 @@ public class IPCClient : MonoBehaviour
 
     void Start()
     {
-        
+
     }
-  
+
+    void OnDestroy()
+    {
+        // 兜底关闭：Unity 退出 / Play Mode 停止 / 域重载时确保原生共享内存资源被释放，
+        // 避免残留实例被 GC 回收时与残余 FixedUpdate 调用交错导致崩溃。
+        // CloseSharedmm 内部幂等（sharedmm!=null && !closed 才处理）。
+        CloseSharedmm();
+    }
+
     void Update(){
-        if(activited && Time.unscaledTime - lastTime >= 1){
+        if(activited && sharedmm != null && !sharedmm.IsClosed && Time.unscaledTime - lastTime >= 1){
             lastTime = Time.unscaledTime;
             int res = sharedmm.UpdateOnlineStatus();
             if(res < 0){
@@ -497,7 +506,7 @@ public class IPCClient : MonoBehaviour
             }
         }
 
-        if(!Silent && sharedmm != null && sharedmm.CheckServerOnlineStatus()){//if set slient to true, "else" part will close sharedmm
+        if(!Silent && sharedmm != null && !sharedmm.IsClosed && sharedmm.CheckServerOnlineStatus()){//if set slient to true, "else" part will close sharedmm
 
             if(activited){
                 // string tempStr = $"From Unity-- Now Time:{Time.time}";
@@ -621,18 +630,18 @@ public class IPCClient : MonoBehaviour
                 // Quit();
             }
         }else{
-            if(activited){
+            // 修复：断连时统一走 CloseSharedmm() 包装器(会置 Silent=true/activited=false/enableInitAfterConnection=-1),
+            // 否则仅置空 sharedmm 而不置 Silent, 下一帧 !Silent&&sharedmm==null 会立刻重连→Init失败→误报"IPC init failed";
+            // 并按“是否曾建立连接”区分文案, 避免掉线时打印建连期的“failed to sync”。
+            bool wasActivated = activited;
+            if(sharedmm != null){
+                Array.Fill(pos, -1);
+                CloseSharedmm();
+                uiUpdate.MessageUpdate(wasActivated ? "lost connection" : "failed to sync, no message received");
+            }else if(activited){
                 Activated = false;
                 Array.Fill(pos, -1);
                 uiUpdate.MessageUpdate($"lost connection");
-
-            }
-            // Debug.Log("no one online or not activated");
-            if(sharedmm != null){
-                Array.Fill(pos, -1);
-                sharedmm.CloseSharedmm(manually:true);
-                sharedmm = null;
-                uiUpdate.MessageUpdate($"failed to sync, no message received");
             }
         }
     }
