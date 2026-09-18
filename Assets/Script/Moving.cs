@@ -832,7 +832,10 @@ public class Moving : MonoBehaviour
     /// </summary>
     // float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value; Debug.Log("waitSecRecChanged: "+value);}}
     float WaitSecRec = -1; float waitSecRec {get{return WaitSecRec;} set{WaitSecRec = value;}}
-    float waitSec = -1;
+    /// <summary>
+    /// 本trial结束后的interval，每个trialend后刷新为新的定值，只会在fixupdate中进行比较。waitSecImportant为除去extrareward的其他必要时间。
+    /// </summary>
+    float waitSec = -1, waitSecImportant = -1;
     float[] standingPos = new float[2];
     float standingSecNowInTrigger = -1;
     // float[] standingPosInTrial = new float[2];
@@ -908,8 +911,8 @@ public class Moving : MonoBehaviour
     bool alarmPlayReady = false;//如果其他情况设false，使用alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);防止alarmPlayReady在播放间隔后恢复
     float alarmLickDelaySec = 2;
     List<string> recTypeLs = new List<string>(){
-        // 0        1       2     3         4          5           6           7        8          9            10          11          12          13
-        "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord", "pump"
+        // 0        1       2     3         4          5           6           7        8          9            10          11          12             13       14
+        "lick", "start", "end", "init", "entrance", "press", "lickExpire", "trigger", "stay", "soundplay", "OGManuplate", "sync", "miniscopeRecord", "pump", "ogpwm"
     };
     List<string> recTypeAddtion = new List<string>(){"skip", "complete_manually", "null", "all_complete"};
     UIUpdate ui_update;
@@ -924,6 +927,11 @@ public class Moving : MonoBehaviour
     List<string> portBlackList = new List<string>();
     List<string> recommendPort = new List<string>();
     SerialPort sp = null;
+    /// <summary>
+    /// "Arduino"或"Pyboard"
+    /// </summary>
+    string spDeviceType = "Arduino";
+    string pyboardFlag = "pyboardV1.1Plus";
     volatile bool StopSerialThread = false;
     int serialSpeed = -1;
     private readonly object serialLock = new object();
@@ -931,7 +939,7 @@ public class Moving : MonoBehaviour
     // 通信方式配置: 0-自动检测, 1-仅USB, 2-仅串口
     // int communicationMode = 0;
     // bool isUsbConnected = false;  // 当前是否为USB连接
-    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3", "V2.4"};
+    List<string> compatibleVersion = new List<string>(){"V2.2", "V2.3", "V2.4", "V2.5"};
     Thread serialThread;
     // Thread serialSyncThread;
     CommandConverter commandConverter;
@@ -952,6 +960,7 @@ public class Moving : MonoBehaviour
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
+    ConcurrentQueue<string> uiUpdateMessageQueue = new ConcurrentQueue<string>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     /// <summary>
     /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual, 10-p_lightControl
@@ -960,7 +969,9 @@ public class Moving : MonoBehaviour
     List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
     Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};
+    byte[] arduinoStatusBackup = new byte[]{};  int arduinoStatusBackupCounter = 0;  int arduinoStatusBackupCounterLast = 0;
     bool debugMode = false; public bool DebugMode { get { return debugMode;} set{debugMode = value;}}
+    public int OGChannel = 0, MSChannel = 0;
     bool disableMainDisplay = false;
     public GameObject refseg;
     Material refSegementMat;
@@ -975,7 +986,7 @@ public class Moving : MonoBehaviour
     /// 0:Optogenetics, 1:Miniscope, 2:PythonScript
     /// </summary>
     bool[] DeviceCloseOptionBeforeExits = new bool[3] { true, true, false };
-    int lickCheckFunctionsStatus = -1; //return from lick check functions, used when somewhere depend on judging lick
+    int extraRewardCheckFunctionsStatus = -1; //return from lick check functions, used when somewhere depend on judging lick
     int posCheckFunctionsStatus = -1; //return from position check functions, used when somewhere depend on judging mouse pos
     int quitMark = 0;
     public bool MouseNameRequired = false;
@@ -1580,6 +1591,7 @@ public class Moving : MonoBehaviour
                     tempSp.ReadTimeout = 3000;  // 3秒超时 - 缩短等待时间
                     tempSp.WriteTimeout = 1000;  // 1秒写超时
                     tempSp.Open();
+                    tempSp.Encoding = Encoding.GetEncoding(28591);  // Latin-1：文本读写字节 1:1 透明，避免 ReadLine 把 >=0x80 的字节（帧头/帧尾/长度）解码成 '?'
                     Debug.Log("COM available: " + port);
 
                     // 清空上次连接失败残留的数据（关键！否则会读到旧的 ACK_OK）
@@ -1593,10 +1605,18 @@ public class Moving : MonoBehaviour
                     // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
                     int failCount = 0; int maxFailCount = 20;
                     string initMsg = "";
+                    spDeviceType = "Arduino";
                     try{
                         // 跳过任何非 initialed 行（banner/残留ACK_OK/空行），直到读到 initialed 或超时
                         do{
                             initMsg = tempSp.ReadLine();
+                            if(initMsg.Contains(pyboardFlag)){
+                                initMsg = initMsg.Replace(pyboardFlag, "");
+                                spDeviceType = "Pyboard";
+                                if(!uiUpdateMessageQueue.Contains("Pyboard connected")){
+                                    uiUpdateMessageQueue.Enqueue("Pyboard connected");
+                                }
+                            }
                             if(initMsg.StartsWith("initialed:")){break;}
                             failCount++;
                         }while(failCount < maxFailCount);
@@ -1754,6 +1774,23 @@ public class Moving : MonoBehaviour
         return 0;
     }
 
+    void ArduinoContextRequest(){//向Arduino索取状态快照，回复经CommandParse case 7保存
+        if(DebugWithoutArduino || sp == null || !sp.IsOpen){return;}
+        DataSend("statusValue");
+        if(arduinoStatusBackupCounter != arduinoStatusBackupCounterLast){
+            ui_update.MessageUpdate($"snapshot sync failed for {arduinoStatusBackupCounter - arduinoStatusBackupCounterLast} trial");
+        }
+        arduinoStatusBackupCounter++;
+    }
+
+    void ArduinoContextPost(){//重连成功后将最近一次快照原样发回，固件parse_status_value直接生效
+        if(DebugWithoutArduino || arduinoStatusBackup.Length == 0){return;}
+        if(sp == null || !sp.IsOpen){return;}//RecreateSerialConnection失败(重试耗尽)时不发
+        string backup = Encoding.UTF8.GetString(arduinoStatusBackup);
+        DataSend(backup);
+        Debug.Log($"Arduino context posted: {backup}");
+    }
+
     /// <summary>
     /// 延时触发以及trial结束后触发仅在最初调用，其他主动触发调用此方法进行startTrial
     /// </summary>
@@ -1828,7 +1865,10 @@ public class Moving : MonoBehaviour
     int InitTrial(bool isFristInit = false){
         nowTrial = -1;
         trialStatus = -1;
+        arduinoStatusBackup = new byte[]{};
         ContextInitSync();
+        arduinoStatusBackupCounter = 0;
+        arduinoStatusBackupCounterLast = 0;
         forceWaiting = false;
         waiting = true;
         waitSec = -1;
@@ -1893,11 +1933,13 @@ public class Moving : MonoBehaviour
         if (!DebugWithoutArduino && ContextStartSync() < 0){
             Debug.Log($"StartTrial {nowTrial} failed");
         }
+        alarm.TrySetAlarm("ArduinoContextRquest", 1.0f, out int _);
         Debug.Log($"StartTrial {nowTrial}");
         string tempMatName = contextInfo.GetBarMaterialInTrial(nowTrial);
         MaterialStruct tempMs = GetMaterialStruct(tempMatName);
         // Debug.Log(tempMs.PrintArgs());
         SetBarMaterial(tempMs);
+        trialStartReady = false;
         alarmPlayReady = true;//为waiting的delay允许alarm
         if(ipcclient.Activated){
             ipcclient.MDClearTemp();
@@ -1987,12 +2029,13 @@ public class Moving : MonoBehaviour
         trialStatus = 0;
         if(isInit || !trialSuccess || ignoreBarLatstingTime){DeactivateBar();}
         else{alarm.TrySetAlarm("DeactivateBar", contextInfo.barLastingTime, out _);}
-        
+        // alarm.DeleteAlarm("ArduinoContextRquest", forceDelete:true);
         if(!isInit && !trialSuccess){PlaySound("AtFail");}
         Debug.Log($"End Trial {nowTrial}");
         waiting = true;
         alarmPlayReady = false;
         alarm.DeleteAlarm("SetAlarmReadyToTrue", forceDelete:true);
+        alarm.DeleteAlarm("DisabletExtraReward", forceDelete:true);
         alarm.TrySetAlarm("SetAlarmReadyToTrueAfterTrianEnd", alarmLickDelaySec, out _);
         if(ipcclient.Activated && trialStartTriggerMode == 3){
             ipcclient.MDClearTemp();
@@ -2010,7 +2053,7 @@ public class Moving : MonoBehaviour
             waitSecRec = Time.fixedUnscaledTime;
             
             //lickCount.Clear();
-            float _finalTrialReadyWaitSec = Math.Max(trialReadyWaitSec, trialReadyWaitForExtraRewardSec);
+            float _finalTrialReadyWaitSec = Math.Max(trialReadyWaitSec, trialReadyWaitForExtraRewardSec);  waitSecImportant = trialReadyWaitSec;
             //trialReadyWaitForExtraRewardSec为-2时，额外奖励时间跟随其他设置
             trialReadyWaitForExtraRewardSec = trialReadyWaitForExtraRewardSec == -2? _finalTrialReadyWaitSec: trialReadyWaitForExtraRewardSec;
             float _temp_waitSec;
@@ -2023,6 +2066,7 @@ public class Moving : MonoBehaviour
                     _temp_waitSec = contextInfo.barDelayTime;
                 }
                 waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+                waitSecImportant = Math.Max(_temp_waitSec, waitSecImportant);
                 // if(waitSec > 0){
                 //     ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                 // }
@@ -2031,11 +2075,13 @@ public class Moving : MonoBehaviour
                     
                     _temp_waitSec = trialResult[nowTrial] == 1? GetRandom(contextInfo.sWaitSec) : GetRandom(contextInfo.fWaitSec);
                     waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+                    waitSecImportant = Math.Max(_temp_waitSec, waitSecImportant);
                     // ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
 
                 }else{//其他主动触发模式
                     _temp_waitSec = contextInfo.barDelayTime;
                     waitSec = Math.Max(_temp_waitSec, _finalTrialReadyWaitSec);
+                    waitSecImportant = Math.Max(_temp_waitSec, waitSecImportant);
 
                     // ui_update.MessageUpdate($"Interval: {waitSec}{(_finalTrialReadyWaitSec > 0? $", contains extra delay from trialReadyWaitSec: {_finalTrialReadyWaitSec}": "")}", attachToLastLine:true);
                     //waitSec = contextInfo.soundLength + contextInfo.soundCueLeadTime + (trialSuccess? contextInfo.barDelayTime: 0);
@@ -2067,6 +2113,7 @@ public class Moving : MonoBehaviour
                 trialStartReady = true;
             }
             else{
+                trialStartReady = false;
                 alarm.TrySetAlarm("SetTrialReadyToTrue", _finalTrialReadyWaitSec, out _);
             }
 
@@ -2156,7 +2203,7 @@ public class Moving : MonoBehaviour
     /// 与CheckMousePos类似，默认返回-1
     /// </summary>
     /// <returns></returns>
-    int CheckMouseLick(){
+    int CheckExtraRewardConsumeStatus(){
         if(contextInfo.stopExtraRewardMethod.Contains("lick")){
             if(lickTimeInTrial.Count > 0 && Time.fixedUnscaledTime - lickTimeInTrial.Last() > contextInfo.stopExtraRewardLickDelaySec){
                 return 0;
@@ -2333,7 +2380,7 @@ public class Moving : MonoBehaviour
                 lickTimeInTrial.Add(Time.fixedUnscaledTime);
             }
             lickCountGetSet("set", lickInd, nowTrial);
-            if(alarm.GetAlarm("DisabletExtraReward") > 0 && (rewardServedTimeInTrial.Count == 0 || Time.fixedUnscaledTime - rewardServedTimeInTrial.Last() > contextInfo.minIgnoreLickInterval)){
+            if(lickInd >= 0 && alarm.GetAlarm("DisabletExtraReward") > 0 && (rewardServedTimeInTrial.Count == 0 || Time.fixedUnscaledTime - rewardServedTimeInTrial.Last() > contextInfo.minIgnoreLickInterval)){
                 ServeWaterInTrial(false);
             }
             
@@ -2352,7 +2399,7 @@ public class Moving : MonoBehaviour
             if(lickInd >= 0){ui_update.SetLightSignal("lick", false);}
         }
         // Debug.Log($"waiting: {waiting}");
-        if(!waiting){//waiting期间的舔不进一步进入判断，仅做记录
+        if(!waiting || lickInd == -4){//waiting期间的舔不进一步进入判断，仅做记录
             if(lickTypeMark == 0){
                 WriteInfo(_lickPos: lickInd, addInfo:"leave");
                 return 0;
@@ -2365,6 +2412,12 @@ public class Moving : MonoBehaviour
 
             if(trialMode < 0x30){
                 if(trialMode >> 4 == 0){
+                    if(lickInd == -4){
+                        if(new int[]{1,2,3}.Contains(trialStartTriggerMode)){//非自动开始下一个trial，对于自动测试任务额外设置自动开始时间
+                            alarm.TrySetAlarm("SetTrialAutomaticWhenStressTest", 1.0f, out int _);
+                        }
+                        lickInd = -2;
+                    }
                     //只要舔到对的就进入下一个，不管错没错，待endtrial结束进入下一个trial
                     if(result || lickInd == -2){
                         if(lickInd >= 0){
@@ -2388,8 +2441,14 @@ public class Moving : MonoBehaviour
                             EndTrial(trialSuccess:false, rightLickSpout: rightLickInd, trialReadyWaitSec: contextInfo.barLastingTime, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
                         }
                     }
-                }else if(trialMode >> 4 == 1){
-                    //只能舔对的
+                }else if(trialMode >> 4 == 1){//只能舔对的
+                    
+                    if(lickInd == -4){
+                        if(new int[]{1,2,3}.Contains(trialStartTriggerMode)){//非自动开始下一个trial，对于自动测试任务额外设置自动开始时间
+                            alarm.TrySetAlarm("SetTrialAutomaticWhenStressTest", 1.0f, out int _);
+                        }
+                        lickInd = -2;
+                    }
                     result = result || lickInd == -2;
                     TrialResultAdd(lickInd < 0? lickInd : (result? 1: 0), nowTrial, lickInd < 0? rightLickInd: lickInd, rightLickInd);
                     if(result && trialMode == 0x11){
@@ -2412,6 +2471,9 @@ public class Moving : MonoBehaviour
                         // if(trialMode % 0x10 == 2){ServeWaterInTrial();}
                         ui_update.MessageUpdate("Trial end");
                         EndTrial(trialSuccess:trialResult[nowTrial] == 1, serveWater:trialMode % 0x10 == 2? true: false, ignoreBarLatstingTime:true, trialReadyWaitForExtraRewardSec: contextInfo.extraRewardTimeInSec);
+                        if(new int[]{1,2,3}.Contains(trialStartTriggerMode)){//非自动开始下一个trial，对于自动测试任务额外设置自动开始时间
+                            alarm.TrySetAlarm("SetTrialAutomaticWhenStressTest", 2.0f, out int _);
+                        }
                     }else if(lickInd < 0){//小鼠完成了任务，或手动按下按键完成/跳过
                         TrialResultAdd(result? (lickInd == -2 ? -2: 1): 0, nowTrial, rightLickInd, rightLickInd);
                         if(result && trialStatus != 2){
@@ -2439,6 +2501,12 @@ public class Moving : MonoBehaviour
             return 1;//正常判断完成
         }else{
             ui_update.MessageUpdate();
+            if(lickInd == -1){//skip interval
+                if(waitSec > waitSecImportant){
+                    waitSec = waitSecImportant;
+                    ui_update.MessageUpdate($"interval reduced to {waitSecImportant}");
+                }
+            }
             if(lickTypeMark == 1 || contextInfo.countAfterLeave){
                 return -3;//不需要判断，已返回给commandParse做延时处理
             }else{
@@ -2522,6 +2590,12 @@ public class Moving : MonoBehaviour
     int TriggerRespond(bool inOrLeave, int _recType){
         if(trialStartTriggerMode > 0 && nowTrial < contextInfo.maxTrial){
             if(inOrLeave){
+                Dictionary<int, int[]> triggerCorrspond = new Dictionary<int, int[]>{
+                    {1, new int[]{4, 7}},
+                    {2, new int[]{5, 7}},
+                    {3, new int[]{8, 7}},
+                };
+                if(!triggerCorrspond.ContainsKey(trialStartTriggerMode) || !triggerCorrspond[trialStartTriggerMode].Contains(_recType)){return -1;}
                 if(AudioPlayModeNowContains("BeforeTrial") && contextInfo.soundLength > 0 && contextInfo.trialTriggerDelay[0] > 0){
                     SetTrial(manual:false, waitSoundCue: true);
                 }else{
@@ -2539,38 +2613,46 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="_mills"></param>
     /// <returns></returns>
-    public bool OGSet(int _mills){//_mills: 0: 关闭, 1+: mills, -1：持续
+    public bool OGSet(int _mills, int channel = -2){//_mills: 0: 关闭, 1+: mills, -1：持续, channel: -1:all, -2:unset
         bool _on = _mills > 0 || _mills == -1;
+        channel = channel == -2? OGChannel: channel;
         int res = 0;
-        if(_mills < 30000){
-            res = CommandVerify(Arduino_var_list[6], _mills);
-            if(res == 1 || res == -3){
-                WriteInfo(recType: 10, _lickPos: _mills);
-                Debug.Log($"OG set {_mills}");
-                ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
+        if(spDeviceType == "Pyboard"){
+            // 门控线开/关：cmd:ogset;<ch>;<timeMs>；time 语义与 _mills 一致（0 关 / >0 定时自关 / -1 持续）
+            // 定时自关由 pyboard 侧 TIM13 完成，Unity 不需要挂 ogEnd 闹钟
+            int resPyb = DataSend($"cmd:ogset;{channel};{_mills}");
+            if(resPyb == 1){
+                WriteInfo(recType: 10, _lickPos: _mills, addInfo:$"ch{channel}");
+                Debug.Log($"OG(pyboard) gate ch{channel} {(_on? "on": "off")}{(_mills > 0? $" for {_mills} mills": "")}");
+                ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")} (ch{channel})");
                 if(_on){trialOGStartedTemp.Append(nowTrial);}else{trialOGStartedTemp.Clear();}
+                return true;
+            }
+            return false;
+        }else{
+            if(_mills < 30000){
+                res = CommandVerify(Arduino_var_list[6], _mills);
+                if(res == 1 || res == -3){
+                    WriteInfo(recType: 10, _lickPos: _mills, addInfo:$"ch{channel}");
+                    Debug.Log($"OG set {_mills}");
+                    ui_update.MessageUpdate($"OG {(_mills != 0? "on": "off")}{(_mills > 0 ? $" for {_mills} mills": "")}");
+                    if(_on){trialOGStartedTemp.Append(nowTrial);}else{trialOGStartedTemp.Clear();}
+                }
+                return res == 1;
+            }
+            res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
+            if(res == 1 || res == -3){
+                WriteInfo(recType:10, _lickPos:_mills, addInfo:$"ch{channel}");
+                Debug.Log($"OG {(_on? "on": "off")}");
+                ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
+                if(_mills > 0){
+                    alarm.TrySetAlarm($"ogEnd{channel}", (float)_mills / 1000, out _);
+                }else{
+                    alarm.DeleteAlarm($"ogEnd{channel}");
+                }
             }
             return res == 1;
         }
-
-        // if(alarm.GetAlarm("ogEnd") >= 0){
-            
-        // }else{
-        res = CommandVerify(Arduino_var_list[6], _on? -1: 0);
-        if(res == 1 || res == -3){
-            WriteInfo(recType:10, _lickPos:_mills);
-            Debug.Log($"OG {(_on? "on": "off")}");
-            ui_update.MessageUpdate($"OG {(_on? "on": "off")}{(_mills > 0 ? $" for {_mills/1000}s": "")}");
-            if(_mills > 0){
-                alarm.TrySetAlarm("ogEnd", (float)_mills / 1000, out _);
-            }else{
-                alarm.DeleteAlarm("ogEnd");
-            }
-        }
-
-        // }
-        
-        return res == 1;
     }
 
     /// <summary>
@@ -2578,32 +2660,33 @@ public class Moving : MonoBehaviour
     /// </summary>
     /// <param name="_on"></param>
     /// <returns></returns>
-    public bool MSSet(float _sec = -1, bool forceRestart = true, string addInfo = ""){
+    public bool MSSet(float _sec = -1, bool forceRestart = true, string addInfo = "", int channel = -2){
         bool _on = _sec > 0 || _sec == -1;
         int res;
-        if(alarm.GetAlarm("miniscopeEnd") >= 0){
+        channel = channel == -2? MSChannel: channel;
+        if(alarm.GetAlarm($"miniscopeEnd{channel}") >= 0){
             if(forceRestart){
                 if(_sec > 0){
-                    MSSet(0, addInfo:"and will start after 10 sec");
-                    alarm.DeleteAlarm("miniscopeEnd", true);
-                    alarm.TrySetAlarm("miniscopeStart", 10.0f, out _, addInfo:$"{_sec}");
+                    MSSet(0, addInfo:"and will start after 10 sec", channel:channel);
+                    alarm.DeleteAlarm($"miniscopeEnd{channel}", true);
+                    alarm.TrySetAlarm($"miniscopeStart{channel}", 10.0f, out _, addInfo:$"{_sec}");
                     return true;
                 }
             }
             else{}
         }
         
-        long frameLastForNextStart = alarm.GetAlarm("miniscopeStart");
+        long frameLastForNextStart = alarm.GetAlarm($"miniscopeStart{channel}");
         if(frameLastForNextStart < 0){
-            res = CommandVerify(Arduino_var_list[7], (_sec > 0 || _sec == -1)? 1: 0);
+            res = spDeviceType == "Arduino"? CommandVerify(Arduino_var_list[7], (_sec > 0 || _sec == -1)? 1: 0): DataSend($"cmd:msset;{channel};{(_on ? 1 : 0)}");
             if(res == 1 || res == -3){
-                WriteInfo(recType:12, _lickPos:(int)_sec);
+                WriteInfo(recType:12, _lickPos:(int)_sec, addInfo:$"ch{channel}");
                 Debug.Log($"MS {(_on? "on": "off")}");
-                ui_update.MessageUpdate($"MS {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}{";" + addInfo}");
+                ui_update.MessageUpdate($"MS channel {channel} {(_on? "on": "off")}{(_sec > 0 ? $" for {_sec}s": "")}{";" + addInfo}");
                 if(_sec > 0){
-                    alarm.TrySetAlarm("miniscopeEnd", (float)_sec, out _);
+                    alarm.TrySetAlarm($"miniscopeEnd{channel}", (float)_sec, out _);
                 }else{
-                    alarm.DeleteAlarm("miniscopeEnd", true);
+                    alarm.DeleteAlarm($"miniscopeEnd{channel}", true);
                 }
             }
             return res == 1;
@@ -2614,10 +2697,35 @@ public class Moving : MonoBehaviour
     }
     
     void CloseDevices(){
-        if(DeviceCloseOptionBeforeExits[0]){OGSet(0);}
-        if(DeviceCloseOptionBeforeExits[1]){MSSet(0);}
+        if(DeviceCloseOptionBeforeExits[0]){OGSet(0, channel:-1);}
+        if(DeviceCloseOptionBeforeExits[1]){MSSet(0, channel:-1);}
         // serialSync = false;
         // serialSyncThread.Join();
+    }
+
+    /// <summary>
+    /// Pyboard 专用：设置某通道光遗传 PWM 调制并按 time 应用。
+    /// mills: 0=关断该路, 1+=定时(ms)后自关, -1=持续；freq: Hz(板端钳位 1~5000, 缺省 20)；width: 占空比%(板端钳位 1~100, 缺省 50)
+    /// 对应板端命令: cmd:ogpwm;<ch>;<freq>;<duty>;<time>
+    /// </summary>
+    public bool OGPWMSet(int mills, int freq, int width, int channel = -2){
+        channel = channel == -2? OGChannel: channel;
+        if(spDeviceType != "Pyboard"){
+            Debug.LogWarning("OGPWMSet: only Pyboard supports ogpwm, ignored.");
+            return false;
+        }
+        // 与板端钳位范围对齐，避免无谓的静默丢弃之外的语义偏差
+        freq = Mathf.Clamp(freq, 1, 5000);
+        width = Mathf.Clamp(width, 1, 100);
+        int res = DataSend($"cmd:ogpwm;{channel};{freq};{width};{mills}");
+        if(res == 1){
+            WriteInfo(recType:14, _lickPos: mills, addInfo:$"ch{channel};freq{freq};width{width}");
+            Debug.Log($"OGPWM ch{channel} freq={freq}Hz duty={width}% mills={mills}");
+            ui_update.MessageUpdate($"OGPWM ch{channel} {freq}Hz {width}% " +
+                (mills > 0 ? $"for {mills}ms" : (mills == 0 ? "off" : "cont")));
+            return true;
+        }
+        return false;
     }
 
     bool CheckInRegion(long[] _pos, int[] selectedPos){//还没改好
@@ -2872,7 +2980,15 @@ public class Moving : MonoBehaviour
                 break;
             }
             case 6:{break;}
-            case 7:{break;}
+            case 7:{
+                //接收ArduinoContextRquest后arduino发送来的数据
+                if(command.StartsWith("cmd:stv:")){//状态快照命令体，重连后经ArduinoContextPost原样发回
+                    arduinoStatusBackup = Encoding.UTF8.GetBytes(command[4..]);
+                    // Debug.Log($"Arduino status backup updated: {command[4..]}");
+                    arduinoStatusBackupCounterLast = arduinoStatusBackupCounter;
+                }
+                break;
+            }
             case 8:{//debugLog
                 ui_update.MessageUpdate(command);
                 break;
@@ -2984,6 +3100,8 @@ public class Moving : MonoBehaviour
             }else{
                 if (!StopSerialThread){
                     RecreateSerialConnection(false, "serial thread");
+                    ArduinoContextPost();
+                    uiUpdateMessageQueue.Enqueue("lost connection to serial port, try to reconnect...");
                     Debug.Log("lost connection to serial port, try to reconnect...");
                 }
             }
@@ -3051,6 +3169,7 @@ public class Moving : MonoBehaviour
         if (!sp.IsOpen){
             Debug.Log("sp not open");
             lock(serialLock){RecreateSerialConnection(trace:"CommandVerify");}
+            ArduinoContextPost();
         }
         sp.ReadTimeout = 100;
         int fail_count = 0;
@@ -3073,8 +3192,8 @@ public class Moving : MonoBehaviour
                             temp_echo = temp_echo[5..temp_echo.IndexOf(":echo")];
                             break;
                         }
-                        else if(temp_echo.Length > 3){
-                            serial_read_content_ls.Add(new byte[] { 0xAA }.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[] { 0xDD }).ToArray());
+                        else if(temp_echo.Length > 3){//非echo行：按原始字节重打包回帧队列（Latin-1 保证字符数==字节数，切片按字节对齐）
+                            serial_read_content_ls.Add(new byte[] { 0xAA }.Concat(Encoding.GetEncoding(28591).GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[] { 0xDD }).ToArray());
                             break;
                         }
                     }
@@ -3226,7 +3345,7 @@ public class Moving : MonoBehaviour
     }
 
     /// <summary>
-    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord, 13-pump
+    /// rectype: 0-lick, 1-start, 2-end, 3-init, 4-entrance, 5-press, 6-lickExpire, 7-trigger, 8-stay, 9-soundplay, 10-OGManuplate, 11-sync, 12-miniscopeRecord, 13-pump, 14-ogpwm
     /// if enqueMsg is not empty, it will enqueue the message and not write in normal format.
     /// mouse leave lick spout marked by addInfo.
     /// </summary>
@@ -3911,7 +4030,7 @@ public class Moving : MonoBehaviour
                     break ;
                 }
                 case "SetTrialReadyToTrue":{
-                    trialStartReady = true;
+                    trialStartReady = trialStatus == 0? true: false;
                     break;
                 }
                 case "PlayGoCueWhenSetWaitingToFalse":{
@@ -3930,26 +4049,6 @@ public class Moving : MonoBehaviour
                     StartTrial();
                     break;
                 }
-                case "miniscopeStart":{
-                    if(float.TryParse(alarm.GetAlarmAddInfo("miniscopeStart"), out float _secInAlarm)){
-                        if(_secInAlarm > 0){MSSet((int)_secInAlarm);}
-                    }else{Debug.Log("wrong argument in time set");}
-                    break;
-                }
-                case "miniscopeEnd":{
-                    MSSet(0);
-                    break;
-                }
-                case "ogStart":{//暂时用不到，og每次设定时间直接更新不需要定时后再开始
-                    if(float.TryParse(alarm.GetAlarmAddInfo("ogStart"), out float _secInAlarm)){
-                        if(_secInAlarm > 0){OGSet((int)_secInAlarm);}
-                    }else{Debug.Log("wrong argument in time set");}
-                    break;
-                }
-                case "ogEnd":{
-                    OGSet(0);
-                    break;
-                }
                 case "ClosePythonScript":{
                     ClosePythonScript();
                     break;
@@ -3958,7 +4057,43 @@ public class Moving : MonoBehaviour
                     ServeWaterInTrial(false, false);
                     break;
                 }
+                case "SetTrialAutomaticWhenStressTest":{
+                    if(trialStartReady){
+                        TriggerRespond(true, _recType:7);
+                    }else if(waiting && !forceWaiting){
+                        alarm.TrySetAlarm("SetTrialAutomaticWhenStressTest", 1.0f, out int _);
+                    }
+                    break;
+                }
+                case "ArduinoContextRquest":{
+                    ArduinoContextRequest();
+                    break;
+                }
                 default:{
+                    string pureAlarmFinished = new string(alarmFinished.Where(char.IsLetter).ToArray());
+                    int.TryParse(new string(alarmFinished.Where(c=> c=='-' ||char.IsDigit(c)).ToArray()), out int channel);
+                    switch(pureAlarmFinished){
+                        case "miniscopeStart":{
+                            if(float.TryParse(alarm.GetAlarmAddInfo($"miniscopeStart{channel}"), out float _secInAlarm)){
+                                if(_secInAlarm > 0){MSSet((int)_secInAlarm, channel:channel);}
+                            }else{Debug.Log("wrong argument in time set");}
+                            break;
+                        }
+                        case "miniscopeEnd":{
+                            MSSet(0, channel:channel);
+                            break;
+                        }
+                        case "ogStart":{//暂时用不到，og每次设定时间直接更新不需要定时后再开始
+                            if(float.TryParse(alarm.GetAlarmAddInfo($"ogStart{channel}"), out float _secInAlarm)){
+                                if(_secInAlarm > 0){OGSet((int)_secInAlarm, channel:channel);}
+                            }else{Debug.Log("wrong argument in time set");}
+                            break;
+                        }
+                        case "ogEnd":{
+                            OGSet(0, channel:channel);
+                            break;
+                        }
+                    }
                     break;
                 }
             }
@@ -4002,7 +4137,10 @@ public class Moving : MonoBehaviour
             }
         }
         
-
+        while(uiUpdateMessageQueue.Count()>0){
+            uiUpdateMessageQueue.TryDequeue(out string _msg);
+            ui_update.MessageUpdate(_msg);
+        }
         // if(trialStartTriggerMode == 3 || trialMode >> 4 == 2 || (IsIPCInNeed() && ipcclient.Activated)){
         if(IsIPCInNeed()){
             if(ipcclient.Activated){
@@ -4069,7 +4207,7 @@ public class Moving : MonoBehaviour
         }
 
         if(waiting){//延时模式下下一个trial开始相关计算
-            lickCheckFunctionsStatus = CheckMouseLick();//暂时只在wating期间检查
+            extraRewardCheckFunctionsStatus = CheckExtraRewardConsumeStatus();//暂时只在wating期间检查
             if(!forceWaiting){
 
                 //if(Time.fixedUnscaledTime - waitSecRec >= (trialResult[nowTrial] == 1? contextInfo.sWaitSec : contextInfo.fWaitSec)){
@@ -4100,8 +4238,7 @@ public class Moving : MonoBehaviour
                 }
             }
 
-            if(posCheckFunctionsStatus != -1 || lickCheckFunctionsStatus != -1){
-                // if(posCheckFunctionsStatus == 0 || lickCheckFunctionsStatus == 0)
+            if(posCheckFunctionsStatus != -1 || extraRewardCheckFunctionsStatus != -1){
                 if(alarm.GetAlarm("DisabletExtraReward") > 0 ){
                     alarm.DeleteAlarm("DisabletExtraReward", true);
                     long _t = alarm.GetAlarm("SetTrialReadyToTrueWithoutExtraRewardSec");
@@ -4153,10 +4290,10 @@ public class Moving : MonoBehaviour
 
     public void Exit(){
         try{
+            StopSerialThread = true;
+            manualResetEventVerify.Set();
             if(sp != null){
-                StopSerialThread = true;
                 // 唤醒可能被阻塞的串口线程
-                manualResetEventVerify.Set();
                 CloseDevices();
             }
 
@@ -4194,7 +4331,9 @@ public class Moving : MonoBehaviour
                 Debug.Log("serial closed");
             }
         }
-        catch{}
+        catch{
+            
+        }
         finally{
             Quit();
         }

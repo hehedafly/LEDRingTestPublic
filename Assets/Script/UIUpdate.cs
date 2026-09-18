@@ -408,7 +408,7 @@ public class UIUpdate : MonoBehaviour
                 // string temp_str=serialMessageInputs.text;
                 List<string> threeSplashCommands = new List<string>{"help"};
                 string temp_str=stringArg.Length >0? stringArg: inputFieldContent[serialMessageInputs.name];
-                string[] temp_str_split = temp_str[3..].Split("=");
+                string[] temp_str_split = temp_str[Math.Min(temp_str.Length, 3)..].Split("=");
                 if(temp_str.Length == 0 || temp_str_split.Length == 0){break;}
                 if (temp_str.StartsWith("///")) {
                     string variableName = temp_str_split[0].Trim();
@@ -511,6 +511,10 @@ public class UIUpdate : MonoBehaviour
             }
             case "PressLever":{
                 moving.CommandParsePublic($"{moving.LsTypes[2]}:-1");
+                break;
+            }
+            case "Stay":{
+                moving.CommandParsePublic($"{moving.LsTypes[9]}:-1");
                 break;
             }
             case "logScroll":{
@@ -782,6 +786,41 @@ public class UIUpdate : MonoBehaviour
                     }else if (_content == "LightControl"){
                         // moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
                         moving.DataSend($"p_lightControl={value}", needParse:true, inVerifyOrVerifyNeedless: true);
+                    }else if (_content == "Channel"){
+                        if(_type == "MS"){moving.MSChannel = stringArg.Contains("all")? -1: (int)value;}
+                        if(_type == "OG"){moving.OGChannel = stringArg.Contains("all")? -1: (int)value;}
+                    }
+
+                    if(elementsName.StartsWith("OGPWM")){
+                        switch(elementsName){
+                            case "OGPWMSet":{
+                                int freq = 20, width = 50, time = -1, channel = 0;
+                                if(stringArg.Contains(";")){
+                                    string[] parts = stringArg.Split(';');
+                                    if (parts.Length >= 1) freq =   Convert.ToInt16(parts[0]);
+                                    if (parts.Length >= 2) width =  Convert.ToInt16(parts[1]);
+                                    if (parts.Length >= 3) time =   Convert.ToInt16(parts[2]);
+                                    if (parts.Length >= 4) channel =Convert.ToInt16(parts[3]);
+                                }else{
+                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMFreq" )? inputFieldContent["OGPWMFreq" ]: $"{freq}", out freq);
+                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMWidth")? inputFieldContent["OGPWMWidth"]: $"{width}", out width);
+                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMTime" )? inputFieldContent["OGPWMTime" ]: $"{time}", out time);
+                                    channel = dropdowns.Find(d => d.name == "OGChannel").value;
+                                }
+                                moving.OGPWMSet(time, freq, width, channel);
+
+                                break;
+                            }
+                            case "OGPWMStop":{
+                                int channel = dropdowns.Find(d => d.name == "OGChannel").value;
+                                moving.OGPWMSet(0, 20, 50, channel);
+                                break;
+                            }
+                            default:{
+                                break;
+                            }
+                        }
+                        
                     }
                 }
                 else if (elementsName.StartsWith("TimingBaseSelect")) {
