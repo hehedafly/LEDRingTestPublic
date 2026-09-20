@@ -4,7 +4,36 @@
 
 LEDRingTest 是一个基于 Unity 的啮齿动物行为训练系统，提供视觉刺激控制、奖励发放和行为数据收集功能，适用于自动化训练环境。
 
-![系统界面](image.png)
+![系统界面](image-1.png)
+
+---
+
+## 启动流程与初始菜单（StartMenu）
+
+应用启动先进入 **StartMenu** 场景（构建场景顺序：StartMenu → MainScene）。菜单扫描配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）下所有以 `config` 开头、`.ini` 结尾的文件，每个配置显示为一个横条。
+
+| 操作/控件 | 功能 | 说明 |
+|-----------|------|------|
+| 横条左键 | 以该配置启动 | 进入 MainScene 使用该 config；此后退出返回本菜单 |
+| 横条右键 | 配置预览 | 只读预览（见“配置预览”） |
+| Refresh | 刷新列表 | 重新扫描目录并重建横条（不重判 skip）；预览期间置灰禁用 |
+| Open（预览内） | 打开当前配置文件 | Windows 默认程序打开；文件不存在则先创建空文件再打开 |
+| 预览左右箭头 | 翻页 | 在“已设值 N 子页 + 默认未写入 M 子页”扁平序列上循环翻页 |
+| 预览排序按钮 | 切换排序 | 原始文本顺序 / 字母顺序 |
+| Exit（MainScene） | 退出 | 从菜单进入时返回 StartMenu；skip 或直接启动时关闭应用 |
+
+- 横条显示信息由 `StartMenuController.barDisplayKeys`（格式 `section:key`）指定。
+- 无匹配配置时显示单个 `default` 条目（指向默认 `config.ini`，即使为空/缺失）。
+
+### 跳过菜单（metaConfig.ini）
+
+| 参数 | 格式 | 说明 |
+|------|------|------|
+| `[settings] skip` | bool | `true`：启动直接以默认 `config.ini` 进入 MainScene（不显示菜单），退出=直接关闭应用；否则显示菜单 |
+
+### 配置预览
+
+右键横条进入只读预览，分两类：**已设值**（文件中写入且非空的键）与 **默认未写入**（程序会读取但文件未写入的键，展示默认值）。特性：按文本框高度自动分页；两类合并为扁平子页循环翻页；原始/字母排序；超长行按显示宽度截断为省略号；section 之间空一行；预览期间配置列表禁止交互。
 
 ---
 
@@ -73,6 +102,20 @@ LEDRingTest 是一个基于 Unity 的啮齿动物行为训练系统，提供视�
 | **MS Enable**      | 切换 MS 启用     | Miniscope | 绿色=启用，默认=禁用            |
 
 设备支持通过配置文件设置复杂的触发方法（见设备触发方法部分）。
+
+设备支持 **Arduino** 与 **Pyboard** 两类下位机，连接时自动识别（`spDeviceType`）。OG/MS 支持**多通道**：通过 `OGChannel` / `MSChannel` 下拉选择通道（`all` = 全部，值 -1）。Pyboard 走带通道的板端命令（如 `cmd:msset;<ch>;<on>`、`cmd:ogpwm;<ch>;<freq>;<duty>;<time>`）。
+
+#### OG PWM（仅 Pyboard）
+
+| 控件/输入 | 功能 | 说明 |
+|-----------|------|------|
+| `OGPWMSet` | 设置并应用 PWM | 通道取自 `OGChannel`；参数取自 `OGPWMFreq/OGPWMWidth/OGPWMTime` |
+| `OGPWMStop` | 关闭该路 PWM | 等价 `OGPWMSet(mills=0)`，关闭当前通道 |
+| `OGPWMFreq` | 频率(Hz) | 板端针位 1~5000，缺省 20 |
+| `OGPWMWidth` | 占空比(%) | 板端针位 1~100，缺省 50 |
+| `OGPWMTime` | 时长(ms) | 0=关闭该路，1+=定时后自关，-1=持续 |
+
+Arduino 下 `OGPWMSet` 被忽略（仅 Pyboard 支持）。
 
 ### IPC 连接控制
 
@@ -158,6 +201,8 @@ Post Processing V3.4.0
 配置文件位于：
 - **编辑器**: `Assets/Resources/config.ini`
 - **构建**: `Buildings/LEDRingTest_Data/Resources/config.ini`
+
+此外，同一目录可放置多个 `config*.ini`（由初始菜单列出供选择），以及控制是否跳过菜单的 `metaConfig.ini`。
 
 ### 值格式：随机范围
 
@@ -248,7 +293,7 @@ Post Processing V3.4.0
 - `~length` - 范围：`1~3` → 连续3个试验
 - `+offset` / `-offset` - 加/减偏移
 - 以逗号分隔的值：`10,20,30`
-- `0` 或 `1` - 特殊值（用于 `every...` 事件，1=启用，0=禁用）
+- `0` 或 `1` - 特殊值（用于 `every...` 事件时为百分比概率，如30即为30%几率，1=启用，0=禁用）
 
 **示例**：
 ```
@@ -266,14 +311,14 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 
 | 参数               | 格式             | 说明                                   |
 |--------------------|------------------|----------------------------------------|
-| `refSegement`      | int              | 参考段角度（0-359）                   |
-| `destAreaFollow`   | bool             | 如果为 `true`，目标区域随杆位置旋转；如果为 `false`，使用固定区域 |
-| `countAfterLeave`  | bool             | 离开后才计算舔食次数                   |
+| `refSegement`      | int              | bar指示块角度位置，用于光电传感器硬件同步（0-359）                   |
+| `destAreaFollow`   | bool             | 如果为 `true`，目标区域随bar位置旋转；如果为 `false`，使用固定区域 |
+| `countAfterLeave`  | bool             | 弃用                   |
 | `extraRewardTimeInSec` | float         | 试验成功后额外奖励期的持续时间（0=禁用，-2=无限制） |
-| `stopExtraRewardMethod` | 以逗号分隔的字符串 | 停止额外奖励的方法：`lick`（舔食），`pos`（位置），或 `lick,pos` |
+| `stopExtraRewardMethod` | 以逗号分隔的字符串 | 停止额外奖励的方法：`lick`（舔食），`pos`（位置），或 `lick,pos`，用contains判断 |
 | `stopExtraRewardUseTriggerSelectArea` | int | 用于基于位置的停止的触发区域索引（-1=未指定） |
-| `stopExtraRewardLickDelaySec` | float   | 在舔食后停止额外奖励的延迟（秒）     |
-| `minIgnoreLickInterval` | float       | 忽略舔食的最小间隔（秒）             |
+| `stopExtraRewardLickDelaySec` | float   | 在一次舔食后停止额外奖励的延迟（秒）     |
+| `minIgnoreLickInterval` | float       | 有效舔事件的最小间隔（秒）             |
 | `maxExtraRewardCount` | int           | 最多额外奖励次数                      |
 | `ServeRandomRewardAtEnd` | randomX~Y or int | 会话结束时提供的随机奖励数量       |
 | `checkConfigContent` | bool            | 启用配置验证检查（启动时弹窗列出已读/默认配置供核对） |
@@ -330,19 +375,25 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 - `p_lick_mode` - 舔食模式（索引0）
 - `p_trial` - 当前试验（索引1）
 - `p_trial_set` - 试验设置（索引2）
-- `p_now_pos` - 当前位置（索引3）
-- `p_lick_rec_pos` - 舔食记录位置（索引4）
+- `p_now_pos` - 当前待给水位置（索引3）
+- `p_lick_rec_pos` - 舔水位置（索引4）
 - `p_INDEBUGMODE` - 调试模式标志（索引5）
 - `p_OGActiveMills` - 光遗传学激活时间（索引6）
-- `p_miniscopeRecord` - 显微镜记录（索引7）
+- `p_miniscopeRecord` - miniscope记录（索引7）
 - `p_waterServeWhenLick` - 舔食时给水（索引8）
 - `p_waterServeManual` - 手动给水（索引9）
-- `p_lightControl` - 灯光控制（索引10）
+- `p_lightControl` - led亮度控制（索引10）
 
 **Arduino数组类型变量**：
 - `p_waterServeMicros` - 给水时间微秒记录
-- `p_lick_count` - 舔食计数
-- `p_water_flush` - 水冲
+- `p_lick_count` - 舔水计数
+- `p_water_flush` - 持续给水
+
+### 设备类型与重连同步
+
+- **设备类型**：连接时自动识别 `Arduino` / `Pyboard`；Pyboard 支持带通道的 `cmd:msset`、`cmd:ogpwm` 等命令，Arduino 忽略 ogpwm。
+- **重连状态快照同步**：运行中周期性向板端请求状态快照（`statusValue`，板端回 `cmd:stv:...`）并缓存；串口重连成功后自动回灌最近一次快照（`ArduinoContextPost`），使板端状态与上位机一致。
+- **命令校验失败提示**：串口命令校验连续失败 3 次会弹窗提示，通常意味着连接不稳或固件/波特率不匹配。
 
 ### 材料设置
 
@@ -378,7 +429,7 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 
 ### 默认选项设置
 
-存储在 `InputfieldContent` 中，作为 JSON 编码的定时链，用于自动化 UI 控制。
+存储在 `InputfieldContent` 中，用于预填充输入框数值，用于自动化 UI 控制，例如JSON 编码的定时链，
 
 **格式**：
 ```
@@ -389,6 +440,12 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 ```
 {字段名1}=>{值1};;;{字段名2}=>{值2}
 ```
+
+### 日志设置
+
+| 参数 | 格式 | 说明 |
+|------|------|------|
+| `[logSettings] logPath` | 相对路径字符串 | 日志输出子目录（可含正/反斜杠）。实际目录 `<数据目录>/<logPath>/Logs`；为空则 `<数据目录>/Logs`。数据目录：编辑器 `Assets/Resources`，构建 `Application.dataPath`。非法字符自动清除，`..`/绝对路径不会逃出数据目录；非空时启动会在日志窗口提示保存位置。 |
 
 ---
 
@@ -421,19 +478,19 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 
 ### 设置定时的方法
 
-#### 方法1：使用 Ctrl+Shift+Click
+#### Part1：使用 Ctrl+Shift+Click
 1. 在 `IFTimingValue` 输入字段中输入定时值
 2. 在 `Timing Method` 下拉菜单中选择定时方式
 3. 在 `Timing Base` 下拉菜单中选择父定时（可选）
 4. Ctrl+Shift+Click 目标按钮
 
-#### 方法2：使用定时配置下拉菜单
+#### Part2：使用定时配置下拉菜单
 1. 点击 `Timing Base` 下拉菜单展开选项
 2. 选择基础定时或选择 delete 删除现有定时
 3. 选择 spread 展开子定时选项
 4. 设置定时值和触发方式
 
-#### 方法3：导入配置
+#### Part3：导入配置
 1. 将 JSON 格式的定时配置粘贴到 `IFTimingSet` 输入字段
 2. 按回车键应用配置
 
@@ -447,8 +504,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
   "value":0,
   "Id":1,
   "parentId":-1,
-  "parentName":"",
-  "time":12345.67
+  "parentName":""
 }
 ```
 
@@ -458,8 +514,8 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 |-----------------------|-------------------|----------------------------------------|
 | 设置定时              | Ctrl+Shift+Click  | 根据输入值设置按钮定时                 |
 | 移除定时              | Ctrl+Click        | 删除按钮上的定时                       |
-| 移除定时层级          | delete 选项      | 删除选定定时及其所有子定时             |
-| 展开子定时            | spread 选项      | 创建子定时下拉菜单                     |
+| 移除定时层级          | delete 按钮      | 删除选定定时及其所有子定时             |
+| 展开子定时            | spread 按钮      | 创建子定时下拉菜单                     |
 | 隐藏子菜单            | 不选择           | 自动隐藏                               |
 | 暂停所有定时          | TimingPause 按钮  | 切换所有定时警报的暂停状态             |
 
@@ -496,6 +552,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `OGTime` / `MSTime`| 设备持续时间     | 设置光遗传学/显微镜持续时间（毫秒）  |
 | `MouseInfoName`    | 鼠名             | 设置 `mouseName` 字段                |
 | `MouseInfoUserName`| 用户名           | 设置 `userName` 字段                  |
+| `OGPWMFreq` / `OGPWMWidth` / `OGPWMTime` | OG PWM 参数 | 频率Hz / 占空比% / 时长ms（见 OG PWM，仅 Pyboard） |
 
 ### 下拉菜单
 
@@ -505,6 +562,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `TriggerModeSelect`| 触发模式         | 选择触发模式（0-4）                   |
 | `BackgroundSwitch` | 材料             | 切换背景材质                          |
 | `TimingBaseDropdown` | 定时配置       | 配置按钮定时层级                      |
+| `OGChannel` / `MSChannel` | 设备通道   | 选择 OG/MS 通道，含 all(-1)          |
 
 ### 声音控制（声音选项）
 
@@ -533,6 +591,8 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `MSStop`           | 停止显微镜设备   |
 | `MSEnable`         | 切换显微镜启用   |
 | `MSLightControl`   | 显微镜灯光控制   |
+| `OGPWMSet`         | 设置 OG PWM（Pyboard）：通道=OGChannel，参数=OGPWMFreq/Width/Time |
+| `OGPWMStop`        | 关闭 OG PWM（Pyboard）：等价 OGPWMSet(mills=0) |
 
 ### 舔喷嘴仿真
 
@@ -568,6 +628,8 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `LogeventStart`    | 开始 LogEvent.exe 外部录制 |
 | `LogeventEnd`      | 结束 LogEvent.exe 外部录制 |
 | `logScroll`        | 日志滚动条（拖动后 5s 恢复自动滚动） |
+
+`LogeventStart`/`LogeventEnd` 通过后台线程自动点击 LogEvent.exe 的 Record 按钮并自动关闭其模态弹窗，不阻塞 Unity 主线程；若录制未开始，检查 `logEventPath` 与 LogEvent 窗口是否正常。
 
 ---
 
@@ -605,7 +667,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 | `trialExpireTime`  | float            | 试验超时                              |
 | `soundLength`      | float            | 声音持续时间                          |
 | `cueVolume`        | float            | 声音音量                              |
-| `countAfterLeave`  | bool             | 离开后计算舔食                        |
+| `countAfterLeave`  | bool             | 弃用                        |
 | `extraRewardTimeInSec` | float        | 额外奖励时间                          |
 | `stopExtraRewardMethod` | string       | 额外奖励停止方法                      |
 | `stopExtraRewardUseTriggerSelectArea` | int | 停止区域索引                  |
@@ -722,48 +784,18 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 - `sync` - 同步事件
 - `miniscopeRecord` - 显微镜记录
 - `pump` - 泵激活
+- `ogpwm` - OG PWM 操作（recType 14，记录 ch/freq/width/mills）
 
 ### 附加记录类型
 - `skip` - 手动跳过试验
 - `complete_manually` - 手动完成试验
 - `null` - 空记录
-- `all_complete` - 所有判断条件均满足一次后结束
+- `all_complete` - 弃用
 
 ### 日志文件输出
 - 带时间戳的试验信息记录到文件
 - 会话结束时以 JSON 格式导出上下文信息
 - UI 日志窗口实时显示
-
----
-
-## 定时系统
-
-### 按钮定时
-
-使用 Ctrl+Shift+Click 设置定时按钮按下，或指定定时值：
-
-#### 按时间（秒）
-1. 在 `IFTimingValue` 输入字段中输入值
-2. 在 `Timing Method` 下拉选择 `sec`
-3. Ctrl+Shift+Click 目标按钮
-4. 按钮在指定时间后执行
-
-#### 按试验计数
-1. 在 `IFTimingValue` 输入字段中输入值
-2. 在 `Timing Method` 下拉选择 `trialStart`/`trialEnd`/`trialInTarget`
-3. Ctrl+Shift+Click 目标按钮
-4. 按钮在指定的试验计数后执行
-
-### 层级定时
-
-创建复杂的定时链：
-1. 从下拉菜单中选择基础定时
-2. 添加子定时和延迟
-3. 导出/导入定时配置
-
-### 定时命令
-- Ctrl+Click 按钮 - 移除定时
-- Shift+Click 声音按钮 - 预览声音
 
 ---
 
@@ -780,7 +812,9 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 
 ## 构建配置
 
-自定义图像应放置在与配置文件相同的目录中。
+- 构建场景顺序：`StartMenu`（索引 0）→ `MainScene`（索引 1）。
+- 配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）放置 `config*.ini`（可多个，菜单可选）与 `metaConfig.ini`。
+- 自定义图像应放置在与配置文件相同的目录中。
 
 ---
 
@@ -803,6 +837,18 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 4. **位置分配错误或类似问题**
    - 确保位置索引在 `available_pos` 范围内
    - 验证配置中的模式语法
+
+5. **OG PWM 无效**
+   - 确认下位机为 Pyboard（Arduino 不支持 ogpwm）
+   - 检查 `OGChannel` 与 `OGPWMFreq/OGPWMWidth/OGPWMTime`
+
+6. **串口命令校验连续失败弹窗**
+   - 检查连接、`compatibleVersion` 与 `serialSpeed`
+   - 重连后会自动回灌状态快照
+
+7. **LogEvent 未开始录制**
+   - 检查 `logEventPath` 与 LogEvent 窗口标题
+   - 录制由后台线程自动点击 Record、自动关闭弹窗
 
 ---
 

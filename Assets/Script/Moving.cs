@@ -1,5 +1,6 @@
 ﻿using System;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEditor;
 using System.Collections;
 using System.Collections.Generic;
@@ -956,6 +957,7 @@ public class Moving : MonoBehaviour
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     int serialReadContentLsMark = -1;
     float commandVerifyExpireTime = 2;//2s
+    int commandVetifyFailCount = 0; int commandVetifyMaxFailCount = 3;
     ManualResetEvent manualResetEventVerify = new ManualResetEvent(true);
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
@@ -1177,12 +1179,20 @@ public class Moving : MonoBehaviour
     }
 
     void Quit(){
-        #if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-        #else
-            Application.Quit();
-        #endif
         quitMark += 1;
+        if(LaunchContext.ReturnToMenuOnExit){
+            // 从菜单进入：清理后返回菜单场景，而不是退出应用
+            CleanupStreamWriter();
+            LaunchContext.HasSelected = false;
+            SceneManager.LoadScene("StartMenu");
+        }
+        else{
+            #if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+            #else
+                Application.Quit();
+            #endif
+        }
     }
     
     T GetRandom<T>(List<T> _range){
@@ -1199,7 +1209,9 @@ public class Moving : MonoBehaviour
     }
 
     public void SetBarPos(float actual_pos){//0-1，角度输入时需要配合DegToPos
-        bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
+        if(debugMode){
+            bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
+        }
         // ui_update.MessageUpdate($"bar Pos in float: {actual_pos}");
     }
 
@@ -3224,7 +3236,7 @@ public class Moving : MonoBehaviour
                     // Debug.Log("port not open");
                     return -2;
                 }else if(e.Message.Contains("timed out")){
-
+                    Debug.Log($"timed out; messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
                 }else{
                     Debug.Log($"error: {e.Message}: verify failed because serial port error: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
                 }
@@ -3254,6 +3266,11 @@ public class Moving : MonoBehaviour
         }
         // Debug.LogError($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
         Debug.Log($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
+        commandVetifyFailCount++;
+        if(commandVetifyFailCount >= commandVetifyMaxFailCount){
+            Debug.LogError($"commandVerify failed for {commandVetifyFailCount} times!");
+            MessageBoxForUnity.Ensure($"commandVerify failed for {commandVetifyFailCount} times!");
+        }
         manualResetEventVerify.Set();
         return -1;
     }
@@ -3279,15 +3296,58 @@ public class Moving : MonoBehaviour
     #endregion methods of communicating end
 
     #region methods of file write
+    static readonly char[] InvalidNameChars = Path.GetInvalidFileNameChars();
+    static readonly HashSet<string> ReservedNames = new HashSet<string>{
+        "CON","PRN","AUX","NUL",
+        "COM1","COM2","COM3","COM4","COM5","COM6","COM7","COM8","COM9",
+        "LPT1","LPT2","LPT3","LPT4","LPT5","LPT6","LPT7","LPT8","LPT9"};
+
+    // 把 [logSettings] logPath 清洗为合法的相对子路径：统一分隔符、迭代删非法字符至可行、分段规整（去空/./..、去尾部.与空格、去保留名）
+    string SanitizeLogSubPath(string raw){
+        if(string.IsNullOrWhiteSpace(raw)) return "";
+        string s = raw.Replace('\\','/');
+        for(int guard=0; guard<10; guard++){
+            string before = s;
+            StringBuilder sb = new StringBuilder(s.Length);
+            foreach(char c in s){
+                if(c=='/'){ sb.Append(c); continue; }
+                if(Array.IndexOf(InvalidNameChars, c) >= 0) continue;
+                sb.Append(c);
+            }
+            s = sb.ToString();
+            if(s == before) break;
+        }
+        List<string> keep = new List<string>();
+        foreach(string segRaw in s.Split('/')){
+            string seg = segRaw.Trim().TrimEnd('.', ' ');
+            if(seg.Length==0 || seg=="." || seg=="..") continue;
+            string baseName = seg.Contains('.') ? seg.Substring(0, seg.IndexOf('.')) : seg;
+            if(ReservedNames.Contains(baseName.ToUpperInvariant())) continue;
+            keep.Add(seg);
+        }
+        return string.Join("/", keep);
+    }
+
     private void InitializeStreamWriter(){
         try{
             #if UNITY_EDITOR
-                if(!Directory.Exists("Assets/Resources/Logs/")){Directory.CreateDirectory("Assets/Resources/Logs/");}
-                filePath ="Assets/Resources/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
+                string baseDir = "Assets/Resources";
             #else
-                if(!Directory.Exists(Application.dataPath+"/Logs")){Directory.CreateDirectory(Application.dataPath+"/Logs");}
-                filePath=Application.dataPath+"/Logs/"+DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
+                string baseDir = Application.dataPath;
             #endif
+            string sub = SanitizeLogSubPath(iniReader.ReadIniContent("logSettings", "logPath", ""));
+            string logDir = string.IsNullOrEmpty(sub) ? baseDir + "/Logs" : baseDir + "/" + sub + "/Logs";
+            try{
+                Directory.CreateDirectory(logDir);
+            }catch(Exception e){
+                Debug.LogWarning($"invalid logPath '{sub}', fallback to default Logs: {e.Message}");
+                sub = ""; logDir = baseDir + "/Logs";
+                Directory.CreateDirectory(logDir);
+            }
+            filePath = logDir + "/" + DateTime.Now.ToString("yyyy_MM_dd_HH_mm");
+            if(!string.IsNullOrEmpty(sub)){
+                uiUpdateMessageQueue.Enqueue($"log will be save to {logDir}");
+            }
             FileStream logfileStream = new FileStream(filePath + "_rec.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
             logStreamWriter = new StreamWriter(logfileStream);
             FileStream posfileStream = new FileStream(filePath + "_pos.txt", FileMode.Create, FileAccess.Write, FileShare.ReadWrite, BUFFER_SIZE, true);
@@ -3442,9 +3502,10 @@ public class Moving : MonoBehaviour
     void Awake(){
         #if !UNITY_EDITOR
             InApp = true;
-            config_path=Application.dataPath+"/Resources/config.ini";
             // if(!System.IO.Directory.Exists(Application.dataPath+"/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/Sprites");}
         #endif
+        // 由菜单场景（LaunchContext）决定使用哪个配置文件；未选择时回退默认 config.ini
+        config_path = LaunchContext.ResolveConfigPath();
 
         time_rec_for_log[0] = Time.realtimeSinceStartup;
         commandConverter = new CommandConverter(lsTypes);
