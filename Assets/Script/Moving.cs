@@ -1209,9 +1209,7 @@ public class Moving : MonoBehaviour
     }
 
     public void SetBarPos(float actual_pos){//0-1，角度输入时需要配合DegToPos
-        if(debugMode){
-            bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
-        }
+        bar.transform.localPosition = new Vector3(actual_pos, bar.transform.localPosition.y, bar.transform.localPosition.z);
         // ui_update.MessageUpdate($"bar Pos in float: {actual_pos}");
     }
 
