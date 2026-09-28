@@ -3188,12 +3188,20 @@ public class Moving : MonoBehaviour
         int tempMsgInd = 0;//记录已经同步完成的内容
 
         // Debug.Log("verify start");
-        while (!succes && fail_count < fail_countMax){
-            try{
-                for (int i = tempMsgInd; i < messages.Count; i++){
+        for (int i = tempMsgInd; i < messages.Count; i++){
+            int aimVarIndex = Arduino_var_list.FindIndex(str => str == messages[i]);
+            if (aimVarIndex == -1){
+                Debug.LogError($"verify: variable \"{messages[i]}\" not found in Arduino_var_list, cannot verify");
+                manualResetEventVerify.Set();
+                return -1;
+            }
+            string temp_aim = aimVarIndex.ToString() + "=" + values[i].ToString();
+            bool msgVerified = false;
+            while (!msgVerified && fail_count < fail_countMax){//本条消息 echo 确认通过后才发送下一条
+                try{
                     string temp_echo = "error";
-                    DataSend("ping", inVerifyOrVerifyNeedless: true);
-                    DataSend(messages[i] + "=" + values[i].ToString(), true, inVerifyOrVerifyNeedless: true);
+                    // DataSend("ping", inVerifyOrVerifyNeedless: true);
+                    if (DataSend(messages[i] + "=" + values[i].ToString(), true, inVerifyOrVerifyNeedless: true) == -2){ manualResetEventVerify.Set(); Debug.LogError("verify: DataSend failed"); return -2; }
                     while (true){
                         temp_echo = sp.ReadLine();
 
@@ -3202,14 +3210,14 @@ public class Moving : MonoBehaviour
                             temp_echo = temp_echo[5..temp_echo.IndexOf(":echo")];
                             break;
                         }
-                        else if(temp_echo.Length > 3){//非echo行：按原始字节重打包回帧队列（Latin-1 保证字符数==字节数，切片按字节对齐）
+                        else if(temp_echo.Length > 3){//非echo行：按原始字节重打包回帧队列（Latin-1 保证字符数==字节数，切片按字节对齐），不作为判定依据，继续读直到 echo 行
                             serial_read_content_ls.Add(new byte[] { 0xAA }.Concat(Encoding.GetEncoding(28591).GetBytes(temp_echo)[1..(temp_echo.Length - 1)]).Concat(new byte[] { 0xDD }).ToArray());
-                            break;
+                            continue;
                         }
                     }
-                    string temp_aim = Arduino_var_list.FindIndex(str => str == messages[i]).ToString() + "=" + values[i].ToString();
                     if (temp_echo.Replace(" ", "") == temp_aim){
                         // Debug.Log("verified:" + temp_aim);
+                        msgVerified = true;
                         tempMsgInd = i + 1;
 
                         if (tempMsgInd == messages.Count){
@@ -3218,56 +3226,60 @@ public class Moving : MonoBehaviour
                             return 1;
                         }
                         //ui_update.Message_update("verified:"+temp_aim+"\n");
+                    }
+                    else{
                         fail_count++;
-                        continue;
+                        Debug.Log($"verify mismatch [msg {i}/{messages.Count}]: expected \"{temp_aim}\", got \"{temp_echo}\"");
+                    }
+                }
+                catch (Exception e){
+                    if (e.Message.Contains("not open")){
+                        manualResetEventVerify.Set();
+                        Debug.LogError("port not open");
+                        // Debug.Log("port not open");
+                        return -2;
+                    }else if(e.Message.Contains("timed out")){
+                        Debug.Log($"timed out; messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
+                    }else{
+                        Debug.Log($"error: {e.Message}: verify failed because serial port error: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
                     }
                     fail_count++;
-
-                    // manualResetEventVerify.Set();
                     // return -1;
                 }
-            }
-            catch (Exception e){
-                if (e.Message.Contains("not open")){
-                    manualResetEventVerify.Set();
-                    Debug.LogError("port not open");
-                    // Debug.Log("port not open");
-                    return -2;
-                }else if(e.Message.Contains("timed out")){
-                    Debug.Log($"timed out; messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
-                }else{
-                    Debug.Log($"error: {e.Message}: verify failed because serial port error: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
-                }
-                fail_count++;
-                // return -1;
-            }
-            finally{
-                if (serial_read_content_ls.Count() > 0){
-                    byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
-                    int temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
-                    while (temp_end != -1){
-                        byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
-                        // Debug.Log("process: " + string.Join(",", tempCompleteMsgInVerify));
-                        if (tempCompleteMsgInVerify.Length > 0){
-                            commandQueue.Enqueue(tempCompleteMsgInVerify);
-                        }
-                        else{
-                            serial_read_content_ls.Clear();
-                        }
-                        totalMsgInVerify = totalMsgInVerify[(temp_end + 1)..].ToArray();
-                        temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                finally{
+                    try{
+                        if (serial_read_content_ls.Count() > 0){
+                            byte[] totalMsgInVerify = commandConverter.Read_buffer_concat(serial_read_content_ls, 0, -1);
+                            int temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
+                            while (temp_end != -1){
+                                byte[] tempCompleteMsgInVerify = commandConverter.ProcessSerialPortBytes(totalMsgInVerify);
+                                // Debug.Log("process: " + string.Join(",", tempCompleteMsgInVerify));
+                                if (tempCompleteMsgInVerify.Length > 0){
+                                    commandQueue.Enqueue(tempCompleteMsgInVerify);
+                                }
+                                else{
+                                    serial_read_content_ls.Clear();
+                                }
+                                totalMsgInVerify = totalMsgInVerify[(temp_end + 1)..].ToArray();
+                                temp_end = commandConverter.FindMarkOfMessage(false, totalMsgInVerify, 0);
 
+                            }
+                        }
                     }
+                    catch (Exception e){
+                        Debug.LogError($"crashed in finally-case, error: {e.Message}");
+                    }
+                    // manualResetEventVerify.Set();
                 }
-                // manualResetEventVerify.Set();
             }
+            if (!msgVerified) break;
         }
         // Debug.LogError($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
         Debug.Log($"verify failed: messages:{string.Join(",", messages)}, values:{string.Join(",", values)}");
         commandVetifyFailCount++;
         if(commandVetifyFailCount >= commandVetifyMaxFailCount){
             Debug.LogError($"commandVerify failed for {commandVetifyFailCount} times!");
-            MessageBoxForUnity.Ensure($"commandVerify failed for {commandVetifyFailCount} times!");
+            // MessageBoxForUnity.Ensure($"commandVerify failed for {commandVetifyFailCount} times!");
         }
         manualResetEventVerify.Set();
         return -1;

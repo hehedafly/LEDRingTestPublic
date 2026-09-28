@@ -802,9 +802,9 @@ public class UIUpdate : MonoBehaviour
                                     if (parts.Length >= 3) time =   Convert.ToInt16(parts[2]);
                                     if (parts.Length >= 4) channel =Convert.ToInt16(parts[3]);
                                 }else{
-                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMFreq" )? inputFieldContent["OGPWMFreq" ]: $"{freq}", out freq);
-                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMWidth")? inputFieldContent["OGPWMWidth"]: $"{width}", out width);
-                                    int.TryParse(inputFieldContent.ContainsKey("OGPWMTime" )? inputFieldContent["OGPWMTime" ]: $"{time}", out time);
+                                    if(inputFieldContent.TryGetValue("OGPWMFreq" ,out string v_freq ) & int.TryParse(v_freq , out int _freq )){freq  = _freq ;}
+                                    if(inputFieldContent.TryGetValue("OGPWMWidth",out string v_width) & int.TryParse(v_width, out int _width)){width = _width;}
+                                    if(inputFieldContent.TryGetValue("OGPWMTime" ,out string v_time ) & int.TryParse(v_time , out int _time )){time  = _time ;}
                                     channel = dropdowns.Find(d => d.name == "OGChannel").value;
                                 }
                                 moving.OGPWMSet(time, freq, width, channel);

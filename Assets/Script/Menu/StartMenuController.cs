@@ -86,6 +86,7 @@ public class StartMenuController : MonoBehaviour
             return;
         }
 
+        BlankSecondaryDisplays();
         RefreshList();
     }
 
@@ -105,6 +106,30 @@ public class StartMenuController : MonoBehaviour
             return string.Equals(v.Trim(), "true", StringComparison.OrdinalIgnoreCase);
         }
         return false;
+    }
+
+    /// <summary>菜单期间遮住已激活的副屏：Unity 无 Display.Deactivate，为每个 active 副屏放一个纯黑相机。
+    /// 该物体属于 StartMenu 场景，进入 MainScene 时随场景卸载自动销毁，Moving 无需关心。</summary>
+    void BlankSecondaryDisplays()
+    {
+        int n = Display.displays.Length;
+        if (n <= 1) { return; }
+        GameObject blanker = null;
+        for (int i = 1; i < n; i++)
+        {
+            if (!Display.displays[i].active) { continue; }   // 仅遮已激活的副屏
+            if (blanker == null)
+            {
+                blanker = new GameObject("MenuDisplayBlanker");
+                blanker.transform.SetParent(transform, false);
+            }
+            Camera cam = new GameObject("BlankCam" + i).AddComponent<Camera>();
+            cam.transform.SetParent(blanker.transform, false);
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.cullingMask = 0;      // 只清黑，不渲染物体
+            cam.targetDisplay = i;
+        }
     }
 
     /// <summary>扫描配置文件并构建展示数据。</summary>
