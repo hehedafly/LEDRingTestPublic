@@ -70,8 +70,13 @@ public class LinearTrackMoving : MonoBehaviour
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
-    List<string> Arduino_var_list =  "p_enter_reward_context, p_in_reward_context, p_lick_time_accu, p_lick_count, p_start_water, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay, p_serveWaterReward".Replace(" ", "").Split(',').ToList();
+    // 下标顺序 = 固件 pointer_array[]，勿改（enter_reward_context..INDEBUGMODE）
+    // 原 p_lick_time_accu / p_start_water 已随固件重构删除；lick_count 移入数组命名空间
+    List<string> Arduino_var_list =  "p_enter_reward_context, p_in_reward_context, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay, p_serveWaterReward, p_INDEBUGMODE".Replace(" ", "").Split(',').ToList();
+    // 下标顺序 = 固件 pointerArrayType_array[]；命令形如 <arrIdx>[<elemIdx>]=<val>
+    List<string> Arduino_ArrayTypeVar_list =  "p_waterServeMicros, p_lick_count, p_water_flush".Replace(" ", "").Split(',').ToList();
     Dictionary<string, string> Arduino_var_map =  new Dictionary<string, string>{};//{"p_...", "0"}, {"p_...", "1"}...
+    Dictionary<string, string> Arduino_ArrayTypeVar_map =  new Dictionary<string, string>{};//{"p_water_flush", "2"}...
     
     //--------------------------------------file writing-----------------------------------------------
     StreamWriter streamWriter;
@@ -150,7 +155,6 @@ public class LinearTrackMoving : MonoBehaviour
     public float dic_water_serving_runbegin{set{dicWaterServingSpdVariables["time_run_begin"]=value;}}
     Vector3 rec_pos;
     //--------------------------------------licking decision (给水判定上移, 对齐 Moving.cs)-----------------------------------------------
-    int reward_remaining=0;//进奖励区置为 lick_count_max，每次给水递减
     float lastRewardTime=-999f;
     float minIgnoreLickInterval=0.3f;//两次给水最小间隔(s)
     float extraRewardTimeInSec=1f;//离开奖励区后仍可给水的额外窗口(s)
@@ -277,7 +281,9 @@ public class LinearTrackMoving : MonoBehaviour
                 string command=command_Converter.ConvertToString(_command);
                 string body = command.Contains(":")? command[(command.IndexOf(":")+1)..] : command;//去除类型头(短码长度可变)
                 if(body.StartsWith("lick:")){
-                    LickingCheck();//舔水中央决策（含分区记录、指示灯、mode0 给水判定）
+                    // 固件舔水上报带通道号(context_info:lick:<ch>)；缺省时按通道 0 处理
+                    int.TryParse(body[(body.IndexOf(':')+1)..], out int lick_channel);
+                    LickingCheck(lick_channel);
                 }else if(body.StartsWith("ws")){
                     waterServedCount++;
                     ui_update.WaterServeIndicateUpdate(RelativeX);
@@ -391,8 +397,14 @@ public class LinearTrackMoving : MonoBehaviour
                     string temp_var_name = message.Split('=')[0];
                     temp_var_name = temp_var_name.Replace("/","");
 
-                    if(Arduino_var_map.ContainsKey(temp_var_name)){//从p_xxx转为int=int
-                        string temp_command=Arduino_var_map[temp_var_name]+"="+message.Split('=')[1];
+                    // 数组变量形如 p_water_flush[2]，与标量分属两个命名空间（对齐 Moving.cs / 固件 commandParse）
+                    int temp_bracket = temp_var_name.IndexOf('[');
+                    bool is_array_var = temp_bracket > 0 && Arduino_ArrayTypeVar_map.ContainsKey(temp_var_name[..temp_bracket]);
+
+                    if(Arduino_var_map.ContainsKey(temp_var_name) || is_array_var){//从p_xxx转为int=int
+                        string temp_command = is_array_var?
+                            Arduino_ArrayTypeVar_map[temp_var_name[..temp_bracket]] + temp_var_name[temp_bracket..] + "=" + message.Split('=')[1]:
+                            Arduino_var_map[temp_var_name] + "=" + message.Split('=')[1];
                         if(!inVerifyOrVerifyNeedless){
                             commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
                         }
@@ -447,6 +459,11 @@ public class LinearTrackMoving : MonoBehaviour
             while(!succes && fail_count < fail_countMax){
                 try{
                     for(int i=tempMsgInd; i<messages.Count; i++){
+                        int aimVarIndex = Arduino_var_list.FindIndex(str => str==messages[i]);
+                        if(aimVarIndex==-1){//echo 回文按 <int>=<value> 比对，数组命名空间无固定下标形式，无法校验
+                            Debug.LogError($"verify: variable \"{messages[i]}\" not found in Arduino_var_list, cannot verify");
+                            return -1;
+                        }
                         string temp_echo = "error";
                         DataSend("ping", inVerifyOrVerifyNeedless:true);
                         DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
@@ -460,7 +477,7 @@ public class LinearTrackMoving : MonoBehaviour
                                 serial_read_content_ls.Add(new byte[]{0xAA}.Concat(Encoding.UTF8.GetBytes(temp_echo)[1..(temp_echo.Length-1)]).Concat(new byte[]{0xDD}).ToArray());
                             }
                         }
-                        string temp_aim = Arduino_var_list.FindIndex(str => str==messages[i]).ToString() + "=" + values[i].ToString();
+                        string temp_aim = aimVarIndex.ToString() + "=" + values[i].ToString();
                         if(temp_echo.Replace(" ", "")==temp_aim){
                             tempMsgInd = i+1;
                             continue;
@@ -588,6 +605,9 @@ public class LinearTrackMoving : MonoBehaviour
 
         for(int i = 0; i<Arduino_var_list.Count; i++){
             Arduino_var_map.Add(Arduino_var_list[i], i.ToString());
+        }
+        for(int i = 0; i<Arduino_ArrayTypeVar_list.Count; i++){
+            Arduino_ArrayTypeVar_map.Add(Arduino_ArrayTypeVar_list[i], i.ToString());
         }
 
         IniReader iniReader = new IniReader(context_Generate.GetConfigPath());
@@ -777,12 +797,13 @@ public class LinearTrackMoving : MonoBehaviour
     }
 
     int Trial_context_sync(int context_id){
-        //"p_enter_reward_context, p_in_reward_context, p_lick_time_accu, p_lick_count, p_start_water, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay"
+        //"p_enter_reward_context, p_in_reward_context, p_lick_mode, p_trial, p_lick_count_max, p_lick_mode0_delay, p_lick_mode1_delay, p_serveWaterReward, p_INDEBUGMODE"
         trial_syncing=true;
         lick_count_max=context_info_ls[context_id].lick_count_max;
         context_info_ls[context_id].lick_threshold.CopyTo(lick_count_succes_threshold, 0);
-        List<string> variables = new List<string>(){"p_enter_reward_context", "p_lick_count_max"};
-        List<int> values = new List<int>(){-1, lick_count_max};
+        // 不再同步 p_lick_count_max：固件端额度语义已废除，该变量仅保留在变量表里占位（下标契约）。
+        List<string> variables = new List<string>(){"p_enter_reward_context"};
+        List<int> values = new List<int>(){-1};
         variables.Add("p_trial");
         values.Add(now_trial);
 
@@ -843,18 +864,18 @@ public class LinearTrackMoving : MonoBehaviour
         }
     }
 
-    public void LickingCheck(){//舔水中央决策（对齐 Moving.cs）：mode0 由 Unity 判定并下发出水命令
+    public void LickingCheck(int channel=0){//舔水中央决策（对齐 Moving.cs）：mode0 由 Unity 判定并下发出水命令
         bool inRewardZone = X>=rewardZoneStartAndEnd[now_context*2] && X<rewardZoneStartAndEnd[now_context*2+1];
         RecordLickByZone();
         ui_update.LickIndicateUpdate(RelativeX);
+        // 不再做奖励额度(reward_remaining)判定：额度语义已随固件重构废除，
+        // 每通道能出多少水由 Unity 的给水间隔 + 离奖励区与否决定，出水次数由固件 waterServeMicros 决定。
         if(serve_water_mode==0 && waiting==0
            && (inRewardZone || alarm.GetAlarm("rewardEnable")>0)   // 奖励区内 或 额外奖励窗口内
-           && reward_remaining>0
            && Time.fixedUnscaledTime-lastRewardTime > minIgnoreLickInterval){  // 最小给水间隔
             lick_count_correct++;
-            reward_remaining--;
             lastRewardTime = Time.fixedUnscaledTime;
-            string temp_str="p_serveWaterReward=1";
+            string temp_str=$"p_serveWaterReward={channel}";//serveWaterReward 携带出水通道(-1 空闲, 0..3)
             if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}  // Unity 决策→Arduino 执行
         }
     }
@@ -934,7 +955,7 @@ public class LinearTrackMoving : MonoBehaviour
                             if(IsInRewardZone || !RewardZoneNeeded){    
                                 if(dicWaterServingSpdVariables["random_delayed"]==1){//上次已经delay过
                                     Debug.Log("water served in running");    
-                                    string temp_str="p_serveWaterReward=1";
+                                    string temp_str="p_serveWaterReward=0";//速度/里程触发的给水不关联舔水通道，固定走通道 0
                                     if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
 
                                     dicWaterServingSpdVariables["random_delayed"]=0;
@@ -949,7 +970,7 @@ public class LinearTrackMoving : MonoBehaviour
                         if(now_time-dicWaterServingSpdVariables["time_served"]>dicWaterServingSpdVariables["time_serve_interval"]){
                             if(IsInRewardZone || !RewardZoneNeeded){
                                 Debug.Log("water served in trying");
-                                string temp_str="p_serveWaterReward=1";
+                                string temp_str="p_serveWaterReward=0";//速度触发给水不关联舔水通道，固定走通道 0
                                 if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
                                 dicWaterServingSpdVariables["time_served"]=now_time;
                             }
@@ -969,7 +990,7 @@ public class LinearTrackMoving : MonoBehaviour
             if(now_time-dicWaterServingLengthVariables["time_served"]>dicWaterServingLengthVariables["time_serve_interval"]){
                 if(IsInRewardZone || !RewardZoneNeeded){
                     Debug.Log("water served in trying");
-                    string temp_str="p_serveWaterReward=1";
+                    string temp_str="p_serveWaterReward=0";//里程触发给水不关联舔水通道，固定走通道 0
                     if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
                     dicWaterServingLengthVariables["time_served"]=now_time;
                     LengthRecClear = true;
@@ -1057,7 +1078,6 @@ public class LinearTrackMoving : MonoBehaviour
             }//进入或离开context
 
             if (pre_pos<=rewardZoneStartAndEnd[i_context_zone] && now_pos>rewardZoneStartAndEnd[i_context_zone]){//进入奖励区
-                reward_remaining = lick_count_max;//本次奖励区可给水次数
                 alarm.TrySetAlarm("rewardEnable", extraRewardTimeInSec, out _, force:true);//额外奖励窗口(对齐 Moving.cs)
                 string temp_str="p_enter_reward_context=1";
                 if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}

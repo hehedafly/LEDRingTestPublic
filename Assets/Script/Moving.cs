@@ -3183,7 +3183,7 @@ public class Moving : MonoBehaviour
         }
         sp.ReadTimeout = 100;
         int fail_count = 0;
-        bool succes = false;
+        // bool succes = false;
         int fail_countMax = 10;
         int tempMsgInd = 0;//记录已经同步完成的内容
 
@@ -3221,7 +3221,7 @@ public class Moving : MonoBehaviour
                         tempMsgInd = i + 1;
 
                         if (tempMsgInd == messages.Count){
-                            succes = true;
+                            // succes = true;
                             manualResetEventVerify.Set();
                             return 1;
                         }
@@ -4046,7 +4046,7 @@ public class Moving : MonoBehaviour
                 .GroupBy(c => c.Split(",")[0].Replace("section: ", ""))
                 .Select(g => $"[{g.Key}] " + string.Join("\t|||\t",
                     g.Select(c => c.Split(",")[1].Replace(" key: ", "") + " : " + string.Join(",", c.Split(",").Skip(2)).Replace("default value:", "").Replace("value:", "").Trim()))));
-        IniReadContent = "--------------------------------\ndefault:\n" + Fmt(tempIniReadContent[0]) + "\n--------------------------------\nreaded:\n" + Fmt(tempIniReadContent[1]);
+        IniReadContent = "--------------------------------\ndefault:\n" + Fmt(tempIniReadContent[0]) + "\n--------------------------------\nread:\n" + Fmt(tempIniReadContent[1]);
         if(iniReader.ReadIniContent("settings", "checkConfigContent", "false") == "true"){
             if(MessageBoxForUnity.YesOrNo("Please check the following Configs:\n" + IniReadContent, "iniReader") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){}
             else{
