@@ -543,6 +543,10 @@ public class UIUpdate : MonoBehaviour
                 }
                 break;
             }
+            case "TouchpannelReset":{
+                moving.DataSend($"{moving.ArduinoVarList[11]}={1000}", true, true);
+                break;
+            }
             case "IPCRefreshButton":{
                 if(moving.IsIPCInNeed()){
                     if(alarm.GetAlarm("ipcRefresh") < 0 && alarm.GetAlarm("checkIPCConnectStatus") < 0){
