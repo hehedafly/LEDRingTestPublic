@@ -265,6 +265,7 @@ public class StartMenuController : MonoBehaviour
         {
             // 先显示加载遮罩，等一帧渲染后再切场景（同步 LoadScene 会阻塞主线程，画面停在遮罩帧）
             loadingOverlay.SetActive(true);
+            loadingOverlay.transform.SetAsLastSibling();   // 压到所有兄弟物体之上，否则 GoTo 按钮仍可见可点
             StartCoroutine(LoadTargetSceneNextFrame());
         }
         else

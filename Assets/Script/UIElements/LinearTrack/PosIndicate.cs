@@ -237,19 +237,28 @@ public class PosIndicate : ImageDrawer
         }
     }
 
+    // 按“图片可视区域顶部的像素偏移”定位标记与文本。
+    // 用图片世界包围盒换算，兼容任意层级缩放/锚点（如 LabelAndTexts 与 PositionIndicateImage 的缩放差）。
+    private readonly Vector3[] _imageCorners = new Vector3[4];
+
     private void ChangeY(GameObject go, float _y){
-        Transform tf;
-        if(go.TryGetComponent<Transform>(out tf)){
-            tf.localPosition = new Vector3(tf.localPosition.x, -1 * _y, tf.localPosition.z);
-            return;
-        }
+        if(go != null){ ChangeY(go.transform, _y); }
     }
     private void ChangeY(Text go, float _y){
-        Transform tf;
-        if(go.TryGetComponent<Transform>(out tf)){
-            tf.localPosition = new Vector3(tf.localPosition.x, -1 * _y, tf.localPosition.z);
-            return;
-        }
+        if(go != null){ ChangeY(go.transform, _y); }
+    }
+    private void ChangeY(Transform tf, float _y){
+        if(tf == null || image == null){ return; }
+        RectTransform img = image.rectTransform;
+        img.GetWorldCorners(_imageCorners);
+
+        float top = Mathf.Max(Mathf.Max(_imageCorners[0].y, _imageCorners[1].y), Mathf.Max(_imageCorners[2].y, _imageCorners[3].y));
+        float bottom = Mathf.Min(Mathf.Min(_imageCorners[0].y, _imageCorners[1].y), Mathf.Min(_imageCorners[2].y, _imageCorners[3].y));
+        float t = Mathf.Clamp01(_y / Mathf.Max(1f, img.rect.height));
+
+        Vector3 world = tf.position;
+        world.y = Mathf.Lerp(top, bottom, t);
+        tf.position = world;
     }
 
     void Start()  

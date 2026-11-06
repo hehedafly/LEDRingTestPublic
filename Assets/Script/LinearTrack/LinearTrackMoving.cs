@@ -65,12 +65,12 @@ public class LinearTrackMoving : MonoBehaviour
     List<byte[]> serial_read_content_ls = new List<byte[]>();//仅在串口线程中改变
     public string[] port_black_list = new string[]{};
 
-    int serialReadContentLsMark = -1;
     readonly object lockObjectMovement = new object();
     float commandVerifyExpireTime = 2;//2s
     ManualResetEvent manualResetEventVerify = new ManualResetEvent(true);
     //readonly object lockObject_command = new object();
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
+    // 仅由 Context_verify(queueOnFail:true) 填充：CommandVerify 失败后的延迟重发队列
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     // 下标顺序 = 固件 pointer_array[]，勿改（enter_reward_context..INDEBUGMODE）
     // 原 p_lick_time_accu / p_start_water 已随固件重构删除；lick_count 移入数组命名空间
@@ -103,16 +103,17 @@ public class LinearTrackMoving : MonoBehaviour
     public int[] lick_count_succes_threshold=new int[]{4, 8};
     public struct Context_info{
         public Context_info(string _start_method, int _lick_count_max, string _s_color, string _f_color, float _wait_sec, int[] _lick_threshold, int trial_count, bool _is_inf=false):this(){
-            start_pos = new float[trial_count];
+            // now_trial 为 1 基，索引 1..trial_count 有效，因此多分配 1 个（索引 0 不使用）
+            start_pos = new float[trial_count + 1];
             if(_start_method.StartsWith("random")){
                 string[] temp_ls=_start_method[_start_method.IndexOf("random")..].Split("~");
                 if(temp_ls.Length==2){
-                    for(int i=0; i<trial_count; i++){
+                    for(int i=0; i<start_pos.Length; i++){
                         start_pos[i] = UnityEngine.Random.Range(Convert.ToSingle(temp_ls[0]), Convert.ToSingle(temp_ls[1]));
                     }
                 }
             }else{
-                for(int i=0; i<trial_count; i++){start_pos[i] = Convert.ToSingle(_start_method);}
+                for(int i=0; i<start_pos.Length; i++){start_pos[i] = Convert.ToSingle(_start_method);}
             }
             lick_count_max = _lick_count_max;
             if (ColorUtility.TryParseHtmlString(_s_color, out Color temp_color)){
@@ -341,36 +342,10 @@ public class LinearTrackMoving : MonoBehaviour
                         catch (TimeoutException){ continue; }
                         catch (Exception ex){ Debug.Log(ex.Message); continue; }
                         serial_read_content_ls.Add(readBuffer);
-                        if(command_Converter.FindMarkOfMessage(true, readBuffer, 0)!=-1){
-                            serialReadContentLsMark=serial_read_content_ls.Count()-1;
-                        }
-                        int temp_end=-1;
-                        if(serialReadContentLsMark!=-1){
-                            temp_end=command_Converter.FindMarkOfMessage(false, readBuffer, 0);
-                        }
-
-                        if(serialReadContentLsMark!=-1 && temp_end!=-1){
-                            byte[] temp_complete_msg;
-                            temp_complete_msg = command_Converter.ProcessSerialPortBytes(command_Converter.Read_buffer_concat(serial_read_content_ls, serialReadContentLsMark, -1));
-                            if(temp_complete_msg.Length>0){
-                                if (command_Converter.GetCommandType(temp_complete_msg, out _)==0){
-                                    CommandParse(temp_complete_msg);
-                                }
-                                else{commandQueue.Enqueue(temp_complete_msg);}
-                            }
-
-                            serial_read_content_ls.Clear();
-                            if(readBuffer.Length-temp_end>0){
-                                byte[] temp_readBuffer=new byte[readBuffer.Length-temp_end];
-                                Array.Copy(readBuffer, temp_end ,temp_readBuffer, 0, temp_readBuffer.Length);
-                                if(command_Converter.FindMarkOfMessage(true, temp_readBuffer, 0)!=-1){
-                                    serial_read_content_ls.Add(temp_readBuffer);
-                                    serialReadContentLsMark=0;
-                                }
-                            }
-                        }
+                        DrainPendingFrames();
                     }
                     else{
+                        if(serial_read_content_ls.Count > 0){ DrainPendingFrames(); }
                         Thread.Sleep(1);
                     }
                 }
@@ -393,7 +368,48 @@ public class LinearTrackMoving : MonoBehaviour
         }
     }
 
-    public int DataSend(string message, bool variable_change = false, bool inVerifyOrVerifyNeedless=false){
+    /// <summary>
+    /// 把 serial_read_content_ls 中所有完整帧一次抽完，只保留未完成的尾巴。
+    /// 帧格式：AA + type + len + content + DD
+    /// </summary>
+    void DrainPendingFrames(){
+        byte[] pending = command_Converter.Read_buffer_concat(serial_read_content_ls, 0, -1);
+        serial_read_content_ls.Clear();
+
+        while(true){
+            int start = command_Converter.FindMarkOfMessage(true, pending, 0);
+            if(start < 0){ pending = new byte[0]; break; }          // 没有帧头：明文/垃圾
+            if(start > 0){                                          // 丢掉帧头前的明文
+                byte[] trimmed = new byte[pending.Length - start];
+                Array.Copy(pending, start, trimmed, 0, trimmed.Length);
+                pending = trimmed;
+            }
+
+            if(pending.Length < 4){ break; }                        // AA+type+len+DD 都不够
+            int len = pending[2];
+            int frameLength = 4 + len;                              // AA+type+len+content+DD
+            if(pending.Length < frameLength){ break; }              // 帧未收全，等下一批
+            if(pending[3 + len] != 0xDD){                           // 长度不符：丢一个 AA 重同步
+                byte[] rest = new byte[pending.Length - 1];
+                Array.Copy(pending, 1, rest, 0, rest.Length);
+                pending = rest;
+                continue;
+            }
+
+            byte[] frame = new byte[2 + len];                       // type,len,content
+            Array.Copy(pending, 1, frame, 0, frame.Length);
+            if(command_Converter.GetCommandType(frame, out _) == 0){ CommandParse(frame); }
+            else{ commandQueue.Enqueue(frame); }
+
+            byte[] remaining = new byte[pending.Length - frameLength];
+            Array.Copy(pending, frameLength, remaining, 0, remaining.Length);
+            pending = remaining;
+        }
+
+        if(pending.Length > 0){ serial_read_content_ls.Add(pending); }
+    }
+
+    public int DataSend(string message, bool variable_change = false){
         if(sp!= null && sp.IsOpen){
             if(variable_change){//form: p_.... = 1
                 // if(simple_mode){
@@ -414,9 +430,6 @@ public class LinearTrackMoving : MonoBehaviour
                         string temp_command = is_array_var?
                             Arduino_ArrayTypeVar_map[temp_var_name[..temp_bracket]] + temp_var_name[temp_bracket..] + "=" + message.Split('=')[1]:
                             Arduino_var_map[temp_var_name] + "=" + message.Split('=')[1];
-                        if(!inVerifyOrVerifyNeedless){
-                            commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
-                        }
                         byte[] temp_msg = command_Converter.ConvertToByteArray($"{lsTypes[4]}:{temp_command}");
                         sp.Write(temp_msg, 0, temp_msg.Length);
                         // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
@@ -451,7 +464,7 @@ public class LinearTrackMoving : MonoBehaviour
         }
     }
     
-    public int Context_verify(List<string> messages, List<int> values){
+    public int Context_verify(List<string> messages, List<int> values, bool queueOnFail = false){
         if(sp == null){return -3;}
         manualResetEventVerify.Reset();
         if(!sp.IsOpen){
@@ -474,8 +487,8 @@ public class LinearTrackMoving : MonoBehaviour
                             return -1;
                         }
                         string temp_echo = "error";
-                        DataSend("ping", inVerifyOrVerifyNeedless:true);
-                        DataSend(messages[i]+"="+values[i].ToString(), true, inVerifyOrVerifyNeedless:true);
+                        DataSend("ping");
+                        DataSend(messages[i]+"="+values[i].ToString(), true);
                         while(true){
                             temp_echo = sp.ReadLine();
                             if(temp_echo.StartsWith("echo:")){
@@ -504,6 +517,12 @@ public class LinearTrackMoving : MonoBehaviour
         }
         finally{
             manualResetEventVerify.Set();
+        }
+        if(!succes && queueOnFail){// 预留：时效性不高的路径可把未验证成功的消息交给 FixedUpdate 延迟重发
+            for(int i=tempMsgInd; i<messages.Count; i++){
+                int idx = Arduino_var_list.FindIndex(str => str==messages[i]);
+                if(idx >= 0){ commandVerifyDict.TryAdd(Time.fixedUnscaledTime, $"{idx}={values[i]}"); }
+            }
         }
         return succes? 1: -1;
     }
@@ -802,7 +821,7 @@ public class LinearTrackMoving : MonoBehaviour
             now_context = (now_context+ 1) % context_info_ls.Count;
             context_available=false;
             float temp_length_diff = X - lengthRec[1];
-            X = context_info_ls[now_context].start_pos[now_trial]+contextZoneStartAndEnd[now_context*2];
+            X = CurrentStartPos(now_context)+contextZoneStartAndEnd[now_context*2];
             lengthRec[1] = X - temp_length_diff;
             rec_pos=tf.position;
         }
@@ -864,6 +883,12 @@ public class LinearTrackMoving : MonoBehaviour
         trial_per_section=_trial_per_section;
     }
 
+    /// <summary>当前 trial 对应 context 的起始位置；会话结束时 now_trial 会超出范围，钳制到最后一个有效项。</summary>
+    float CurrentStartPos(int context_id){
+        float[] startPos = context_info_ls[context_id].start_pos;
+        return startPos[Mathf.Clamp(now_trial, 0, startPos.Length - 1)];
+    }
+
     public float[] GetContextInfo(){
         //  0           1           2           3           4           5       6,7,8
         //context, pos<relative>, length, reward start, reward end, is_inf, lick_count_rec
@@ -900,7 +925,7 @@ public class LinearTrackMoving : MonoBehaviour
             lick_count_correct++;
             lastRewardTime = Time.fixedUnscaledTime;
             string temp_str=$"p_serveWaterReward={channel}";//serveWaterReward 携带出水通道(-1 空闲, 0..3)
-            if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}  // Unity 决策→Arduino 执行
+            if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}  // Unity 决策→Arduino 执行
         }
     }
 
@@ -980,7 +1005,7 @@ public class LinearTrackMoving : MonoBehaviour
                                 if(dicWaterServingSpdVariables["random_delayed"]==1){//上次已经delay过
                                     Debug.Log("water served in running");    
                                     string temp_str="p_serveWaterReward=0";//速度/里程触发的给水不关联舔水通道，固定走通道 0
-                                    if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                                    if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
 
                                     dicWaterServingSpdVariables["random_delayed"]=0;
                                     dicWaterServingSpdVariables["time_served"]=now_time;
@@ -995,7 +1020,7 @@ public class LinearTrackMoving : MonoBehaviour
                             if(IsInRewardZone || !RewardZoneNeeded){
                                 Debug.Log("water served in trying");
                                 string temp_str="p_serveWaterReward=0";//速度触发给水不关联舔水通道，固定走通道 0
-                                if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                                if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
                                 dicWaterServingSpdVariables["time_served"]=now_time;
                             }
                         }
@@ -1015,7 +1040,7 @@ public class LinearTrackMoving : MonoBehaviour
                 if(IsInRewardZone || !RewardZoneNeeded){
                     Debug.Log("water served in trying");
                     string temp_str="p_serveWaterReward=0";//里程触发给水不关联舔水通道，固定走通道 0
-                    if(DataSend(temp_str, true, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                    if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
                     dicWaterServingLengthVariables["time_served"]=now_time;
                     LengthRecClear = true;
                 }
@@ -1059,8 +1084,9 @@ public class LinearTrackMoving : MonoBehaviour
                 ui_update.PositionIndicateUpdate(GetContextInfo());
                 ui_update.MessageUpdate(_pauseChange:true, _pauseMoving: false);
                 //保证黑屏时不能给水
-                if(context_info_ls[now_context].start_pos[now_trial]+contextZoneStartAndEnd[now_context*2] >= rewardZoneStartAndEnd[now_context*2] && context_info_ls[now_context].start_pos[now_trial]+contextZoneStartAndEnd[now_context*2] < rewardZoneStartAndEnd[now_context*2+1]){
-                    Context_verify("p_enter_reward_context", 1);
+                float nextStartPos = CurrentStartPos(now_context)+contextZoneStartAndEnd[now_context*2];
+                if(nextStartPos >= rewardZoneStartAndEnd[now_context*2] && nextStartPos < rewardZoneStartAndEnd[now_context*2+1]){
+                    if(Context_verify("p_enter_reward_context", 1) < 0){Debug.LogError("p_enter_reward_context=1 verify failed");}
                 }
 
                 if(now_trial>trial_per_section){
@@ -1079,7 +1105,7 @@ public class LinearTrackMoving : MonoBehaviour
             if (pre_pos<=contextZoneStartAndEnd[i_context_zone] && now_pos>contextZoneStartAndEnd[i_context_zone]){//进入context
             }
             else if (pre_pos<contextZoneStartAndEnd[i_context_zone+1] && now_pos>=contextZoneStartAndEnd[i_context_zone+1]){//离开context
-                Context_verify("p_enter_reward_context", -1);//保证黑屏时舔水不能给水
+                if(Context_verify("p_enter_reward_context", -1) < 0){Debug.LogError("p_enter_reward_context=-1 verify failed");}//保证黑屏时舔水不能给水
                 if(context_info_ls[now_context].is_inf){
                     float temp_length_diff = X - lengthRec[1];
                     X = contextZoneStartAndEnd[i_context_zone];
@@ -1103,13 +1129,11 @@ public class LinearTrackMoving : MonoBehaviour
 
             if (pre_pos<=rewardZoneStartAndEnd[i_context_zone] && now_pos>rewardZoneStartAndEnd[i_context_zone]){//进入奖励区
                 alarm.TrySetAlarm("rewardEnable", extraRewardTimeInSec, out _, force:true);//额外奖励窗口(对齐 Moving.cs)
-                string temp_str="p_enter_reward_context=1";
-                if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                if(Context_verify("p_enter_reward_context", 1) < 0){Debug.LogError("p_enter_reward_context=1 verify failed");}
             }
             else if(pre_pos<rewardZoneStartAndEnd[i_context_zone+1] && now_pos>rewardZoneStartAndEnd[i_context_zone+1]){//离开奖励区
                 alarm.TrySetAlarm("rewardEnable", extraRewardTimeInSec, out _, force:true);//离开奖励区后仍保留额外奖励窗口
-                string temp_str="p_enter_reward_context=-1";
-                if(DataSend(temp_str, true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                if(Context_verify("p_enter_reward_context", -1) < 0){Debug.LogError("p_enter_reward_context=-1 verify failed");}
             }//进入或离开reward_zone
 
             pre_pos=tf.position[0];

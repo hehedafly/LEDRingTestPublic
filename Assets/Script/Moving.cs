@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor;
@@ -963,6 +963,7 @@ public class Moving : MonoBehaviour
     ConcurrentQueue<byte[]> commandQueue = new ConcurrentQueue<byte[]>();
     ConcurrentQueue<string> buildinCommandQueue = new ConcurrentQueue<string>();
     ConcurrentQueue<string> uiUpdateMessageQueue = new ConcurrentQueue<string>();
+    // 仅由 CommandVerify(queueOnFail:true) 填充：CommandVerify 失败后的延迟重发队列
     public ConcurrentDictionary<float, string> commandVerifyDict = new ConcurrentDictionary<float, string>();
     /// <summary>
     /// 0-p_lick_mode, 1-p_trial, 2-p_trial_set, 3-p_now_pos, 4-p_lick_rec_pos, 5-p_INDEBUGMODE, 6-p_OGActiveMills, 7-p_miniscopeRecord, 8-p_waterServeWhenLick, 9-p_waterServeManual, 10-p_lightControl
@@ -1578,7 +1579,13 @@ public class Moving : MonoBehaviour
         }
     }
 
+    // 串口建立链路日志时间戳：绝对时间（对照 Player.log）+ 本次连接内累计耗时
+    static string SerialTs(System.Diagnostics.Stopwatch sw = null){
+        return sw == null ? $"[serial {DateTime.Now:HH:mm:ss.fff}]" : $"[serial {DateTime.Now:HH:mm:ss.fff} +{sw.ElapsedMilliseconds}ms]";
+    }
+
     int CreateSerialConnection(out SerialPort sp, ref List<string> portInfo){
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         sp = null;  // 初始化 out 参数
         List<string> portLs = ScanPorts_API().ToList();
         for(int i = 0; i < portLs.Count; i++){
@@ -1588,6 +1595,7 @@ public class Moving : MonoBehaviour
             }
         }
         bool connected = false;
+        Debug.Log($"{SerialTs(sw)} Ports Scaned (try order): {string.Join(", ", portLs)}");
         if (portLs.Count == 0) { portInfo.Add("No Port Found!"); }
         portInfo.Add($"Ports Scaned:{string.Join(", ", portLs)}");
         foreach (string port in portLs){
@@ -1595,14 +1603,15 @@ public class Moving : MonoBehaviour
                 // 直接尝试连接并握手
                 SerialPort tempSp = null;
                 try{
+                    Debug.Log($"{SerialTs(sw)} trying {port}");
                     tempSp = new SerialPort(port, serialSpeed, Parity.None, 8, StopBits.One);
                     tempSp.RtsEnable = true;
                     tempSp.DtrEnable = true;
-                    tempSp.ReadTimeout = 3000;  // 3秒超时 - 缩短等待时间
+                    tempSp.ReadTimeout = 800;  // 800ms超时 - 缩短等待时间
                     tempSp.WriteTimeout = 1000;  // 1秒写超时
                     tempSp.Open();
                     tempSp.Encoding = Encoding.GetEncoding(28591);  // Latin-1：文本读写字节 1:1 透明，避免 ReadLine 把 >=0x80 的字节（帧头/帧尾/长度）解码成 '?'
-                    Debug.Log("COM available: " + port);
+                    Debug.Log($"{SerialTs(sw)} COM available (opened): " + port);
 
                     // 清空上次连接失败残留的数据（关键！否则会读到旧的 ACK_OK）
                     tempSp.DiscardInBuffer();
@@ -1612,10 +1621,10 @@ public class Moving : MonoBehaviour
                     // 读到行尾把这个半行吞掉，保证后面的 ReadLine 从行首开始；两种固件都会在 ~600ms 内重发，丢一行无影响。
                     tempSp.ReadTimeout = 300;
                     try{ int b; while((b = tempSp.ReadByte()) != '\n' && b >= 0){} }catch(TimeoutException){}
-                    tempSp.ReadTimeout = 3000;
 
                     // 发送 RESET 信号让 pyboard 复位并重新握手
                     tempSp.WriteLine("//forceinit");
+                    Debug.Log($"{SerialTs(sw)} forceinit sent to {port}, waiting initialed");
 
                     // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
                     int failCount = 0; int maxFailCount = 20;
@@ -1643,7 +1652,7 @@ public class Moving : MonoBehaviour
                         }
                         failCount++;
                     }
-                    Debug.Log("Received: " + initMsg);
+                    Debug.Log($"{SerialTs(sw)} Received: " + initMsg);
 
                     if (initMsg.StartsWith("initialed:")){
                         string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
@@ -1656,7 +1665,10 @@ public class Moving : MonoBehaviour
                         // 发送 ACK 确认，Arduino 收到后退出握手循环
                         string response = "";
                         int newlineCount = 0;
+                        tempSp.DiscardInBuffer();
+
                         for(int i = 0; i < 5; i++){tempSp.WriteLine("\nACK\n");}
+                        Debug.Log($"{SerialTs(sw)} ACK sent, waiting ACK_OK");
                         while (newlineCount < maxFailCount){
                             char c = (char)tempSp.ReadChar();
                             if (c == '\n' || c == '\r'){
@@ -1670,7 +1682,7 @@ public class Moving : MonoBehaviour
                             }
                         }
                         if (response.EndsWith("ACK_OK")){
-                            Debug.Log("ACK received, handshake complete");
+                            Debug.Log($"{SerialTs(sw)} ACK received, handshake complete");
                             // 验证通过，赋值给输出参数
                             sp = tempSp;
                             connected = true;
@@ -1682,10 +1694,10 @@ public class Moving : MonoBehaviour
                         throw new Exception($"Unexpected message: {initMsg}");
                     }
                 }catch (TimeoutException){
-                    Debug.LogWarning($"Port {port} handshake timeout");
+                    Debug.LogWarning($"{SerialTs(sw)} Port {port} handshake timeout");
                     portInfo.Add($"Port {port} handshake timeout");
                 }catch (Exception e){
-                    Debug.Log(e);
+                    Debug.Log($"{SerialTs(sw)} port {port} failed: {e}");
                     if (e.Message.Contains("拒绝访问") || e.Message.Contains("Access Denied")){
                         portInfo.Add($"Port {port} access denied");
                     }
@@ -1731,7 +1743,7 @@ public class Moving : MonoBehaviour
 
     void RecreateSerialConnection(bool inMainThread = true, string trace = ""){
         // 先安全关闭现有串口
-        Debug.Log($"RecreateSerialConnection {(trace.Length > 0? $"from {trace}" : "")}");
+        Debug.Log($"{SerialTs()} RecreateSerialConnection {(trace.Length > 0? $"from {trace}" : "")}");
         lock(serialLock){
             if(sp != null){
                 SafeCloseSerialPort(ref sp);
@@ -1748,7 +1760,7 @@ public class Moving : MonoBehaviour
                 SafeCloseSerialPort(ref sp);
             }
             if(sp == null){
-                Debug.LogError("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
+                Debug.LogError($"{SerialTs()} No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
                 // Quit();
                 if(MessageBoxForUnity.YesOrNo("Fatal error occured, failed connecting to Arduino, Stay?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_NO){
                     if(inMainThread){
@@ -1928,7 +1940,7 @@ public class Moving : MonoBehaviour
                 }
             }
         }else{
-            DataSend($"{Arduino_var_list[9]}={-2}", needParse:true, inVerifyOrVerifyNeedless:true);
+            DataSend($"{Arduino_var_list[9]}={-2}", needParse:true);
         }
         ui_update.SetLightSignal("reward", true, duration:0.2f);
         if(addToTimeList){rewardServedTimeInTrial.Add(Time.fixedUnscaledTime);}
@@ -2879,7 +2891,7 @@ public class Moving : MonoBehaviour
 
         if(Arduino_var_list.Contains(tempHead)){
             limitedCommand = $"{Arduino_var_map[tempHead]}={limitedCommand.Split(":")[1]}";
-            DataSend(limitedCommand, needParse:false, inVerifyOrVerifyNeedless:checkRepetition);
+            DataSend(limitedCommand, needParse:false);
             return;
         }
         else if (!availableHead.Contains(tempHead)){return;}
@@ -3129,7 +3141,7 @@ public class Moving : MonoBehaviour
         }
         return 1;
     }
-    public int DataSend(string message, bool needParse = false, bool inVerifyOrVerifyNeedless=false){
+    public int DataSend(string message, bool needParse = false){
         // Debug.Log("Data sent: " + message);
         if(sp!= null && sp.IsOpen){
             if(needParse){//form: p_.... = 1
@@ -3143,9 +3155,6 @@ public class Moving : MonoBehaviour
                     }
                     else{temp_command = Arduino_var_map[temp_var_name]+"="+message.Split('=')[1];}
 
-                    if(!inVerifyOrVerifyNeedless){
-                        commandVerifyDict.TryAdd(Time.fixedUnscaledTime, temp_command);
-                    }
                     byte[] temp_msg = commandConverter.ConvertToByteArray($"{lsTypes[6]}:{temp_command}");
                     sp.Write(temp_msg, 0, temp_msg.Length);
                     // Debug.Log($"Data sent: {"value:"+message}, now time:{Time.unscaledTime}");
@@ -3177,7 +3186,7 @@ public class Moving : MonoBehaviour
     /// <summary>
     /// return: 1:success, -1:fail, -2:port not open, -3:no port
     /// </summary>
-    public int CommandVerify(List<string> messages, List<int> values){
+    public int CommandVerify(List<string> messages, List<int> values, bool queueOnFail = false){
         if (sp == null) { return -3; }
         manualResetEventVerify.Reset();
         if (!sp.IsOpen){
@@ -3204,8 +3213,7 @@ public class Moving : MonoBehaviour
             while (!msgVerified && fail_count < fail_countMax){//本条消息 echo 确认通过后才发送下一条
                 try{
                     string temp_echo = "error";
-                    // DataSend("ping", inVerifyOrVerifyNeedless: true);
-                    if (DataSend(messages[i] + "=" + values[i].ToString(), true, inVerifyOrVerifyNeedless: true) == -2){ manualResetEventVerify.Set(); Debug.LogError("verify: DataSend failed"); return -2; }
+                    if (DataSend(messages[i] + "=" + values[i].ToString(), true) == -2){ manualResetEventVerify.Set(); Debug.LogError("verify: DataSend failed"); return -2; }
                     while (true){
                         temp_echo = sp.ReadLine();
 
@@ -3284,6 +3292,12 @@ public class Moving : MonoBehaviour
         if(commandVetifyFailCount >= commandVetifyMaxFailCount){
             Debug.LogError($"commandVerify failed for {commandVetifyFailCount} times!");
             // MessageBoxForUnity.Ensure($"commandVerify failed for {commandVetifyFailCount} times!");
+        }
+        if(queueOnFail){// 预留：时效性不高的路径可把未验证成功的消息交给 FixedUpdate 延迟重发
+            for(int i = tempMsgInd; i < messages.Count; i++){
+                int idx = Arduino_var_list.FindIndex(str => str == messages[i]);
+                if(idx >= 0){ commandVerifyDict.TryAdd(Time.fixedUnscaledTime, $"{idx}={values[i]}"); }
+            }
         }
         manualResetEventVerify.Set();
         return -1;
@@ -4002,14 +4016,15 @@ public class Moving : MonoBehaviour
         }
 
         List<string> portInfo = new List<string>();
+        Debug.Log($"{SerialTs()} Start: CreateSerialConnection begin");
         CreateSerialConnection(out sp, ref portInfo);
 
         if (sp != null){
             serialThread = new Thread(new ThreadStart(SerialCommunicating));
             serialThread.Start();
-            Debug.Log(" serial thread started");
+            Debug.Log($"{SerialTs()} serial thread started");
         }else{
-            Debug.LogWarning("No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
+            Debug.LogWarning($"{SerialTs()} No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo));
             if (MessageBoxForUnity.YesOrNo($"No Connection to Arduino! ports' info as follow:\n" + string.Join("\n", portInfo) + "\nContinue without connection to Arduino?", "Serial Error") == (int)MessageBoxForUnity.MessageBoxReturnValueType.Button_YES){
                 DebugWithoutArduino = true;
             }

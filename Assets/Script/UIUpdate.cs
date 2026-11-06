@@ -465,7 +465,7 @@ public class UIUpdate : MonoBehaviour
                     }else if(temp_str.StartsWith("~/")){
                         MessageUpdate(temp_str[2..]);
                     }else{
-                        if(moving.DataSend(temp_str, temp_str.StartsWith("/"), true)==-1){Debug.LogError("missing variable name: "+temp_str);}
+                        if(moving.DataSend(temp_str, temp_str.StartsWith("/"))==-1){Debug.LogError("missing variable name: "+temp_str);}
                         MessageUpdate($"serial message sent: {temp_str}");
                     }
                 }
@@ -534,7 +534,7 @@ public class UIUpdate : MonoBehaviour
                 break ;
             }
             case "DebugButton":{
-                moving.DataSend($"{moving.ArduinoVarList[5]}={(moving.DebugMode? "0": "1")}", true, true);
+                moving.DataSend($"{moving.ArduinoVarList[5]}={(moving.DebugMode? "0": "1")}", true);
                 moving.DebugMode = !moving.DebugMode;
                 foreach(UnityEngine.UI.Button button in buttons){
                     if(button.name == "DebugButton"){
@@ -544,7 +544,7 @@ public class UIUpdate : MonoBehaviour
                 break;
             }
             case "TouchpannelReset":{
-                moving.DataSend($"{moving.ArduinoVarList[11]}={1000}", true, true);
+                moving.DataSend($"{moving.ArduinoVarList[11]}={1000}", true);
                 break;
             }
             case "IPCRefreshButton":{
@@ -789,7 +789,7 @@ public class UIUpdate : MonoBehaviour
                         SetButtonColor($"{_type}Enable", Color.green, !_enabled);
                     }else if (_content == "LightControl"){
                         // moving.CommandParsePublic($"p_lightControl:{value}", checkRepetition:true);
-                        moving.DataSend($"p_lightControl={value}", needParse:true, inVerifyOrVerifyNeedless: true);
+                        moving.DataSend($"p_lightControl={value}", needParse:true);
                     }else if (_content == "Channel"){
                         if(_type == "MS"){moving.MSChannel = stringArg.Contains("all")? -1: (int)value;}
                         if(_type == "OG"){moving.OGChannel = stringArg.Contains("all")? -1: (int)value;}
