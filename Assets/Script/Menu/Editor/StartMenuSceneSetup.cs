@@ -15,7 +15,9 @@ public static class StartMenuSceneSetup
 {
     const string StartMenuPath = "Assets/Scenes/StartMenu.unity";
     const string MainScenePath = "Assets/Scenes/MainScene.unity";
+    const string LinearTrackScenePath = "Assets/Scenes/linear_track.unity";
 
+    /// <summary>创建最小可运行的 StartMenu 场景（相机/Canvas/EventSystem/主控）并设置构建场景顺序。</summary>
     [MenuItem("Tools/创建 StartMenu 场景")]
     public static void CreateStartMenuScene()
     {
@@ -48,13 +50,15 @@ public static class StartMenuSceneSetup
         Debug.Log($"[StartMenu] 场景已创建：{StartMenuPath}，并已设置构建场景顺序。请在该场景中搭建 UI。");
     }
 
-    [MenuItem("Tools/设置构建场景顺序 (StartMenu, MainScene)")]
+    /// <summary>把构建场景顺序设为 [StartMenu, MainScene, linear_track]。</summary>
+    [MenuItem("Tools/设置构建场景顺序 (StartMenu, MainScene, linear_track)")]
     public static void SetBuildScenes()
     {
         List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>
         {
             new EditorBuildSettingsScene(StartMenuPath, true),
             new EditorBuildSettingsScene(MainScenePath, true),
+            new EditorBuildSettingsScene(LinearTrackScenePath, true),
         };
         EditorBuildSettings.scenes = scenes.ToArray();
     }

@@ -10,7 +10,7 @@ LEDRingTest 是一个基于 Unity 的啮齿动物行为训练系统，提供视�
 
 ## 启动流程与初始菜单（StartMenu）
 
-应用启动先进入 **StartMenu** 场景（构建场景顺序：StartMenu → MainScene）。菜单扫描配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）下所有以 `config` 开头、`.ini` 结尾的文件，每个配置显示为一个横条。
+应用启动先进入 **StartMenu** 场景（构建场景顺序：StartMenu → MainScene → linear_track）。菜单扫描当前模式配置目录下所有以 `config` 开头、`.ini` 结尾的文件，每个配置显示为一个横条。
 
 | 操作/控件 | 功能 | 说明 |
 |-----------|------|------|
@@ -25,11 +25,27 @@ LEDRingTest 是一个基于 Unity 的啮齿动物行为训练系统，提供视�
 - 横条显示信息由 `StartMenuController.barDisplayKeys`（格式 `section:key`）指定。
 - 无匹配配置时显示单个 `default` 条目（指向默认 `config.ini`，即使为空/缺失）。
 
+### LEDRing / LinearTrack 模式切换
+
+开始菜单包含两个模式页，UI 与操作完全相同，仅配置来源和目标场景不同。LEDRing 页显示 **Go To VR** 按钮进入 LinearTrack 页；LinearTrack 页显示 **Go To LEDRing** 按钮返回。
+
+| 项目 | LEDRing 页 | LinearTrack（VR）页 |
+|------|-----------|---------------------|
+| 配置目录 | 编辑器 `Assets/Resources/`，构建 `..._Data/Resources/` | 编辑器 `Assets/Resources/linear_track/`，构建 `..._Data/Resources/linear_track/` |
+| 扫描规则 | `config*.ini` | `config*.ini` |
+| 目标场景 | MainScene | linear_track |
+| 横条键 | `settings:MouseName`、`logSettings:logPath` | `trail_content:context_for_repeat`、`trail_content:repeat_num` |
+| skip 判定 | 生效 | 不判定（不读取 metaConfig.ini） |
+| 运行结束/按 Esc | 返回菜单（LEDRing 页） | 返回菜单（LinearTrack 页） |
+
+预览同样适用：LEDRing 页使用 Moving 的键清单判断“默认未写入”页，LinearTrack 页使用 `Context_generate`/`LinearTrackMoving` 的键清单（含按 `context_for_repeat` 展开的 `contextN` section）。
+
 ### 跳过菜单（metaConfig.ini）
 
 | 参数 | 格式 | 说明 |
 |------|------|------|
-| `[settings] skip` | bool | `true`：启动直接以默认 `config.ini` 进入 MainScene（不显示菜单），退出=直接关闭应用；否则显示菜单 |
+| `[settings] skip` | bool | `true`：启动直接以默认 `config.ini` 进入 MainScene（不显示菜单），退出=直接关闭应用；否则显示菜单。仅 LEDRing 模式生效 |
+| `[settings] prefer_context` | `LEDRing` / `LinearTrack` | 首次进入菜单时的默认模式页；忽略大小写与下划线（如 `linear_track`、`LINEARTRACK` 均可）；缺省或无效值回退 `LEDRing`。返回菜单时保持本次运行前的模式页，不重新读取 |
 
 ### 配置预览
 
@@ -812,8 +828,9 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 
 ## 构建配置
 
-- 构建场景顺序：`StartMenu`（索引 0）→ `MainScene`（索引 1）。
-- 配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）放置 `config*.ini`（可多个，菜单可选）与 `metaConfig.ini`。
+- 构建场景顺序：`StartMenu`（索引 0）→ `MainScene`（索引 1）→ `linear_track`（索引 2）。
+- LEDRing 配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）放置 `config*.ini`（可多个，菜单可选）与 `metaConfig.ini`。
+- LinearTrack 配置目录为上述目录下的 `linear_track/` 子目录，放置 `config*.ini`。
 - 自定义图像应放置在与配置文件相同的目录中。
 
 ---

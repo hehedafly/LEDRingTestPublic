@@ -22,6 +22,7 @@ public class ConfigBarView : MonoBehaviour, IPointerClickHandler
     readonly List<Graphic> cachedGraphics = new List<Graphic>();
     readonly List<bool> cachedRaycast = new List<bool>();
 
+    /// <summary>缓存横条下所有 Graphic 及其原始 raycastTarget，供交互开关使用。</summary>
     void Awake()
     {
         cachedGraphics.Clear();
@@ -52,6 +53,7 @@ public class ConfigBarView : MonoBehaviour, IPointerClickHandler
         SetBarText(BuildText(e));
     }
 
+    /// <summary>左键启动该配置、右键进入预览（派发给 StartMenuController）。</summary>
     public void OnPointerClick(PointerEventData eventData)
     {
         if (controller == null || index < 0) { return; }

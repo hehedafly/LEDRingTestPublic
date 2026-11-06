@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 预览面板渲染脚本（挂在预览 UI 根节点上）。
-/// 订阅 StartMenuController 的预览事件，把 ConfigPreviewController 的当前子页数据渲染到 UI。
+/// 订阅 ConfigPreviewController 的 Changed 事件，把当前子页数据渲染到 UI（与 StartMenuController 解耦）。
 /// 两种渲染方式（可二选一或并用）：
 ///   1) 简单模式：把当前子页文本写入一个 TMP_Text（pageText），每页行数按文本框高度自动计算。
 ///   2) 列表模式：为每行实例化 rowPrefab 到 rowContainer（滚动展示全部内容，不分页）。
@@ -14,8 +14,8 @@ using UnityEngine.UI;
 /// </summary>
 public class ConfigPreviewView : MonoBehaviour
 {
-    [Tooltip("引用场景中的 StartMenuController")]
-    public StartMenuController controller;
+    [Tooltip("预览数据控制器；由 StartMenuController 在运行时通过 Bind 注入")]
+    public ConfigPreviewController preview;
 
     [Header("简单模式")]
     [Tooltip("整页文本输出目标（可选）")]
@@ -47,6 +47,7 @@ public class ConfigPreviewView : MonoBehaviour
 
     Vector2 lastRectSize = new Vector2(-1f, -1f);
 
+    /// <summary>应用对比度背景色，并按需置于文本下层。</summary>
     void Awake()
     {
         if (contrastBackground != null)
@@ -56,28 +57,25 @@ public class ConfigPreviewView : MonoBehaviour
         }
     }
 
-    void OnEnable()
+    /// <summary>注入预览数据控制器并订阅其 Changed 事件（与 StartMenuController 解耦）。</summary>
+    public void Bind(ConfigPreviewController previewController)
     {
-        if (controller != null)
-        {
-            controller.OnPreviewOpened += Refresh;
-            controller.OnPreviewRefreshed += Refresh;
-        }
+        if (preview != null) { preview.Changed -= Refresh; }
+        preview = previewController;
+        if (preview != null) { preview.Changed += Refresh; }
+        Refresh();
     }
 
-    void OnDisable()
+    /// <summary>销毁时取消订阅，避免悬挂回调。</summary>
+    void OnDestroy()
     {
-        if (controller != null)
-        {
-            controller.OnPreviewOpened -= Refresh;
-            controller.OnPreviewRefreshed -= Refresh;
-        }
+        if (preview != null) { preview.Changed -= Refresh; }
     }
 
+    /// <summary>页面文本尺寸变化（如窗口缩放）时自适应重算分页与截断。</summary>
     void Update()
     {
-        // 文本框尺寸变化（如窗口尺寸改变）时自适应重算分页与截断
-        if (pageText != null && controller != null)
+        if (pageText != null && preview != null)
         {
             Rect r = pageText.rectTransform.rect;
             if (Mathf.Abs(r.height - lastRectSize.y) > 0.5f || Mathf.Abs(r.width - lastRectSize.x) > 0.5f) { Refresh(); }
@@ -87,8 +85,7 @@ public class ConfigPreviewView : MonoBehaviour
     /// <summary>按当前子页/排序刷新显示。</summary>
     public void Refresh()
     {
-        if (controller == null) { return; }
-        ConfigPreviewController preview = controller.Preview;
+        if (preview == null) { return; }
 
         // 先按文本框尺寸确定每页行数与每行最大字符数，标题里的子页计数依赖前者
         if (pageText != null)

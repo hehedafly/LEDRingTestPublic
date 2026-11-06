@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEditor;
 using System.Collections;
@@ -13,6 +13,7 @@ using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine.UIElements;
+using UnityEngine.SceneManagement;
 //using UnityEditor.PackageManager;
 
 public class LinearTrackMoving : MonoBehaviour
@@ -54,6 +55,7 @@ public class LinearTrackMoving : MonoBehaviour
     bool DebugWithoutArduino = false;
     SerialPort sp = null;   public SerialPort SP { get { return sp; } }
     volatile bool StopSerialThread = false;
+    bool quitRequested = false;
     Thread serialThread;
     int serialSpeed = 115200;
     List<string> compatibleVersion = new List<string>();
@@ -190,9 +192,16 @@ public class LinearTrackMoving : MonoBehaviour
 
                     tempSp.WriteLine("//forceinit");
                     int failCount = 0; int maxFailCount = 10;
-                    string initMsg = tempSp.ReadLine();
-                    while(initMsg.Length == 0 && failCount < maxFailCount){
-                        initMsg = tempSp.ReadLine();
+                    string initMsg = "";
+                    // 与 Moving.cs 一致：只认整行 initialed:，banner/残片行跳过（无 banner 的 Arduino 第一行即命中）
+                    while(failCount < maxFailCount){
+                        string line;
+                        try{
+                            line = tempSp.ReadLine();
+                        }catch(TimeoutException){
+                            throw;   // 3s 无数据 = 设备静默，直接失败
+                        }
+                        if(line.StartsWith("initialed:")){ initMsg = line; break; }
                         failCount++;
                     }
                     // Debug.Log("Received: " + initMsg);
@@ -579,7 +588,22 @@ public class LinearTrackMoving : MonoBehaviour
         return "delta time\tmode\ttrial\tcontext\trelative pos\traw data\tspeed\tlick before-\tlick in-\t lick after rewardzone\tlick_count_correct\twater served";
     }
 
-    void Quit(){
+    /// <summary>退出：从菜单进入时清理串口/日志后返回菜单，否则关闭应用。</summary>
+    public void Quit(){
+        if(quitRequested){ return; }
+        quitRequested = true;
+
+        if(LaunchContext.ReturnToMenuOnExit){
+            StopSerialThread = true;
+            manualResetEventVerify.Set();
+            try{ if(serialThread != null && serialThread.IsAlive){ serialThread.Join(300); } }catch{}
+            SafeCloseSerialPort(ref sp);
+            CleanupStreamWriter();
+            LaunchContext.HasSelected = false;
+            SceneManager.LoadScene(LaunchContext.MenuSceneName);
+            return;
+        }
+
         #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
         #else

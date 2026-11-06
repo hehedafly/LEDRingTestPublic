@@ -16,6 +16,9 @@ public class ConfigPreviewController
 {
     public string CurrentPath { get; private set; }
 
+    /// <summary>数据/视图状态变化（打开、翻页、排序）时触发，供 View 订阅后刷新。</summary>
+    public event System.Action Changed;
+
     /// <summary>true=字母顺序，false=原始文本顺序。</summary>
     public bool AlphabeticalSort { get; private set; } = false;
 
@@ -50,16 +53,20 @@ public class ConfigPreviewController
         public int Order; // 原始文本顺序（默认页用 schema 顺序）
     }
 
-    /// <summary>打开某个配置文件进行预览，重置到首个子页。</summary>
-    public void Open(string path)
+    /// <summary>打开某个配置文件进行预览，重置到首个子页；mode 决定“默认未写入”页使用的键清单。</summary>
+    public void Open(string path, LaunchMode mode)
     {
         CurrentPath = path;
         parser = IniFileParser.FromFile(path);
-        schema = ConfigSchema.BuildForFile(parser);
+        schema = mode == LaunchMode.LinearTrack
+            ? LinearTrackConfigSchema.BuildForFile(parser)
+            : ConfigSchema.BuildForFile(parser);
         SubPageIndex = 0;
         Rebuild();
+        Changed?.Invoke();
     }
 
+    /// <summary>把解析结果拆分为「已设值」与「默认未写入」两类原始行。</summary>
     void Rebuild()
     {
         setLines.Clear();
@@ -105,6 +112,7 @@ public class ConfigPreviewController
         SubPageIndex = Mathf.Clamp(SubPageIndex, 0, TotalSubPages - 1);
     }
 
+    /// <summary>按当前排序模式对行排序（原始文本顺序或字母顺序）。</summary>
     List<PreviewLine> Order(List<PreviewLine> source, bool isDefault)
     {
         IEnumerable<PreviewLine> ordered;
@@ -151,6 +159,7 @@ public class ConfigPreviewController
         return s.Substring(0, keep) + Ellipsis;
     }
 
+    /// <summary>按每页行数计算某类内容的子页数（LinesPerPage&lt;=0 视为不分页）。</summary>
     int SubCount(int lineCount)
     {
         if (LinesPerPage > 0) { return Mathf.CeilToInt(lineCount / (float)LinesPerPage); }
@@ -168,20 +177,26 @@ public class ConfigPreviewController
     /// <summary>当前类别内的子页序号（1 基）。</summary>
     public int SubIndexInCategory => (IsDefaultPage ? SubPageIndex - SetSubPageCount : SubPageIndex) + 1;
 
+    /// <summary>切到下一个子页（循环）。</summary>
     public void NextPage()
     {
         SubPageIndex = (SubPageIndex + 1) % TotalSubPages;
+        Changed?.Invoke();
     }
 
+    /// <summary>切到上一个子页（循环）。</summary>
     public void PrevPage()
     {
         SubPageIndex = (SubPageIndex - 1 + TotalSubPages) % TotalSubPages;
+        Changed?.Invoke();
     }
 
+    /// <summary>切换原始文本顺序 / 字母顺序。</summary>
     public void ToggleSort()
     {
         AlphabeticalSort = !AlphabeticalSort;
         RebuildDisplay();
+        Changed?.Invoke();
     }
 
     /// <summary>当前子页要显示的文本行（分页模式，供 pageText 使用）；每行按 MaxCharsPerLine 截断。</summary>

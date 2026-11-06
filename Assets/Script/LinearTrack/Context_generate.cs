@@ -172,12 +172,11 @@ public class Context_generate : MonoBehaviour
     }
 
     public string GetConfigPath(){
-        #if UNITY_EDITOR
-            context_config_path="Assets/Resources/linear_track/config.ini";
-        #else
-            context_config_path=Application.dataPath+"/Resources/linear_track/config.ini";
+        #if !UNITY_EDITOR
             if(!System.IO.Directory.Exists(Application.dataPath+"/linear_track/Sprites")){System.IO.Directory.CreateDirectory(Application.dataPath+"/linear_track/Sprites");}
         #endif
+        // 从菜单进入时使用所选配置；直接运行本场景（未经菜单）时回退到 linear_track/config.ini
+        context_config_path = LaunchContext.ResolveConfigPath(LaunchMode.LinearTrack);
         return context_config_path;
     }
     
@@ -263,7 +262,12 @@ public class Context_generate : MonoBehaviour
         }
         catch(Exception e){
             MessageBox(IntPtr.Zero, e.Message+"\n"+e.StackTrace, "error", 0);
-            Application.Quit();
+            if(position_control != null){ position_control.Quit(); }
+            #if UNITY_EDITOR
+                else{ UnityEditor.EditorApplication.isPlaying = false; }
+            #else
+                else{ Application.Quit(); }
+            #endif
         }    
 
     }

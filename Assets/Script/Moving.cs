@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor;
@@ -1608,36 +1608,44 @@ public class Moving : MonoBehaviour
                     tempSp.DiscardInBuffer();
                     tempSp.DiscardOutBuffer();
 
+                    // DiscardInBuffer 是按字节截断的：板子此时可能正在推送 initialed:/banner，会切出半行（如 "V2.5"）。
+                    // 读到行尾把这个半行吞掉，保证后面的 ReadLine 从行首开始；两种固件都会在 ~600ms 内重发，丢一行无影响。
+                    tempSp.ReadTimeout = 300;
+                    try{ int b; while((b = tempSp.ReadByte()) != '\n' && b >= 0){} }catch(TimeoutException){}
+                    tempSp.ReadTimeout = 3000;
+
                     // 发送 RESET 信号让 pyboard 复位并重新握手
                     tempSp.WriteLine("//forceinit");
-                    // tempSp.DiscardInBuffer();  // 清空缓冲区
 
                     // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
                     int failCount = 0; int maxFailCount = 20;
                     string initMsg = "";
                     spDeviceType = "Arduino";
-                    try{
-                        // 跳过任何非 initialed 行（banner/残留ACK_OK/空行），直到读到 initialed 或超时
-                        do{
-                            initMsg = tempSp.ReadLine();
-                            if(initMsg.Contains(pyboardFlag)){
-                                initMsg = initMsg.Replace(pyboardFlag, "");
-                                spDeviceType = "Pyboard";
-                                if(!uiUpdateMessageQueue.Contains("Pyboard connected")){
-                                    uiUpdateMessageQueue.Enqueue("Pyboard connected");
-                                }
+                    // 只认整行：超时/半行不算读到行（不拿旧值继续）；banner 行仅用于识别板型，其余残片跳过。
+                    // 无 banner 的固件（Arduino）第一行就是 initialed:，直接命中。
+                    string line = "";
+                    while(failCount < maxFailCount){
+                        try{
+                            line = tempSp.ReadLine();
+                        }catch(TimeoutException){
+                            throw;   // 3s 无数据 = 设备静默（正常握手每 ~600ms 会重发一行），直接失败，避免 20×3s
+                        }
+                        if(line.Contains(pyboardFlag)){
+                            spDeviceType = "Pyboard";
+                            if(!uiUpdateMessageQueue.Contains("Pyboard connected")){
+                                uiUpdateMessageQueue.Enqueue("Pyboard connected");
                             }
-                            if(initMsg.StartsWith("initialed:")){break;}
-                            failCount++;
-                        }while(failCount < maxFailCount);
-                        Debug.Log("Received: " + initMsg);
+                            continue;
+                        }
+                        if(line.StartsWith("initialed:")){
+                            initMsg = line;
+                            break;
+                        }
+                        failCount++;
                     }
-                    catch(TimeoutException e){
-                        if(initMsg.Length == 0){throw new TimeoutException(e.Message);}
-                    }
+                    Debug.Log("Received: " + initMsg);
 
                     if (initMsg.StartsWith("initialed:")){
-                        initMsg = "initialed:" + initMsg.Split("initialed:").Last();
                         string version = initMsg.Length > 10 ? initMsg[10..].Trim() : "";
 
                         // 验证版本兼容性
@@ -1648,14 +1656,10 @@ public class Moving : MonoBehaviour
                         // 发送 ACK 确认，Arduino 收到后退出握手循环
                         string response = "";
                         int newlineCount = 0;
-                        tempSp.DiscardInBuffer();
                         for(int i = 0; i < 5; i++){tempSp.WriteLine("\nACK\n");}
                         while (newlineCount < maxFailCount){
                             char c = (char)tempSp.ReadChar();
                             if (c == '\n' || c == '\r'){
-                                if(response.Contains("initialed:")){
-                                    response = response.Split("initialed:").Last();
-                                }
                                 newlineCount++;
                                 response = response.Replace("\r", "").Replace("\n", "");
                             }else{
