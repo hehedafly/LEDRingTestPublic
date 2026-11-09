@@ -1619,7 +1619,6 @@ public class Moving : MonoBehaviour
 
                     // DiscardInBuffer 是按字节截断的：板子此时可能正在推送 initialed:/banner，会切出半行（如 "V2.5"）。
                     // 读到行尾把这个半行吞掉，保证后面的 ReadLine 从行首开始；两种固件都会在 ~600ms 内重发，丢一行无影响。
-                    tempSp.ReadTimeout = 300;
                     try{ int b; while((b = tempSp.ReadByte()) != '\n' && b >= 0){} }catch(TimeoutException){}
 
                     // 发送 RESET 信号让 pyboard 复位并重新握手
@@ -1637,7 +1636,7 @@ public class Moving : MonoBehaviour
                         try{
                             line = tempSp.ReadLine();
                         }catch(TimeoutException){
-                            throw;   // 3s 无数据 = 设备静默（正常握手每 ~600ms 会重发一行），直接失败，避免 20×3s
+                            throw;   // 800ms 无数据 = 设备静默（正常握手每 ~600ms 会重发一行），直接失败，避免逐行累计长等待
                         }
                         if(line.Contains(pyboardFlag)){
                             spDeviceType = "Pyboard";

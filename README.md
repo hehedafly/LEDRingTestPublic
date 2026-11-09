@@ -408,6 +408,8 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 ### 设备类型与重连同步
 
 - **设备类型**：连接时自动识别 `Arduino` / `Pyboard`；Pyboard 支持带通道的 `cmd:msset`、`cmd:ogpwm` 等命令，Arduino 忽略 ogpwm。
+- **握手过程**：程序打开端口后发送 `//forceinit`，等待板端周期性重发的 `initialed:<版本>`（Pyboard 在此之前会先发板型 banner 行，日志窗口据此提示 `Pyboard connected`），版本核对通过后程序回 `ACK`、收到 `ACK_OK` 完成连接。`compatibleVersion` 非空且不含板端上报版本时以 `Incompatible version` 拒连；留空则不校验版本。
+- **握手失败的表现**：`Port COMx handshake timeout` = 该端口无响应（每个无响应端口最多等 ~0.8s，把正确端口写进 `recommendPort` 可跳过逐个试探）；`Unexpected response / Unexpected message` = 握手消息没对上，可重试连接或给板子断电重连；所有端口都失败会弹窗询问是否以"无下位机"模式继续。
 - **重连状态快照同步**：运行中周期性向板端请求状态快照（`statusValue`，板端回 `cmd:stv:...`）并缓存；串口重连成功后自动回灌最近一次快照（`ArduinoContextPost`），使板端状态与上位机一致。
 - **命令校验失败提示**：串口命令校验连续失败 3 次会弹窗提示，通常意味着连接不稳或固件/波特率不匹配。
 
@@ -829,7 +831,7 @@ IFTimingSet=>{定时JSON1}|JR|{定时JSON2}|JR|...
 ## 构建配置
 
 - 构建场景顺序：`StartMenu`（索引 0）→ `MainScene`（索引 1）→ `linear_track`（索引 2）。
-- LEDRing 配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）放置 `config*.ini`（可多个，菜单可选）与 `metaConfig.ini`。
+- LEDRing 配置目录（编辑器 `Assets/Resources/`，构建 `..._Data/Resources/`）放置 `config*.ini`（可多个，菜单可选）与 `metaConfig.ini`（`[settings]` 的 `skip` / `prefer_context` 两个键，含义见"启动流程与初始菜单"一节）。
 - LinearTrack 配置目录为上述目录下的 `linear_track/` 子目录，放置 `config*.ini`。
 - 自定义图像应放置在与配置文件相同的目录中。
 
