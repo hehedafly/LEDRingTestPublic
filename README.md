@@ -387,7 +387,7 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 | `recommendPort`    | 以逗号分隔的字符串 | 优先连接的 COM 端口（例如，`COM7`）。连接时会优先尝试这些端口 |
 | `compatibleVersion` | 以逗号分隔的字符串 | 接受的 Arduino 固件版本（例如，`V2.2`） |
 
-**支持的Arduino变量**（`Arduino_var_list`，索引即传输下标 0-10）：
+**支持的Arduino变量**（`Arduino_var_list`，索引即传输下标 0-11）：
 - `p_lick_mode` - 舔食模式（索引0）
 - `p_trial` - 当前试验（索引1）
 - `p_trial_set` - 试验设置（索引2）
@@ -399,19 +399,40 @@ MSTriggerMethod=[start]{certainTrialInTarget:10,20,30};[end]{everyTrialInTarget:
 - `p_waterServeWhenLick` - 舔食时给水（索引8）
 - `p_waterServeManual` - 手动给水（索引9）
 - `p_lightControl` - led亮度控制（索引10）
+- `p_touchpannelReset` - 触摸面板复位（索引11，界面按钮 **TP Reset**，固定下发 1000）。**只有 Pyboard 有实际行为**：把 `TOUCHPANNEL_RESET_PIN` 拉低该毫秒数后回高（`<=0` 只记状态不动引脚）。**Arduino 固件只保留变量占位**，收到写入仅记录数值、不驱动任何引脚——该功能没有给 Arduino 做实现，属预期行为。
 
-**Arduino数组类型变量**：
+下标契约：Firmware 侧 `pointer_array[]` 的顺序必须与上表逐项对应，新增变量只能**追加在末尾**。固件对下标做了严格校验，`<0` 或 `>= 变量个数` 的写入会被**直接丢弃**（不写内存、不回 echo），上位机的 `CommandVerify`/`Context_verify` 会因此报校验失败，而不是被"假成功"的 echo 掩盖。
+
+**Arduino数组类型变量**（每项 8 个元素，命令形如 `<变量号>[<元素号>]=<值>`）：
 - `p_waterServeMicros` - 给水时间微秒记录
 - `p_lick_count` - 舔水计数
 - `p_water_flush` - 持续给水
+
+固件对数组命令的两个维度都做校验：变量号越界或元素号越界（含负数）同样丢弃、不回 echo。
 
 ### 设备类型与重连同步
 
 - **设备类型**：连接时自动识别 `Arduino` / `Pyboard`；Pyboard 支持带通道的 `cmd:msset`、`cmd:ogpwm` 等命令，Arduino 忽略 ogpwm。
 - **握手过程**：程序打开端口后发送 `//forceinit`，等待板端周期性重发的 `initialed:<版本>`（Pyboard 在此之前会先发板型 banner 行，日志窗口据此提示 `Pyboard connected`），版本核对通过后程序回 `ACK`、收到 `ACK_OK` 完成连接。`compatibleVersion` 非空且不含板端上报版本时以 `Incompatible version` 拒连；留空则不校验版本。
 - **握手失败的表现**：`Port COMx handshake timeout` = 该端口无响应（每个无响应端口最多等 ~0.8s，把正确端口写进 `recommendPort` 可跳过逐个试探）；`Unexpected response / Unexpected message` = 握手消息没对上，可重试连接或给板子断电重连；所有端口都失败会弹窗询问是否以"无下位机"模式继续。
-- **重连状态快照同步**：运行中周期性向板端请求状态快照（`statusValue`，板端回 `cmd:stv:...`）并缓存；串口重连成功后自动回灌最近一次快照（`ArduinoContextPost`），使板端状态与上位机一致。
+- **重连状态快照同步**：每次 Trial 开始 +1s 向板端请求状态快照（`statusValue`），板端必须以 **`cmd:stv:...`**（帧类型字节 7）回复；上位机缓存该快照，串口重连成功后自动回灌（`ArduinoContextPost`），使板端状态与上位机一致。快照体包含 `0=~8= / 10=` 标量与 `a0~a2` 三个数组段；回灌时跳过 `2=`（trial_set）与 `9=`（waterServeManual），`water_flush` 按置位而非翻转恢复，避免重连后意外出水。
 - **命令校验失败提示**：串口命令校验连续失败 3 次会弹窗提示，通常意味着连接不稳或固件/波特率不匹配。
+
+### Arduino 固件（V2.5）2026-11 修订
+
+Arduino 端**沿用版本号 `V2.5`**（上位机缺省白名单是 `V2.2~V2.5`，改版本串会被判 `Incompatible version`），本次只做加固，不改任何正常命令的语义：
+
+| 修订项 | 说明 |
+|--------|------|
+| 下标越界保护 | `pointer_array[]` 的边界判断由 `sizeof(pointer_array)`（字节数 48）改为元素个数；越界下标直接丢弃且不回 echo。此前 11~47 号下标会被放行，并经由数组外的指针写到任意地址（写坏相邻变量或 HardFault）。 |
+| 新增索引 11 | 增加 `p_touchpannelReset` 占位变量（无硬件行为），与 Pyboard 的下标契约对齐；界面 `TP Reset` 按钮对 Arduino 不再产生越界写。 |
+| 写 / echo 顺序 | 改为"校验 → 落地 → 副作用 → 回 echo"，被丢弃的命令不再回 echo，上位机的校验会真实失败而不是假成功。 |
+| 快照帧类型 | `statusValue` 的回复由裸 `stv:...` 改为 `cmd:stv:...`，与上位机 `case 7` 的 `StartsWith("cmd:stv:")` 匹配；此前类型字节为 0xFF，被当成未知类型丢弃，快照实际收不到。 |
+| 数组命令校验 | 变量号与元素号两个维度都校验（含负数），越界丢弃。 |
+| `sw=` 通道号校验 | 越界通道号丢弃，避免 `waterServeMicros[]` 越界读与对野引脚打脉宽。 |
+| 快照长度上限 | 增加 255 字节上限检查，避免 1 字节长度字段截断产生畸形帧。 |
+
+> 2026-10 的初版与本修订版上报的版本串相同，升级请以固件文件为准；未升级的旧 V2.5 在点 `TP Reset` 时存在越界写风险。
 
 ### 材料设置
 
