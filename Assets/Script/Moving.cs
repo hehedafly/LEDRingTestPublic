@@ -1613,43 +1613,49 @@ public class Moving : MonoBehaviour
                     tempSp.Encoding = Encoding.GetEncoding(28591);  // Latin-1：文本读写字节 1:1 透明，避免 ReadLine 把 >=0x80 的字节（帧头/帧尾/长度）解码成 '?'
                     Debug.Log($"{SerialTs(sw)} COM available (opened): " + port);
 
-                    // 清空上次连接失败残留的数据（关键！否则会读到旧的 ACK_OK）
+                    // 清空上次连接残留的数据，并短暂排空 USB CDC 在途积压（无数据时仅等待 ~20ms）
                     tempSp.DiscardInBuffer();
                     tempSp.DiscardOutBuffer();
-
-                    // DiscardInBuffer 是按字节截断的：板子此时可能正在推送 initialed:/banner，会切出半行（如 "V2.5"）。
-                    // 读到行尾把这个半行吞掉，保证后面的 ReadLine 从行首开始；两种固件都会在 ~600ms 内重发，丢一行无影响。
-                    try{ int b; while((b = tempSp.ReadByte()) != '\n' && b >= 0){} }catch(TimeoutException){}
+                    var drainSw = System.Diagnostics.Stopwatch.StartNew();
+                    long lastDrainMs = 0;
+                    while (drainSw.ElapsedMilliseconds < 80){
+                        if (tempSp.BytesToRead > 0){
+                            tempSp.DiscardInBuffer();
+                            lastDrainMs = drainSw.ElapsedMilliseconds;
+                        }else if (drainSw.ElapsedMilliseconds - lastDrainMs >= 20){
+                            break;
+                        }
+                        Thread.Sleep(2);
+                    }
 
                     // 发送 RESET 信号让 pyboard 复位并重新握手
                     tempSp.WriteLine("//forceinit");
                     Debug.Log($"{SerialTs(sw)} forceinit sent to {port}, waiting initialed");
 
-                    // 握手流程：阻塞读取，等待 Arduino 发送初始化消息
-                    int failCount = 0; int maxFailCount = 20;
+                    // 握手流程：阻塞读取，等待设备发送初始化消息
                     string initMsg = "";
                     spDeviceType = "Arduino";
-                    // 只认整行：超时/半行不算读到行（不拿旧值继续）；banner 行仅用于识别板型，其余残片跳过。
+                    // 只认整行：超时/半行不算读到行；banner 行用于识别板型，其余残片跳过，受总超时约束。
                     // 无 banner 的固件（Arduino）第一行就是 initialed:，直接命中。
-                    string line = "";
-                    while(failCount < maxFailCount){
+                    var initSw = System.Diagnostics.Stopwatch.StartNew();
+                    while (initSw.ElapsedMilliseconds < 2500){
+                        string line;
                         try{
-                            line = tempSp.ReadLine();
+                            line = tempSp.ReadLine().Trim();
                         }catch(TimeoutException){
-                            throw;   // 800ms 无数据 = 设备静默（正常握手每 ~600ms 会重发一行），直接失败，避免逐行累计长等待
+                            throw;   // 800ms 无数据 = 设备静默（正常握手每 ~500-600ms 会重发一行），直接失败
                         }
-                        if(line.Contains(pyboardFlag)){
+                        if (line.Contains(pyboardFlag)){
                             spDeviceType = "Pyboard";
-                            if(!uiUpdateMessageQueue.Contains("Pyboard connected")){
+                            if (!uiUpdateMessageQueue.Contains("Pyboard connected")){
                                 uiUpdateMessageQueue.Enqueue("Pyboard connected");
                             }
                             continue;
                         }
-                        if(line.StartsWith("initialed:")){
+                        if (line.StartsWith("initialed:")){
                             initMsg = line;
                             break;
                         }
-                        failCount++;
                     }
                     Debug.Log($"{SerialTs(sw)} Received: " + initMsg);
 
@@ -1661,34 +1667,58 @@ public class Moving : MonoBehaviour
                             throw new Exception($"Incompatible version: {version}, required: {string.Join(", ", compatibleVersion)}");
                         }
 
-                        // 发送 ACK 确认，Arduino 收到后退出握手循环
-                        string response = "";
-                        int newlineCount = 0;
+                        // 发送 ACK 确认，设备收到后退出握手循环；按总超时逐行等待 ACK_OK，忽略积压的历史握手行
                         tempSp.DiscardInBuffer();
-
-                        for(int i = 0; i < 5; i++){tempSp.WriteLine("\nACK\n");}
+                        tempSp.WriteLine("ACK");
                         Debug.Log($"{SerialTs(sw)} ACK sent, waiting ACK_OK");
-                        while (newlineCount < maxFailCount){
-                            char c = (char)tempSp.ReadChar();
-                            if (c == '\n' || c == '\r'){
-                                newlineCount++;
-                                response = response.Replace("\r", "").Replace("\n", "");
-                            }else{
-                                response += c;
+
+                        bool ackReceived = false;
+                        bool ackRetried = false;
+                        string lastUnexpected = "";
+                        var ackSw = System.Diagnostics.Stopwatch.StartNew();
+                        tempSp.ReadTimeout = 500;
+                        while (ackSw.ElapsedMilliseconds < 1500){
+                            string ackLine;
+                            try{
+                                ackLine = tempSp.ReadLine().Trim();
+                            }catch (TimeoutException){
+                                if (!ackRetried){
+                                    tempSp.WriteLine("ACK");
+                                    ackRetried = true;
+                                    continue;
+                                }
+                                throw;
                             }
-                            if (response.EndsWith("ACK_OK")){
+                            if (ackLine.Contains(pyboardFlag)){
+                                spDeviceType = "Pyboard";
+                                if (!uiUpdateMessageQueue.Contains("Pyboard connected")){
+                                    uiUpdateMessageQueue.Enqueue("Pyboard connected");
+                                }
+                                continue;
+                            }
+                            if (ackLine == "ACK_OK" || ackLine.EndsWith("ACK_OK")){
+                                ackReceived = true;
                                 break;
                             }
+                            if (!ackLine.StartsWith("initialed:") && ackLine.Length > 0){
+                                lastUnexpected = ackLine;
+                            }
+                            if (!ackRetried && ackSw.ElapsedMilliseconds >= 400){
+                                tempSp.WriteLine("ACK");
+                                ackRetried = true;
+                            }
                         }
-                        if (response.EndsWith("ACK_OK")){
-                            Debug.Log($"{SerialTs(sw)} ACK received, handshake complete");
+
+                        if (ackReceived){
+                            tempSp.ReadTimeout = 800;
+                            Debug.Log($"{SerialTs(sw)} ACK received, handshake complete (device={spDeviceType})");
                             // 验证通过，赋值给输出参数
                             sp = tempSp;
                             connected = true;
+                            return 1;
                         }else{
-                            throw new Exception($"Unexpected response: {response}");
+                            throw new Exception($"Unexpected response before ACK_OK timeout: {lastUnexpected}");
                         }
-                        return 1;
                     }else{
                         throw new Exception($"Unexpected message: {initMsg}");
                     }
@@ -1728,6 +1758,8 @@ public class Moving : MonoBehaviour
                 // 先设置超时，防止Close时因之前的阻塞操作卡住
                 port.ReadTimeout = 100;
                 port.WriteTimeout = 100;
+                // 显式拉低 DTR/RTS，确保 USB CDC 设备及时感知主机断开
+                try{ port.DtrEnable = false; port.RtsEnable = false; }catch{}
                 port.Close();
             }
         }catch(Exception e){
@@ -4016,7 +4048,17 @@ public class Moving : MonoBehaviour
 
         List<string> portInfo = new List<string>();
         Debug.Log($"{SerialTs()} Start: CreateSerialConnection begin");
-        CreateSerialConnection(out sp, ref portInfo);
+        for (int attempt = 0; attempt < 3; attempt++){
+            portInfo.Clear();
+            if (CreateSerialConnection(out sp, ref portInfo) > 0){
+                break;
+            }
+            if (portInfo.Contains("No Port Found!") || attempt == 2){
+                break;
+            }
+            Debug.LogWarning($"{SerialTs()} Start: CreateSerialConnection attempt {attempt + 1} failed, retrying...");
+            Thread.Sleep(250);
+        }
 
         if (sp != null){
             serialThread = new Thread(new ThreadStart(SerialCommunicating));
